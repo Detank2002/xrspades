@@ -18,12 +18,18 @@
 
  */
 
+#include <Core/Settings.h>
+#include <algorithm>
 #include "ParticleSpriteEntity.h"
 
 #include "Fonts.h"
 #include "GameMap.h"
 #include "World.h"
 #include <Core/Debug.h>
+
+// Every particle sprite's size, as a share: smaller in a headset, where they
+// are near the eyes and each is drawn twice (the headset quality levels).
+DEFINE_SPADES_SETTING(cg_particleSize, "1");
 
 namespace spades {
 	namespace client {
@@ -71,8 +77,9 @@ namespace spades {
 		}
 
 		void ParticleSpriteEntity::SetRadius(float initialRad, float radVel, float damp) {
-			radius = initialRad;
-			radiusVelocity = radVel;
+			const float size = std::max(0.1F, std::min(static_cast<float>(cg_particleSize), 2.0F));
+			radius = initialRad * size;
+			radiusVelocity = radVel * size;
 			radiusDamp = damp;
 		}
 

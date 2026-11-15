@@ -99,6 +99,8 @@ DEFINE_SPADES_SETTING(core_profile, "");
 // Set once the colour correction, on by default before 0.3.4, has been turned
 // off in the config; after that the toggle is the player's again.
 DEFINE_SPADES_SETTING(cl_zsColorCorrectionOff, "0");
+// Set once a headset's particles have been made the headset levels' (0.3.6).
+DEFINE_SPADES_SETTING(cl_zsHeadsetParticles, "0");
 SPADES_SETTING(r_colorCorrection);
 
 #ifdef WIN32
@@ -1175,9 +1177,22 @@ int main(int argc, char** argv) {
 			if (static_cast<std::string>(profile) == "auto") {
 				spades::gui::ApplyQualityPreset(spades::gui::GetHeadsetQualityPresets().front());
 				profile = "applied";
+				cl_zsHeadsetParticles = 1; // the level has set them
 				// Now: a headset app is often closed without a clean exit
 				spades::Settings::GetInstance()->Flush();
 				SPLog("[VR] First start: the headset Performance level");
+			}
+			// The headset levels took over the particles in 0.3.6; a headset set
+			// up before has the PC's (too many, too big, testers): once, the
+			// Balanced level's.
+			if (!static_cast<bool>(cl_zsHeadsetParticles)) {
+				spades::Settings::ItemHandle("cg_particles", nullptr) = 1;
+				spades::Settings::ItemHandle("cg_particlesGrenadeNum", nullptr) = 32;
+				spades::Settings::ItemHandle("cg_particlesBloodNum", nullptr) = 3;
+				spades::Settings::ItemHandle("cg_particleSize", nullptr) = 0.7F;
+				cl_zsHeadsetParticles = 1;
+				spades::Settings::GetInstance()->Flush();
+				SPLog("[VR] The headset's particles: fewer and smaller");
 			}
 		}
 #endif

@@ -97,17 +97,21 @@ namespace spades {
 			  "r_fogShadow",    "r_softParticles", "r_outlines",     "r_lensFlare",
 			  "r_colorCorrection", "r_depthOfField", "r_cameraBlur", "r_ssao",
 			  "r_temporalAA",   "r_water",         "r_maxAnisotropy", "r_shadowMapSize",
-			  "vr_multiview",   "r_waterInScene",  "r_resolveInPass"};
+			  "vr_multiview",   "r_waterInScene",  "r_resolveInPass",
+			  // Particles: the big smoke puffs only at Quality, fewer fragments
+			  // and drops, every sprite smaller (testers: too much, too close)
+			  "cg_particles", "cg_particlesGrenadeNum", "cg_particlesBloodNum",
+			  "cg_particleSize"};
 			static const std::vector<QualityPreset> presets = {
 			  Level("Performance", keys,
 			        {"4", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "1", "4",
-			         "1024", "1", "1", "1"}),
+			         "1024", "1", "1", "1", "1", "24", "2", "0.6"}),
 			  Level("Balanced", keys,
 			        {"4", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "1", "8",
-			         "2048", "1", "1", "1"}),
+			         "2048", "1", "1", "1", "1", "32", "3", "0.7"}),
 			  Level("Quality", keys,
 			        {"4", "0", "0", "0", "0", "1", "0", "0", "0", "0", "0", "0", "0", "1", "8",
-			         "2048", "1", "1", "1"}),
+			         "2048", "1", "1", "1", "2", "48", "4", "0.8"}),
 			};
 			return presets;
 		}
