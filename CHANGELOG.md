@@ -5,6 +5,13 @@ version's section at the top of its release notes, under "What's new", and
 the game shows those lines when it offers the update. Keep each line short:
 one change, in a player's words.
 
+## 0.3.6
+
+- New: a headshot kill bursts the skull into pieces (Options, Effects to turn it off)
+- Improved: fewer and smaller particles on the Quest
+- Fixed: zombies' right arms and legs, and one zombie's chest
+- New: zombies hold their own pickaxe as well as their spade
+
 ## 0.3.5
 
 - New: zombies come in several looks, and each kind of brute has its own
