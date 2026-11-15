@@ -29,10 +29,18 @@
 #include "World.h"
 #include <Core/Settings.h>
 
+#include <algorithm>
+#include <iterator>
+
 // Comic gore: burst the skull into voxel chunks on a headshot kill.
 // Enabled by default; missing models/sound degrade gracefully.
 DEFINE_SPADES_SETTING(cg_headshotGore, "1");
+// Fewer on a standalone headset, whose GPU draws every chunk twice.
+#if defined(__ANDROID__)
+DEFINE_SPADES_SETTING(cg_headshotGoreChunks, "12");
+#else
 DEFINE_SPADES_SETTING(cg_headshotGoreChunks, "32");
+#endif
 DEFINE_SPADES_SETTING(cg_headshotGoreScale, "1.0");
 DEFINE_SPADES_SETTING(cg_headshotGoreVolume, "3");
 SPADES_SETTING(cg_particles);
@@ -49,6 +57,16 @@ namespace spades {
 			constexpr float CHUNK_RESTITUTION = 0.46F;
 			// burst sound / blood splat range (squared)
 			constexpr float BURST_DIST_SQ = 40.0F * 40.0F;
+
+			// Every burst's chunks at once, at most: a busy horde server sees
+			// headshots by the dozen, and each chunk is a model drawn. A burst
+			// over the cap gets what is left, or none (its sound still plays).
+#if defined(__ANDROID__)
+			constexpr int kMaxLiveChunks = 96;
+#else
+			constexpr int kMaxLiveChunks = 320;
+#endif
+			int liveChunks = 0;
 
 			// chunk model files, installed in Resources/Models/Effects/HeadBurst/
 			const char* const kChunkModels[] = {
@@ -83,31 +101,26 @@ namespace spades {
 				}
 			}
 
-			// optional burst sounds, picked randomly; stays silent when
-			// none are installed
-			for (const char* name : kBurstSounds) {
+			// One of the burst sounds, picked at random; silent when it is
+			// not installed.
+			const float distSqr =
+			  (client.GetLastSceneDef().viewOrigin - origin).GetSquaredLength2D();
+			if (!client.IsMuted() && distSqr < BURST_DIST_SQ) {
+				const int pick = SampleRandomInt(0, static_cast<int>(std::size(kBurstSounds)) - 1);
+				Handle<IAudioChunk> sound;
 				try {
-					IAudioChunk* chunk = client.GetAudioDevice().RegisterSound(name);
-					chunk->AddRef();
-					burstSounds.push_back(chunk);
+					sound = client.GetAudioDevice().RegisterSound(kBurstSounds[pick]);
 				} catch (...) {
-					// sound file missing: skip it
+					// sound file missing: stay silent
 				}
-			}
-
-			if (!burstSounds.empty()) {
-				float distSqr = (client.GetLastSceneDef().viewOrigin - origin).GetSquaredLength2D();
-				if (!client.IsMuted() && distSqr < BURST_DIST_SQ) {
+				if (sound) {
 					AudioParam param;
 					// volume is tunable so the burst can be heard over gunfire
-					float burstVolume = cg_headshotGoreVolume; // explicit float read
-					param.volume = burstVolume;
+					param.volume = static_cast<float>(cg_headshotGoreVolume);
 					// larger reference distance keeps the burst audible at range
 					param.referenceDistance = 4.0F;
 					param.pitch = 0.9F + SampleRandomFloat() * 0.2F;
-					IAudioChunk* chunk =
-						burstSounds[SampleRandomInt(0, (int)burstSounds.size() - 1)];
-					client.GetAudioDevice().Play(chunk, origin, param);
+					client.GetAudioDevice().Play(sound.GetPointerOrNull(), origin, param);
 				}
 			}
 
@@ -131,6 +144,14 @@ namespace spades {
 				numChunks = 1;
 			if (numChunks > 32)
 				numChunks = 32;
+			// Far off, a few: the chunks are a few voxels across.
+			if (distSqr > BURST_DIST_SQ)
+				numChunks = std::max(1, numChunks / 4);
+			numChunks = std::min(numChunks, kMaxLiveChunks - liveChunks);
+			if (numChunks <= 0)
+				return;
+			counted = numChunks;
+			liveChunks += counted;
 
 			chunks.reserve(numChunks);
 			float scaleBase = cg_headshotGoreScale; // explicit float read
@@ -153,10 +174,7 @@ namespace spades {
 			}
 		}
 
-		HeadBurstEntity::~HeadBurstEntity() {
-			for (IAudioChunk* chunk : burstSounds)
-				chunk->Release();
-		}
+		HeadBurstEntity::~HeadBurstEntity() { liveChunks -= counted; }
 
 		bool HeadBurstEntity::Update(float dt) {
 			if (models.empty() || chunks.empty())

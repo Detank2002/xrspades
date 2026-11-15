@@ -57,9 +57,9 @@ namespace spades {
 			// chunk models, picked randomly per chunk; missing files are
 			// skipped so the effect degrades gracefully without assets
 			std::vector<Handle<IModel>> models;
-			// burst sounds, one is picked randomly per burst; missing
-			// files are skipped the same way
-			std::vector<IAudioChunk*> burstSounds;
+			// How many chunks this burst counts against the cap on every
+			// burst's chunks at once (kMaxLiveChunks), until it goes.
+			int counted = 0;
 
 		public:
 			HeadBurstEntity(Client& client, Vector3 origin, Vector3 shotDir);

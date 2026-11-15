@@ -72,6 +72,7 @@ namespace spades {
 			l.AddBadgeNew();
 
 			l.AddHeading(_Tr("Preferences", "Effects"));
+			l.AddToggleField(_Tr("Preferences", "Headshot Gore"), "cg_headshotGore");
 			l.AddChoiceField(_Tr("Preferences", "Blood"), "cg_blood",
 			                 {_Tr("Preferences", "MARKS"), _Tr("Preferences", "NORMAL"),
 			                  _Tr("Preferences", "OFF")},
