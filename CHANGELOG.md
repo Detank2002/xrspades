@@ -5,6 +5,11 @@ version's section at the top of its release notes, under "What's new", and
 the game shows those lines when it offers the update. Keep each line short:
 one change, in a player's words.
 
+## 0.4.0
+
+- New: ZeroSpades X is now XRSpades, same game, new name
+- New: the menu's links take you to XRSpades' releases, code and Discord
+
 ## 0.3.6
 
 - New: a headshot kill bursts the skull into pieces (Options, Effects to turn it off)
