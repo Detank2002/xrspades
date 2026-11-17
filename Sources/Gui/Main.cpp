@@ -226,6 +226,9 @@ namespace {
 	// Demo selection for --replay-demo, set with --demo and --player.
 	std::string g_demoPath;             // empty = latest demo in Demos/
 	std::string g_demoPlayer;           // empty = first player; else id or name
+	float g_demoStart = 0.0F;           // --demo-start: seconds into the demo
+	bool g_demoThirdPerson = false;     // --demo-third-person
+	std::string g_demoCamera;           // --demo-camera x,y,z,tx,ty,tz
 
 	// Menuless demo replay (--replay-demo). Plays a demo and auto-follows a player,
 	// skipping the startup/setup/main screens entirely.
@@ -254,6 +257,8 @@ namespace {
 	const char* const kDebugOptions[] = {"--screenshot-quit", "--editor-reference",
 	                                     "--override-cvar",   "--replay-demo",
 	                                     "--demo",            "--player",
+                                     "--demo-start",      "--demo-third-person",
+                                     "--demo-camera",
 	                                     "--kv6-tools"};
 
 	bool IsDebugOption(const char* arg) {
@@ -308,6 +313,10 @@ namespace {
 		printf("  --demo FILE          demo to use (default: latest in Demos/); a bare\n");
 		printf("                       name resolves under Demos/\n");
 		printf("  --player ID|NAME     player to follow (default: first player)\n");
+		printf("  --demo-start SECONDS start the demo that far in\n");
+		printf("  --demo-third-person  follow the player from behind\n");
+		printf("  --demo-camera X,Y,Z,TX,TY,TZ\n");
+		printf("                       a still camera at X,Y,Z looking at TX,TY,TZ\n");
 		printf("  --editor-reference X|Y|Z IMAGE\n");
 		printf("                       show IMAGE as a reference image across that\n");
 		printf("                       axis in the model editor --open opens\n");
@@ -509,6 +518,24 @@ namespace {
 				}
 				return 0;
 			}
+			if (!strcasecmp(a, "--demo-start")) {
+				if (i + 1 < argc) {
+					g_demoStart = static_cast<float>(std::atof(argv[++i]));
+					return ++i;
+				}
+				return 0;
+			}
+			if (!strcasecmp(a, "--demo-camera")) {
+				if (i + 1 < argc) {
+					g_demoCamera = argv[++i];
+					return ++i;
+				}
+				return 0;
+			}
+			if (!strcasecmp(a, "--demo-third-person")) {
+				g_demoThirdPerson = true;
+				return ++i;
+			}
 			if (!strcasecmp(a, "--player")) {
 				if (i + 1 < argc) {
 					g_demoPlayer = argv[++i];
@@ -630,7 +657,13 @@ namespace spades {
 				auto fontManager = Handle<client::FontManager>::New(renderer);
 				auto innerView = Handle<client::Client>::New(
 				    renderer, audio, ServerAddress(), fontManager, demoPath);
-				innerView->EnableDemoReplayFollow(playerSpec);
+				innerView->EnableDemoReplayFollow(playerSpec, g_demoStart, g_demoThirdPerson);
+				float c[6];
+				if (!g_demoCamera.empty() &&
+				    std::sscanf(g_demoCamera.c_str(), "%f,%f,%f,%f,%f,%f", &c[0], &c[1], &c[2],
+				                &c[3], &c[4], &c[5]) == 6)
+					innerView->SetDemoReplayCamera(MakeVector3(c[0], c[1], c[2]),
+					                               MakeVector3(c[3], c[4], c[5]));
 				return new spades::gui::ConsoleScreen(renderer, audio, fontManager,
 				                                      std::move(innerView).Cast<gui::View>());
 			}

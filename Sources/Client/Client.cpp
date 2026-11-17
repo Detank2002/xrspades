@@ -1041,9 +1041,12 @@ namespace spades {
 			time += dt;
 		}
 
-		void Client::EnableDemoReplayFollow(const std::string& playerSpec) {
+		void Client::EnableDemoReplayFollow(const std::string& playerSpec, float startTime,
+		                                    bool thirdPerson) {
 			demoReplayFollowPending = true;
 			demoReplayFollowSpec = playerSpec;
+			demoReplayStart = startTime;
+			demoReplayThirdPerson = thirdPerson;
 		}
 
 		int Client::ResolveDemoPlayer(const std::string& spec) {
@@ -1096,6 +1099,27 @@ namespace spades {
 			if (!world || !IsDemoMode() || activeNet->GetStatus() != NetClientStatusConnected)
 				return;
 
+			// --demo-start: to that moment first; the player is found after
+			if (demoReplayStart > 0.0F && demoNet) {
+				SPLog("Demo: starting at %.1f s (--demo-start)", demoReplayStart);
+				demoNet->Seek(demoReplayStart);
+				demoReplayStart = 0.0F;
+				return;
+			}
+
+			// --demo-camera: the free camera, still, where it was put
+			if (demoCamera) {
+				followCameraState.enabled = false;
+				freeCameraState.position = demoCameraAt;
+				freeCameraState.velocity = MakeVector3(0, 0, 0);
+				const Vector3 d = (demoCameraTo - demoCameraAt).Normalize();
+				// as the free camera reads them: front = (-cos p cos y, -cos p sin y, sin p)
+				followAndFreeCameraState.pitch = std::asin(Clamp(d.z, -1.0F, 1.0F));
+				followAndFreeCameraState.yaw = std::atan2(-d.y, -d.x);
+				demoReplayFollowPending = false;
+				return;
+			}
+
 			// Wait until at least one player exists, then follow it. ResolveDemoPlayer
 			// returns -1 while the world has no players, so this stays pending across
 			// the first frames of playback without ever blocking.
@@ -1105,7 +1129,7 @@ namespace spades {
 
 			followedPlayerId = pid;
 			followCameraState.enabled = true;
-			followCameraState.firstPerson = true;
+			followCameraState.firstPerson = !demoReplayThirdPerson;
 			demoReplayFollowPending = false;
 		}
 

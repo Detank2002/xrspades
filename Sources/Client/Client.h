@@ -149,6 +149,14 @@ namespace spades {
 			// unless EnableDemoReplayFollow() has been called.
 			bool demoReplayFollowPending = false;
 			std::string demoReplayFollowSpec; // empty = first player; else id or name
+			// --demo-start: the time (s) the replay jumps to first; 0, none
+			float demoReplayStart = 0.0F;
+			// --demo-third-person: follow from behind, not through their eyes
+			bool demoReplayThirdPerson = false;
+			// --demo-camera: a still camera at `demoCameraAt` looking at
+			// `demoCameraTo` instead of following anybody
+			bool demoCamera = false;
+			Vector3 demoCameraAt, demoCameraTo;
 
 			std::string playerName;
 			std::unique_ptr<IStream> logStream;
@@ -1101,6 +1109,15 @@ namespace spades {
 
 			// Demo helpers (see EnableDemoReplayFollow).
 			void UpdateDemoReplayFollow();
+		public:
+			/** --demo-camera: replay seen from `at`, looking at `to`. */
+			void SetDemoReplayCamera(const Vector3& at, const Vector3& to) {
+				demoCamera = true;
+				demoCameraAt = at;
+				demoCameraTo = to;
+			}
+
+		private:
 			int ResolveDemoPlayer(const std::string& spec);
 
 			std::string BuildDemoContext();
@@ -1143,7 +1160,8 @@ namespace spades {
 			 * running. Used by menuless demo replay (--replay-demo). Only
 			 * meaningful when the client was created with a demo path.
 			 */
-			void EnableDemoReplayFollow(const std::string& playerSpec);
+			void EnableDemoReplayFollow(const std::string& playerSpec, float startTime = 0.0F,
+			                            bool thirdPerson = false);
 
 			void RunFrame(float dt) override;
 
