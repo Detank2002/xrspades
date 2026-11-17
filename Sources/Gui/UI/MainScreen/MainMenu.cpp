@@ -735,11 +735,13 @@ namespace spades {
 					std::string caption;
 				};
 				const LinkInfo links[] = {
-					{"Gfx/UI/IconWeb.png", "https://zerospades.github.io/",
+					// XRSpades' own: its releases, its code and the Discord of the
+					// Survive servers it is made with
+					{"Gfx/UI/IconWeb.png", "https://github.com/Detank2002/xrspades/releases",
 					 _Tr("StartupScreen", "Website")},
-					{"Gfx/UI/IconGithub.png", "https://github.com/siecvi/zerospades",
+					{"Gfx/UI/IconGithub.png", "https://github.com/Detank2002/xrspades",
 					 _Tr("StartupScreen", "GitHub")},
-					{"Gfx/UI/IconDiscord.png", "https://discord.gg/t64rKedpAu",
+					{"Gfx/UI/IconDiscord.png", "https://discord.gg/24JDJbpKV9",
 					 _Tr("StartupScreen", "Discord")},
 				};
 

@@ -2,7 +2,7 @@
 # android-build (libmain.so in build-android\bin) and a desktop build that made
 # the paks (build\bin\Release\Resources):
 #
-#   .\android\build-apk.ps1                  # build-android\ZeroSpadesX.apk
+#   .\android\build-apk.ps1                  # build-android\XRSpades.apk
 #   .\android\build-apk.ps1 -Install         # and adb install it on the headset
 #   .\android\build-apk.ps1 -Version 0.3.0   # versionName 0.3.0, versionCode 300
 #
@@ -128,7 +128,7 @@ if (-not (Test-Path $ks)) {
 	& "$Jdk\bin\keytool.exe" -genkeypair -keystore $ks -storepass android -alias androiddebugkey `
 	  -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US' 2>&1 | Out-Null
 }
-$apk = "$repo\build-android\ZeroSpadesX.apk"
+$apk = "$repo\build-android\XRSpades.apk"
 & "$bt\apksigner.bat" sign --ks $ks --ks-pass pass:android --key-pass pass:android --out $apk "$work\aligned.apk"
 if ($LASTEXITCODE -ne 0) { throw 'apksigner failed' }
 & "$bt\apksigner.bat" verify $apk

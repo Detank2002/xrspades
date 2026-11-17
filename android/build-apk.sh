@@ -4,7 +4,7 @@
 # that made the paks:
 #
 #   android/build-apk.sh --libs BUILD_ANDROID --paks RESOURCES_DIR \
-#       --sdl-source SDL2-x.y.z.tar.gz [--version 0.3.0] --out ZeroSpadesX.apk
+#       --sdl-source SDL2-x.y.z.tar.gz [--version 0.3.0] --out XRSpades.apk
 #
 # The version is CMakeLists.txt's ZEROSPADES_VERSION_* unless --version says.
 #

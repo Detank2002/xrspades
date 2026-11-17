@@ -101,7 +101,7 @@ namespace spades {
 			const std::string current = ReleaseVersion::Current().ToString();
 			if (!SelfUpdater::IsSupported()) {
 				caption = _Tr("MainScreen",
-				              "ZeroSpades X {0} is available (you have {1}). Click to open the "
+				              "XRSpades {0} is available (you have {1}). Click to open the "
 				              "release page.",
 				              latestVersion, current);
 				return;
@@ -110,7 +110,7 @@ namespace spades {
 			switch (p.state) {
 				case SelfUpdater::State::Idle:
 					caption = _Tr("MainScreen",
-					              "ZeroSpades X {0} is available (you have {1}). Click to update.",
+					              "XRSpades {0} is available (you have {1}). Click to update.",
 					              latestVersion, current);
 					break;
 				case SelfUpdater::State::Working:
@@ -120,7 +120,7 @@ namespace spades {
 					break;
 				case SelfUpdater::State::Ready:
 					caption = _Tr("MainScreen",
-					              "ZeroSpades X {0} is ready. Click to restart and install it.",
+					              "XRSpades {0} is ready. Click to restart and install it.",
 					              latestVersion);
 					progressFraction = 1.0F;
 					break;
@@ -249,7 +249,7 @@ namespace spades {
 			UpdateChecker::Result result = UpdateChecker::Get().GetResult();
 			const bool selfUpdate = SelfUpdater::IsSupported();
 			std::string text =
-			  _Tr("MainScreen", "A new version of ZeroSpades X is available!\n\n"
+			  _Tr("MainScreen", "A new version of XRSpades is available!\n\n"
 			                    "Installed version: {0}\nLatest version: {1}",
 			      ReleaseVersion::Current().ToString(), result.latestVersion.ToString());
 			// What it brings, from the release's notes: a reason to update now.
@@ -266,7 +266,7 @@ namespace spades {
 			                "Update now? It downloads while you stay in the menu; then click the "
 			                "banner at the top to restart into it.")
 			          : _Tr("MainScreen",
-			                "Open the release page to download it? ZeroSpades X will close so the "
+			                "Open the release page to download it? XRSpades will close so the "
 			                "update can be installed.");
 
 			Handle<UpdatePromptScreen> prompt = Handle<UpdatePromptScreen>::New(

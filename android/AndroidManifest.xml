@@ -33,7 +33,7 @@
     </queries>
 
     <application
-        android:label="ZeroSpades X"
+        android:label="XRSpades"
         android:hasCode="true"
         android:allowBackup="false"
         android:extractNativeLibs="true"
@@ -44,7 +44,7 @@
 
         <activity
             android:name="com.zerospades.vr.ZeroSpadesActivity"
-            android:label="ZeroSpades X"
+            android:label="XRSpades"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
             android:excludeFromRecents="false"

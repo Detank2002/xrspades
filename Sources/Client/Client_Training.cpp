@@ -108,7 +108,7 @@ namespace spades {
 
 		void Client::WriteTrainingBests(const std::map<std::string, float>& bests) {
 			try {
-				std::string text = "# Training's best scores, written by ZeroSpades X\n";
+				std::string text = "# Training's best scores, written by XRSpades\n";
 				for (const auto& b : bests) {
 					char line[96];
 					std::snprintf(line, sizeof(line), "%s %g\n", b.first.c_str(), b.second);

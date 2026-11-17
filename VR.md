@@ -1,4 +1,4 @@
-# ZeroSpades X: VR
+# XRSpades: VR
 
 Play ZeroSpades in a VR headset through OpenXR, with tracked head and hands, on
 the same servers as everyone else. Players on a monitor using this client see VR

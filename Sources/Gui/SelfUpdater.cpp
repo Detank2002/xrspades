@@ -56,13 +56,16 @@ namespace spades {
 		namespace {
 			// A release's files are only ever downloaded from here.
 			constexpr const char* kDownloadUrl =
-			  "https://github.com/Detank2002/zerospadesx/releases/download/";
+			  "https://github.com/Detank2002/xrspades/releases/download/";
 
 			// In the game's folder: the download and the unpacked package...
 			constexpr const char* kStaging = ".zsupdate";
 			// ...the files an install put there, so the next one removes what a
 			// newer package no longer has...
-			constexpr const char* kManifest = "ZeroSpadesX-files.txt";
+			constexpr const char* kManifest = "XRSpades-files.txt";
+			// What XRSpades, as XRSpades was called, named it: read when the
+			// new one is not there yet, and removed once the new one is written.
+			constexpr const char* kLegacyManifest = "ZeroSpadesX-files.txt";
 			// ...why the last install failed, for the next start to report...
 			constexpr const char* kFailureNote = ".zsupdate-failed.txt";
 			// ...and what a file moved aside is named, until the next start.
@@ -209,6 +212,15 @@ namespace spades {
 						text.append(buf, n);
 					std::fclose(f);
 				}
+				return text;
+			}
+
+			/** The list of files the last install put in `folder`: XRSpades', or
+			 * the one XRSpades wrote before it was renamed. */
+			std::string ReadManifest(const std::string& folder) {
+				std::string text = ReadSmallFile(folder + "/" + kManifest);
+				if (text.empty())
+					text = ReadSmallFile(folder + "/" + kLegacyManifest);
 				return text;
 			}
 
@@ -484,7 +496,7 @@ namespace spades {
 				const std::string staging = folder + "/" + kStaging;
 
 				// The release's list of sums, and its signature by the release key.
-				owner.SetStatus(_Tr("SelfUpdater", "Checking ZeroSpades X {0}...", tag), -1.0F);
+				owner.SetStatus(_Tr("SelfUpdater", "Checking XRSpades {0}...", tag), -1.0F);
 				std::string sums, signature;
 				std::string err = Fetch("SHA256SUMS", sums, kMaxSmallFileBytes);
 				if (err.empty())
@@ -493,7 +505,7 @@ namespace spades {
 					return _Tr("SelfUpdater", "Cannot get the release's checksums: {0}", err);
 				if (!VerifyUpdateSums(sums, signature, ReleaseSigningKey()))
 					return _Tr("SelfUpdater",
-					           "The release's checksums are not signed by the ZeroSpades X "
+					           "The release's checksums are not signed by the XRSpades "
 					           "release key.");
 
 				const std::string asset = UpdateAssetName(tag, package);
@@ -512,7 +524,7 @@ namespace spades {
 					if (!f)
 						return _Tr("SelfUpdater", "Cannot write to the game's folder.");
 					const std::string downloading =
-					  _Tr("SelfUpdater", "Downloading ZeroSpades X {0}", tag);
+					  _Tr("SelfUpdater", "Downloading XRSpades {0}", tag);
 					Sink sink;
 					sink.file = f;
 					sink.limit = kMaxPackageBytes;
@@ -568,7 +580,8 @@ namespace spades {
 					std::string lower = name;
 					for (char& c : lower)
 						c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-					if (!IsSafeUpdatePath(name) || lower == "zerospadesx-files.txt" ||
+					if (!IsSafeUpdatePath(name) || lower == "xrspades-files.txt" ||
+					    lower == "zerospadesx-files.txt" ||
 					    lower.compare(0, 4, ".zsu") == 0 ||
 					    lower.find(kAside) != std::string::npos || !seen.insert(lower).second)
 						return _Tr("SelfUpdater", "The package holds a file it should not: {0}",
@@ -637,7 +650,7 @@ namespace spades {
 					owner.Fail(err);
 					return;
 				}
-				SPLog("Update: ZeroSpades X %s is unpacked and ready to install.", tag.c_str());
+				SPLog("Update: XRSpades %s is unpacked and ready to install.", tag.c_str());
 				owner.Finish(std::move(files));
 			}
 		};
@@ -725,7 +738,7 @@ namespace spades {
 			// The exiting old version can hold its .exe a moment longer, so this
 			// goes on trying for a while, out of the way.
 			std::set<std::string> dirs{""};
-			for (const std::string& file : Lines(ReadSmallFile(folder + "/" + kManifest))) {
+			for (const std::string& file : Lines(ReadManifest(folder))) {
 				const std::size_t slash = file.find_last_of('/');
 				if (slash != std::string::npos && IsSafeUpdatePath(file))
 					dirs.insert(file.substr(0, slash));
@@ -762,9 +775,9 @@ namespace spades {
 					return;
 				}
 				progress.state = State::Working;
-				progress.status = _Tr("SelfUpdater", "Checking ZeroSpades X {0}...", tag);
+				progress.status = _Tr("SelfUpdater", "Checking XRSpades {0}...", tag);
 			}
-			SPLog("Update: downloading ZeroSpades X %s (%s).", tag.c_str(),
+			SPLog("Update: downloading XRSpades %s (%s).", tag.c_str(),
 			      SelfUpdatePackage().c_str());
 			auto* download = new Download(*this, tag);
 			download->Start();
@@ -813,7 +826,7 @@ namespace spades {
 				Fail(_Tr("SelfUpdater", "Cannot find the game's folder."));
 				return;
 			}
-			SPLog("Update: installing ZeroSpades X %s and restarting.", tag.c_str());
+			SPLog("Update: installing XRSpades %s and restarting.", tag.c_str());
 
 			// Started again from where the new version now is.
 			g_executablePath = exe;
@@ -868,7 +881,7 @@ namespace spades {
 					// What the last install put there and this package no longer has
 					const std::set<std::string> kept(newFiles.begin(), newFiles.end());
 					for (const std::string& old :
-					     Lines(ReadSmallFile(folder + "/" + kManifest))) {
+					     Lines(ReadManifest(folder))) {
 						if (kept.count(old) || !IsSafeUpdatePath(old) ||
 						    !Exists(folder + "/" + old))
 							continue;
@@ -878,11 +891,12 @@ namespace spades {
 							done.push_back(step);
 					}
 					std::string manifest =
-					  "# The files ZeroSpades X " + tag +
+					  "# The files XRSpades " + tag +
 					  " installed here. Its next update removes the ones it no longer has.\n";
 					for (const std::string& file : newFiles)
 						manifest += file + "\n";
 					WriteSmallFile(folder + "/" + kManifest, manifest);
+					std::remove((folder + "/" + kLegacyManifest).c_str());
 					return;
 				}
 
@@ -893,7 +907,7 @@ namespace spades {
 					if (!it->aside.empty())
 						Move(it->aside, it->target);
 				}
-				WriteSmallFile(folder + "/" + kFailureNote, "ZeroSpades X " + tag + ": " + failure);
+				WriteSmallFile(folder + "/" + kFailureNote, "XRSpades " + tag + ": " + failure);
 			});
 		}
 	} // namespace gui
