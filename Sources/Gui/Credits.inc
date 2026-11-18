@@ -14,6 +14,8 @@ XRSpades
 "ATELSA" - VR testing, ideas
 "Serius_Sim" - the zombie and brute models, the headshot effect
 "siecvi" - the zombie model
+The menu's maps: "Influx" (Normandie), "Serious_Sim" (Ghost Town,
+Mashesswood Island), "Detank" (Quarantine)
 
 
 Credits

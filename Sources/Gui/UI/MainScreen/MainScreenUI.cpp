@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <random>
 
 #include "CreateProfileScreen.h"
 #include "MainMenu.h"
@@ -38,11 +39,20 @@
 #include <Gui/UI/Framework/UIManager.h>
 #include <Gui/UI/Widgets/DrawUtils.h>
 #include <Gui/OfficialMods.h>
+#include <Training/MapGen.h>
+#include <Training/VoxelMap.h>
+#include <Core/MemoryStream.h>
 #include <Gui/SelfUpdater.h>
 #include <Gui/UpdateChecker.h>
 
 SPADES_SETTING(cg_playerName); // defined in Gui/MainScreen.cpp
 DEFINE_SPADES_SETTING(cg_playerNameIsSet, "0");
+
+// The map behind the main menu: "random" (one of the menu maps, a new one
+// each launch), a map in Maps/ by name, "generated" (the Training terrain) or
+// "Title" (the old one); and how long a lap round it takes (s)
+DEFINE_SPADES_SETTING(cg_menuMap, "random");
+DEFINE_SPADES_SETTING(cg_menuMapOrbit, "360");
 
 namespace spades {
 	namespace gui {
@@ -115,12 +125,48 @@ namespace spades {
 		}
 
 		void MainScreenUI::SetupRenderer() {
-			// load map
-			std::unique_ptr<IStream> stream{FileManager::OpenForReading("Maps/Title.vxl")};
-			titleMap.Set(client::GameMap::Load(stream.get()), false);
+			// The map behind the menu (cg_menuMap): one in Maps/ by name, the
+			// Training generator's terrain ("generated"), or the old title map
+			// ("Title"), which keeps its old dark, sliding view.
+			std::string name = cg_menuMap;
+			if (name == "random") {
+				// Chosen once a launch: coming back from a game keeps it.
+				static const std::string chosen = [] {
+					static const char* const kMenuMaps[] = {
+					  "Menu/Normandie", "Menu/GhostTown", "Menu/Quarantine",
+					  "Menu/MashesswoodIsland"};
+					std::random_device rd;
+					return std::string(kMenuMaps[rd() % (sizeof(kMenuMaps) / sizeof(kMenuMaps[0]))]);
+				}();
+				name = chosen;
+			}
+			titleMap = Handle<client::GameMap>();
+			if (name == "generated") {
+				host::VoxelMap m;
+				host::generate_map(m, 0x5EED);
+				const std::vector<uint8_t> bytes = m.save_vxl();
+				MemoryStream stream(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+				titleMap.Set(client::GameMap::Load(&stream), false);
+			} else if (name != "Title" && FileManager::FileExists(("Maps/" + name + ".vxl").c_str())) {
+				std::unique_ptr<IStream> stream{
+				  FileManager::OpenForReading(("Maps/" + name + ".vxl").c_str())};
+				titleMap.Set(client::GameMap::Load(stream.get()), false);
+			}
+			orbit = static_cast<bool>(titleMap);
+			if (!orbit) {
+				std::unique_ptr<IStream> stream{FileManager::OpenForReading("Maps/Title.vxl")};
+				titleMap.Set(client::GameMap::Load(stream.get()), false);
+			}
 			renderer->SetGameMap(*titleMap);
-			renderer->SetFogColor(MakeVector3(0.1F, 0.1F, 0.1F));
-			renderer->SetFogDistance(128.0F);
+			if (orbit) {
+				// Daylight: the sky's blue in the distance
+				renderer->SetFogColor(MakeVector3(128.0F, 200.0F, 245.0F) / 255.0F);
+				renderer->SetFogDistance(128.0F);
+				SetupOrbit();
+			} else {
+				renderer->SetFogColor(MakeVector3(0.1F, 0.1F, 0.1F));
+				renderer->SetFogDistance(128.0F);
+			}
 			time = -1.0F;
 
 			// returned from the client game, so reload the server list.
@@ -129,6 +175,31 @@ namespace spades {
 
 			if (manager)
 				manager->KeyPanic();
+		}
+
+		void MainScreenUI::SetupOrbit() {
+			client::GameMap& map = *titleMap;
+			const float cx = map.Width() * 0.5F, cy = map.Height() * 0.5F;
+			orbitRadius = std::min(map.Width(), map.Height()) * 0.15F;
+			// The highest ground under the circle (the smallest z: z is down),
+			// and the middle's, which the camera looks at
+			int highest = 63;
+			for (int i = 0; i < 180; i++) {
+				const float a = static_cast<float>(i) * (2.0F * static_cast<float>(M_PI) / 180.0F);
+				for (float r = orbitRadius - 6.0F; r <= orbitRadius + 6.0F; r += 3.0F) {
+					const int x = static_cast<int>(cx + std::cos(a) * r);
+					const int y = static_cast<int>(cy + std::sin(a) * r);
+					highest = std::min(highest, map.GetTop(x, y));
+				}
+			}
+			int middle = 0, n = 0;
+			for (int dy = -24; dy <= 24; dy += 8)
+				for (int dx = -24; dx <= 24; dx += 8) {
+					middle += map.GetTop(static_cast<int>(cx) + dx, static_cast<int>(cy) + dy);
+					n++;
+				}
+			orbitZ = std::max(-30.0F, static_cast<float>(highest) - 16.0F);
+			orbitCentre = MakeVector3(cx, cy, static_cast<float>(middle) / n - 2.0F);
 		}
 
 		void MainScreenUI::MouseEvent(float x, float y) { manager->MouseEvent(x, y); }
@@ -169,15 +240,23 @@ namespace spades {
 			float sh = renderer->ScreenHeight();
 
 			client::SceneDefinition sceneDef;
-			float cameraX = time;
-			cameraX -= std::floor(cameraX / 512.0F) * 512.0F;
-			cameraX = 512.0F - cameraX;
-
-			Vector3 orig = MakeVector3(cameraX, 256.0F, 12.0F);
-			Vector3 aimAt = MakeVector3(cameraX + 0.1F, 257.0F, 12.5F);
 			Vector3 up = MakeVector3(0.0F, 0.0F, -1.0F);
+			if (orbit) {
+				// Round the map once in six minutes (cg_menuMapOrbit seconds)
+				const float lap = std::max(10.0F, static_cast<float>(cg_menuMapOrbit));
+				const float a = 0.6F + time * 2.0F * static_cast<float>(M_PI) / lap;
+				const Vector3 eye = MakeVector3(orbitCentre.x + std::cos(a) * orbitRadius,
+				                                orbitCentre.y + std::sin(a) * orbitRadius, orbitZ);
+				sceneDef = SetupCamera(sceneDef, eye, orbitCentre, up, 45.0F, sw / sh);
+			} else {
+				float cameraX = time;
+				cameraX -= std::floor(cameraX / 512.0F) * 512.0F;
+				cameraX = 512.0F - cameraX;
 
-			sceneDef = SetupCamera(sceneDef, orig, aimAt, up, 30.0F, sw / sh);
+				Vector3 orig = MakeVector3(cameraX, 256.0F, 12.0F);
+				Vector3 aimAt = MakeVector3(cameraX + 0.1F, 257.0F, 12.5F);
+				sceneDef = SetupCamera(sceneDef, orig, aimAt, up, 30.0F, sw / sh);
+			}
 			sceneDef.zNear = 0.1F;
 			sceneDef.zFar = 160.0F;
 			sceneDef.time = static_cast<unsigned int>(time * 1000.0F);
