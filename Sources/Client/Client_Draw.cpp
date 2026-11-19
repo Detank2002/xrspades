@@ -348,8 +348,8 @@ namespace spades {
 			renderer->DrawOutlinedRect(lineX - 1, barY - lineH - 1, lineX + lineW + 1, barY + barH + lineH + 1);
 
 			// draw status playing/paused
-			Handle<IImage> playIcon = renderer->RegisterImage("Gfx/Demo/Play.png");
-			Handle<IImage> pauseIcon = renderer->RegisterImage("Gfx/Demo/Pause.png");
+			Handle<IImage> playIcon = renderer->RegisterImage("Gfx/UI/Play.png");
+			Handle<IImage> pauseIcon = renderer->RegisterImage("Gfx/UI/Pause.png");
 			const float iconX = statusX;
 			const float iconY = barY + (barH - statusIconSize) * 0.5F;
 			renderer->SetColorAlphaPremultiplied(white);
@@ -523,7 +523,7 @@ namespace spades {
 			);
 
 			// draw player icon
-			img = renderer->RegisterImage("Gfx/User.png");
+			img = renderer->RegisterImage("Gfx/IconUser.png");
 			float iconSize = 12.0F;
 			float iconSpacing = 5.0F;
 			pos.x = x - (teamBarW * 0.5F) - (iconSize * 0.5F);
@@ -1634,27 +1634,49 @@ namespace spades {
 			Vector4 shadow = MakeVector4(0, 0, 0, 0.7F);
 
 			float lh = 20.0F;
-			auto addLine = [&](const std::string& text) {
-				Vector2 pos = MakeVector2(x, y);
-				y += lh;
-				font.DrawShadow(text, pos, 1.0F, color, shadow);
-			};
+
+			// Collect the lines first so the background can be sized to fit them
+			// before the text is drawn on top of it.
+			std::vector<std::string> lines;
 
 			const auto& weaponType = p.GetWeaponType();
 			int hits = weaponStats.hits[weaponType];
 			int shots = weaponStats.shots[weaponType];
 			int accPerc = int(100.0F * (float(hits) / float(std::max(1, shots))));
-			addLine(_Tr("Client", "Accuracy: {0}%", accPerc));
+			lines.push_back(_Tr("Client", "Accuracy: {0}%", accPerc));
 
 			char buf[32];
 			snprintf(buf, sizeof(buf), "%.3g", curKills / float(std::max(1, curDeaths)));
-			addLine(_Tr("Client", "Kill/Death Ratio: {0}", std::string(buf)));
-			addLine(_Tr("Client", "Kill Streak: {0}, Best: {1}", curStreak, bestStreak));
-			addLine(_Tr("Client", "Melee Kills: {0}", meleeKills));
-			addLine(_Tr("Client", "Grenade Kills: {0}", grenadeKills));
+			lines.push_back(_Tr("Client", "Kill/Death Ratio: {0}", std::string(buf)));
+			lines.push_back(_Tr("Client", "Kill Streak: {0}, Best: {1}", curStreak, bestStreak));
+			lines.push_back(_Tr("Client", "Melee Kills: {0}", meleeKills));
+			lines.push_back(_Tr("Client", "Grenade Kills: {0}", grenadeKills));
 
 			if (cg_playerStatsShowPlacedBlocks && !activeNet->GetGameProperties()->isGameModeArena)
-				addLine(_Tr("Client", "Blocks Placed: {0}", placedBlocks));
+				lines.push_back(_Tr("Client", "Blocks Placed: {0}", placedBlocks));
+
+			// draw background: solid at the screen edge, fading out across the text
+			{
+				float maxW = 0.0F;
+				for (const auto& line : lines)
+					maxW = std::max(maxW, font.Measure(line).x);
+
+				const float margin = 2.0F;
+				const float fadeEnd = x + maxW + margin;
+				const float top = y - margin;
+
+				const int numLines = static_cast<int>(lines.size() - 1);
+				const float bottom = y + lh * numLines + lh + margin * 2.0F;
+
+				renderer->DrawFilledRectFade(0.0F, top, fadeEnd, bottom,
+					MakeVector4(0, 0, 0, 0.55F), MakeVector4(0, 0, 0, 0), true);
+			}
+
+			// draw text
+			for (const auto& line : lines) {
+				font.DrawOutline(line, MakeVector2(x, y), 1.0F, color, shadow);
+				y += lh;
+			}
 		}
 
 		void Client::DrawAlert() {
@@ -1671,7 +1693,7 @@ namespace spades {
 			float borderFade = (time - alertAppearTime) / 0.5F;
 			borderFade = Clamp(1.0F - borderFade, 0.0F, 1.0F);
 
-			Handle<IImage> alertIcon = renderer->RegisterImage("Gfx/AlertIcon.png");
+			Handle<IImage> alertIcon = renderer->RegisterImage("Gfx/IconAlert.png");
 
 			IFont& font = fontManager->GetGuiFont();
 			Vector2 textSize = font.Measure(alertContents);
@@ -1970,7 +1992,7 @@ namespace spades {
 			if (mode && mode->ModeType() == IGameMode::m_CTF) {
 				auto& ctf = static_cast<CTFGameMode&>(mode.value());
 				if (ctf.PlayerHasIntel(p)) {
-					Handle<IImage> img = renderer->RegisterImage("Gfx/Intel.png");
+					Handle<IImage> img = renderer->RegisterImage("Gfx/IconIntel.png");
 					Vector2 size = {img->GetWidth(), img->GetHeight()};
 					Vector2 pos = MakeVector2(((sw - size.x) * 0.5F) - 64.0F, y - size.y);
 
@@ -3312,6 +3334,16 @@ namespace spades {
 							if (!largeMap && !onWrist)
 								mapView->Draw();
 
+							// Under the player stats, whose fading backdrop goes over
+							// them (upstream's order)
+							// the chat panel shows the history by itself while it is open
+							if (!chatInFront && !isChatPanelVisible)
+								chatWindow->Draw();
+							// On the wrist only if asked for (testers found it
+							// crowded there); see vr_killfeed
+							if (!onWrist || (int)vr_killfeed == 2)
+								killfeedWindow->Draw();
+
 							if (!localPlayerIsSpectator) { // player is not spectator
 								if (cg_playerStats)
 									DrawPlayerStats();
@@ -3327,14 +3359,6 @@ namespace spades {
 							} else {
 								DrawSpectateHUD();
 							}
-
-							// the chat panel shows the history by itself while it is open
-							if (!chatInFront && !isChatPanelVisible)
-								chatWindow->Draw();
-							// On the wrist only if asked for (testers found it
-							// crowded there); see vr_killfeed
-							if (!onWrist || (int)vr_killfeed == 2)
-								killfeedWindow->Draw();
 
 							// above the chat
 							if (netgraphVisible && !isDemoMode)
