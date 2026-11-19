@@ -201,11 +201,11 @@ namespace spades {
 				Json::Value root;
 				Json::Reader reader;
 				if (!reader.parse(text, root, false)) {
-					SPLog("%s: %s", path.c_str(), reader.getFormattedErrorMessages().c_str());
+					SPLog("%s: %s", path.c_str(), reader.getFormatedErrorMessages().c_str());
 					return;
 				}
 				if (root["size"].isArray() && root["size"].size() == 2)
-					pictureSize = MakeVector2(root["size"][0].asFloat(), root["size"][1].asFloat());
+					pictureSize = MakeVector2(static_cast<float>(root["size"][0u].asDouble()), static_cast<float>(root["size"][1u].asDouble()));
 				const int tool = VRToolHand();
 				for (const char* side : {"left", "right"}) {
 					const Json::Value& hand = root[side];
@@ -220,7 +220,7 @@ namespace spades {
 						Control c;
 						c.role = physical == tool ? VRRoleTool : VRRoleOff;
 						c.input = input;
-						c.point = MakeVector2(p[0].asFloat(), p[1].asFloat());
+						c.point = MakeVector2(static_cast<float>(p[0u].asDouble()), static_cast<float>(p[1u].asDouble()));
 						c.button = nullptr;
 						controls.push_back(c);
 					}
