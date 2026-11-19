@@ -39,6 +39,7 @@ namespace spades {
 			  client::ExtensionTypeTeamplay,    client::ExtensionTypeDamageMarkers,
 			  client::ExtensionTypePlayerOutfit, client::ExtensionTypePieMenu,
 			  client::ExtensionTypeFlashlight,  client::ExtensionTypeDaytimeWeather,
+			  client::ExtensionTypeEditMode,
 			  client::ExtensionTypeCompactWorldUpdate, client::ExtensionTypeSmoke,
 			  client::ExtensionTypeVRPresence,
 			  client::ExtensionTypePlayerLimit};
@@ -165,6 +166,15 @@ namespace spades {
 					p.Arc(0.76F, 0.6F, 0.2F, kPi * 1.5F, kPi * 2.5F);
 					p.Line(0.3F, 0.84F, 0.76F, 0.84F);
 					p.Line(0.26F, 0.42F, 0.26F, 0.42F);
+					break;
+				case client::ExtensionTypeEditMode:
+					// A pencil, writing on a line
+					p.Line(0.18F, 0.82F, 0.78F, 0.22F);
+					p.Line(0.3F, 0.94F, 0.9F, 0.34F);
+					p.Line(0.78F, 0.22F, 0.9F, 0.34F);
+					p.Line(0.18F, 0.82F, 0.1F, 1.0F);
+					p.Line(0.1F, 1.0F, 0.3F, 0.94F);
+					p.Line(0.66F, 0.34F, 0.78F, 0.46F);
 					break;
 				case client::ExtensionTypeCompactWorldUpdate:
 					// A lightning bolt: the world's news, faster

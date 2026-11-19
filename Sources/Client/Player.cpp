@@ -37,6 +37,11 @@
 DEFINE_SPADES_SETTING(cg_orientationSmoothing, "1");
 DEFINE_SPADES_SETTING(cg_classicWeaponRecoil, "1");
 
+// Edit Mode: how far out a block built in the air goes (blocks), and how fast
+// a held button repeats a build or a spade hit (seconds).
+static constexpr float kEditAirReach = 4.0F;
+static constexpr float kEditRepeat = 0.1F;
+
 namespace spades {
 	namespace client {
 
@@ -199,7 +204,7 @@ namespace spades {
 						if (blockCursorDragging) {
 							if (blockCursorActive) {
 								int blocks = world.CubeLineCount(blockCursorDragPos, blockCursorPos);
-								if (blocks <= blockStocks) {
+								if (blocks <= blockStocks || editMode) {
 									if (listener)
 										listener->LocalPlayerCreatedLineBlock(blockCursorDragPos, blockCursorPos);
 								} else {
@@ -222,7 +227,7 @@ namespace spades {
 					if (newInput.primary) {
 						if (!weapInput.primary)
 							lastSingleBlockBuildSeqDone = false;
-						if (blockStocks > 0 && blockCursorActive) {
+						if ((blockStocks > 0 || editMode) && blockCursorActive) {
 							if (listener)
 								listener->LocalPlayerBlockAction(blockCursorPos, BlockActionCreate);
 
@@ -454,13 +459,14 @@ namespace spades {
 				const Handle<GameMap>& map = world.GetMap();
 				SPAssert(map);
 
-				int maxDepth = map->GroundDepth();
+				// Edit Mode builds at z 62 too (never 63), and anywhere it points
+				int maxDepth = editMode ? map->GroundDepth() + 1 : map->GroundDepth();
 
 				GameMap::RayCastResult mapResult;
-				mapResult = map->CastRay2(muzzle, dir, 12);
+				mapResult = map->CastRay2(muzzle, dir, editMode ? 160 : 12);
 
 				canPending = false;
-				if (blockCursorDragging) {
+				if (blockCursorDragging && !editMode) {
 					// check the starting point is not floating
 					if (!map->HasNeighbors(blockCursorDragPos)) {
 						if (listener) // cannot build; floating
@@ -479,6 +485,18 @@ namespace spades {
 					// Building is possible, and there's no delayed block placement.
 					blockCursorActive = true;
 					blockCursorPos = mapResult.hitBlock + mapResult.normal;
+				} else if (editMode && !pendingPlaceBlock) {
+					// Edit Mode builds in the air: pointing at nothing (or too
+					// close), the block goes a few blocks out along the aim.
+					const Vector3 at = muzzle + dir * kEditAirReach;
+					const IntVector3 cell = IntVector3::Make(
+					  static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)),
+					  static_cast<int>(std::floor(at.z)));
+					blockCursorPos = cell;
+					blockCursorActive = map->IsValidMapCoord(cell.x, cell.y, cell.z) &&
+					                    cell.z >= 0 && cell.z < maxDepth &&
+					                    !map->IsSolid(cell.x, cell.y, cell.z) &&
+					                    !OverlapsWithBlock(cell);
 				} else if (pendingPlaceBlock) {
 					// Delayed Placement: When player attempts to place a block
 					// while jumping and placing block is currently impossible
@@ -980,7 +998,7 @@ namespace spades {
 
 			// first do map raycast
 			GameMap::RayCastResult mapResult;
-			mapResult = map->CastRay2(muzzle, dir, 32);
+			mapResult = map->CastRay2(muzzle, dir, editMode ? 160 : 32);
 
 			stmp::optional<Player&> hitPlayer;
 
@@ -1015,7 +1033,8 @@ namespace spades {
 			// ahead of the eye, and measured from there it dug further.
 			float hitBlockDist = ((dig ? blockF : shiftedPos) - GetEye()).GetChebyshevLength();
 
-			if (mapResult.hit && hitBlockDist < MAX_DIG_DISTANCE && (!hitPlayer || dig)) {
+			if (mapResult.hit && (editMode || hitBlockDist < MAX_DIG_DISTANCE) &&
+			    (!hitPlayer || dig)) {
 				if (map->IsValidMapCoord(outBlockPos.x, outBlockPos.y, outBlockPos.z)) {
 					SPAssert(map->IsSolid(outBlockPos.x, outBlockPos.y, outBlockPos.z));
 
@@ -1024,10 +1043,11 @@ namespace spades {
 							mapResult.hitPos, outBlockPos, outBlockNormal);
 
 					// damage block
-					if (outBlockPos.z < map->GroundDepth()) {
+					if (outBlockPos.z < (editMode ? map->GroundDepth() + 1 : map->GroundDepth())) {
 						if (!dig) {
 							uint32_t col = map->GetColor(outBlockPos.x, outBlockPos.y, outBlockPos.z);
-							int health = (col >> 24) - 50;
+							// Edit Mode: a block goes at the first hit
+							int health = editMode ? 0 : (col >> 24) - 50;
 							if (health <= 0) {
 								health = 0;
 								if (listener && IsLocalPlayer()) // send destroy cmd for local
@@ -1434,7 +1454,8 @@ namespace spades {
 			SPADES_MARK_FUNCTION_DEBUG();
 			switch (tool) {
 				case ToolSpade: return true;
-				case ToolBlock: return world.GetTime() > nextBlockTime && blockStocks > 0;
+				case ToolBlock:
+					return world.GetTime() > nextBlockTime && (blockStocks > 0 || editMode);
 				case ToolGrenade: return world.GetTime() > nextGrenadeTime && grenades > 0;
 				case ToolWeapon: return weapon->IsReadyToShoot();
 				default: return false;
@@ -1445,7 +1466,7 @@ namespace spades {
 			SPADES_MARK_FUNCTION_DEBUG();
 			switch (type) {
 				case ToolSpade: return true;
-				case ToolBlock: return blockStocks > 0;
+				case ToolBlock: return blockStocks > 0 || editMode;
 				case ToolGrenade: return grenades > 0;
 				case ToolWeapon: return weapon->IsSelectable();
 				default: return false;
@@ -1461,6 +1482,10 @@ namespace spades {
 
 		float Player::GetToolPrimaryDelay(ToolType type) {
 			SPADES_MARK_FUNCTION_DEBUG();
+			// Edit Mode has no delay between builds or spade hits; holding the
+			// button still repeats at ten a second rather than every frame.
+			if (editMode && (type == ToolSpade || type == ToolBlock))
+				return kEditRepeat;
 			switch (type) {
 				case ToolSpade: return 0.2F;
 				case ToolBlock:
@@ -1471,6 +1496,8 @@ namespace spades {
 		}
 		float Player::GetToolSecondaryDelay(ToolType type) {
 			SPADES_MARK_FUNCTION_DEBUG();
+			if (editMode && (type == ToolSpade || type == ToolBlock))
+				return kEditRepeat;
 			switch (type) {
 				case ToolSpade: return 1.0F;
 				case ToolGrenade:
@@ -1620,7 +1647,7 @@ namespace spades {
 		}
 
 		bool Player::InBuildRange(const spades::IntVector3& v) {
-			return GetDistanceToBlock(v) < MAX_BLOCK_DISTANCE;
+			return editMode || GetDistanceToBlock(v) < MAX_BLOCK_DISTANCE;
 		}
 	} // namespace client
 } // namespace spades

@@ -86,6 +86,7 @@ namespace spades {
 			PacketTypeFlashlight = 114, // S2C2P, extension id 0x32 (`64 + extension id`)
 			PacketTypeDaytimeWeather = 115, // S2C, extension id 0x33 (`64 + extension id`)
 			PacketTypePlayerOutfit = 117,   // S2C, extension id 0x35 (`64 + extension id`); see PlayerOutfit.h
+			PacketTypeEditMode = 118,       // S2C (Block Batch C2S2P), extension id 0x36
 			PacketTypeVRPresence = 122, // C2S2P, extension id 58; see VRNetProtocol.h
 			PacketTypeSmoke = 127, // S2C, extension id 0x3F (`64 + extension id`); see Smoke.h
 			PacketTypeCompactWorldUpdate = 126, // S2C, extension id 0x3E; see ReadCompactWorldEntry
@@ -100,6 +101,7 @@ namespace spades {
 			ExtensionTypeFlashlight = 0x32,
 			ExtensionTypeDaytimeWeather = 0x33,
 			ExtensionTypePlayerOutfit = 0x35,
+			ExtensionTypeEditMode = 0x36,
 			ExtensionTypeCompactWorldUpdate = 0x3E, // past ZeroSpades' range (to 0x33) by ten
 			ExtensionTypeVRPresence = 58,
 			ExtensionTypeSmoke = 0x3F,
@@ -114,6 +116,12 @@ namespace spades {
 			TeamplaySubConfig = 0,  // S2C
 			TeamplaySubPing = 1,    // C2S2P
 			TeamplaySubESPMark = 2, // S2C
+		};
+
+		/** Sub packet ids of `PacketTypeEditMode` (aosprotocol extensions/edit-mode.md). */
+		enum EditModeSubPacketType : std::uint8_t {
+			EditModeSubState = 0, // S2C: player id, state
+			EditModeSubBatch = 1, // C2S2P: player id, action, then x, y, z (LE int32) to the end
 		};
 
 		/** Sub packet ids of `PacketTypePieMenu`. */

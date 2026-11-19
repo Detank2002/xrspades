@@ -11,6 +11,8 @@ one change, in a player's words.
 - New: the menu's links take you to XRSpades' releases, code and Discord
 - New: in VR, getting hit kicks the controller on the side it came from, harder for bigger hits, and reddens the edge of your view
 - New: in VR, a heartbeat at the edge of your view when your health is low
+- New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
+- Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
 
 ## 0.3.6
 

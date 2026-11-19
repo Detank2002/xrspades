@@ -1355,6 +1355,8 @@ namespace spades {
 			void LocalPlayerBlockAction(IntVector3, BlockActionType type) override;
 			void LocalPlayerCreatedLineBlock(IntVector3, IntVector3) override;
 			void LocalPlayerHurt(HurtType type, Vector3 source) override;
+			/** The server turned Edit Mode on or off for us (NetClient). */
+			void LocalPlayerEditModeChanged(bool on);
 			void LocalPlayerBuildError(BuildFailureReason reason) override;
 			// IWorldListener end
 		};

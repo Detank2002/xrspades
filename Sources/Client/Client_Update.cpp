@@ -2121,6 +2121,15 @@ namespace spades {
 			hurtRingView->Add(rel);
 		}
 
+		void Client::LocalPlayerEditModeChanged(bool on) {
+			if (on)
+				ShowAlert(_Tr("Client", "Edit Mode: unlimited blocks, build anywhere, even in "
+				                        "the air"),
+				          AlertType::Notice, 5.0F);
+			else
+				ShowAlert(_Tr("Client", "Edit Mode is off"), AlertType::Notice, 3.0F);
+		}
+
 		void Client::LocalPlayerBuildError(BuildFailureReason reason) {
 			SPADES_MARK_FUNCTION();
 

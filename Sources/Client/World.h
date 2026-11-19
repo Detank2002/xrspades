@@ -157,7 +157,11 @@ namespace spades {
 			int GetPlayerScore(int index) { return GetPlayerPersistent(index).score; }
 
 			void CreateBlock(IntVector3 pos, IntVector3 color);
-			void DestroyBlock(std::vector<IntVector3>& pos);
+			/** `atWaterLevel`: a dig or grenade also takes blocks at z 62, as one
+			 * by a player in Edit Mode does (a single block always may). */
+			void DestroyBlock(std::vector<IntVector3>& pos, bool atWaterLevel = false);
+			/** Someone is in Edit Mode: nothing falls (aosprotocol edit-mode.md). */
+			bool IsAnyoneEditing();
 
 			struct WeaponRayCastResult {
 				bool hit, startSolid;
