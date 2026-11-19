@@ -3230,6 +3230,10 @@ namespace spades {
 				// purpose (big map, scoreboard) stay on the panel in front, as does
 				// the chat while you type into it.
 				const bool onWrist = vrFrame && (int)vr_wristHud != 0 && shouldDrawHUD;
+				// While the wrist panel is the keyboard standing on its own, the wrist
+				// HUD is not drawn (the chat being typed stays in front).
+				const bool wristIsKeyboard =
+				  vrFrame && client::GetVRSystem()->GetFrameState().keyboardPanel;
 				const bool chatInFront =
 				  onWrist && (AcceptsTextInput() || isChatPanelVisible);
 
@@ -3300,7 +3304,7 @@ namespace spades {
 					// panel's image (the VR system put the panel there this frame).
 					const bool heldMap = onWrist && largeMap && (int)vr_heldMap;
 
-					if (!onWrist || renderer->SetVRCanvas(1)) {
+					if (!onWrist || (!wristIsKeyboard && renderer->SetVRCanvas(1))) {
 						vrWristPass = onWrist;
 						if (onWrist)
 							DrawVRWristBackdrop();

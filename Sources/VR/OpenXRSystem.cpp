@@ -942,6 +942,18 @@ namespace spades {
 				frameState.wristGrow = 0.0F;
 				frameState.wristWidth = client::kVRHeldMapWidth;
 			}
+
+			// The keyboard standing on its own takes the wrist panel while it is
+			// up (typing has no use for the HUD). Asked for each frame.
+			frameState.keyboardPanel = keyboardWanted && keyboardPose.valid;
+			if (frameState.keyboardPanel) {
+				frameState.wristShown = true;
+				frameState.wristExpanded = false;
+				frameState.wristGrow = 0.0F;
+				frameState.wristPanel = keyboardPose;
+				frameState.wristWidth = keyboardWidth;
+			}
+			keyboardWanted = false;
 		}
 
 		void OpenXRSystem::LocateViews() {
@@ -1082,6 +1094,12 @@ namespace spades {
 			if (held != heldMapWanted)
 				SPLog("[VR] Big map %s", held ? "held in the off hand" : "put away");
 			heldMapWanted = held;
+		}
+
+		void OpenXRSystem::SetKeyboardPanel(bool wanted, const client::VRPose& pose, float width) {
+			keyboardWanted = wanted;
+			keyboardPose = pose;
+			keyboardWidth = std::max(0.1F, width);
 		}
 
 		void OpenXRSystem::UpdateTrace() {

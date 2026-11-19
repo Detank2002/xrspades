@@ -145,6 +145,9 @@ namespace spades {
 			 * wrist menu. `wristGrow` eases 0..1 as it does. */
 			bool wristExpanded = false;
 			float wristGrow = 0.0F;
+			/** The wrist panel is the keyboard this frame, standing on its own
+			 * where VRMenuPointer put it (IVRSystem::SetKeyboardPanel), not the HUD. */
+			bool keyboardPanel = false;
 		};
 
 		/** The wrist panel's 2D canvas, in pixels. The HUD is drawn onto it as
@@ -187,6 +190,13 @@ namespace spades {
 			/** The big map is open and wants to be held (vr_heldMap): the wrist
 			 * panel goes into the off hand from the next frame (VRPlaceHeldMap). */
 			virtual void SetHeldMap(bool held) { (void)held; }
+			/** The keyboard stands on its own (vr_keyboardDetached): the wrist
+			 * panel is put at `pose`, `width` metres wide, from the next frame,
+			 * for the keyboard to be drawn on (VRFrameState::keyboardPanel). Asked
+			 * for each frame it is wanted. */
+			virtual void SetKeyboardPanel(bool wanted, const VRPose& pose, float width) {
+				(void)wanted, (void)pose, (void)width;
+			}
 			/** The front panel shows the game's view-following overlays (names,
 			 * markers through the panel) and so follows the head, for the next
 			 * frame. Asked for each frame it is wanted: otherwise (any menu, the
@@ -239,6 +249,21 @@ namespace spades {
 		 * @return false when the ray misses the panel or points away from it */
 		bool VRRayHitsHudPanel(const VRFrameState& fs, int hand, float panelAspect, Vector2& uv,
 		                       float& distance);
+		/** The same for any panel: `panel` (facing +Z), `width` metres wide and
+		 * `aspect` times that high. */
+		bool VRRayHitsPanel(const VRFrameState& fs, int hand, const VRPose& panel, float width,
+		                    float aspect, Vector2& uv, float& distance);
+
+		/** Poses as transforms: `b` seen from `a` (a's inverse times b), and back. */
+		VRPose VRPoseRelative(const VRPose& a, const VRPose& b);
+		VRPose VRPoseCompose(const VRPose& a, const VRPose& rel);
+		/** The head turned only about the vertical: where it is, facing where it
+		 * looks, level. What a thing put down "in front of you" is relative to. */
+		VRPose VRHeadYawFrame(const VRPose& head);
+		/** The keyboard standing on its own, in the head's yaw frame: below and in
+		 * front of the eyes, tipped back like a keyboard on a desk. */
+		VRPose VRDefaultKeyboardPlace();
+		constexpr float kVRKeyboardWidth = 0.5F;
 
 		/** Places the wrist panel just over the back of `hand`'s wrist, facing
 		 * the eyes and upright as they see it, and says whether it is up: the

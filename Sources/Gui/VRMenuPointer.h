@@ -83,7 +83,13 @@ namespace spades {
 			std::vector<Key> keys;
 			bool keyboardVisible = false;
 			// Where it sits: just below eye level unless the text field is there.
-			enum KeyboardPlace { KeyboardTop, KeyboardMiddle, KeyboardBottom, KeyboardAboveField };
+			enum KeyboardPlace {
+				KeyboardTop,
+				KeyboardMiddle,
+				KeyboardBottom,
+				KeyboardAboveField,
+				KeyboardOwnPanel // all of its own panel, under a strip to grab it by
+			};
 			bool shift = false;
 			int hoverKey = -1;
 			AABB2 keyboardRect;
@@ -102,6 +108,25 @@ namespace spades {
 			int pressedKey = -1;
 			float pressedTime = 0.0F;
 			void KeyFeedback(const Key&, int index);
+
+			// The keyboard standing on its own (vr_keyboardDetached): drawn on the
+			// wrist panel, put where `keyboardPose` says. It is placed in front
+			// of you when it comes up, as it was last left relative to where you
+			// face (`keyboardPlace`, in the head's yaw frame); the grip pressed
+			// while pointing at it picks it up, and it follows that hand until
+			// let go.
+			bool keyboardOwn = false;      // this frame, on its own panel
+			bool keyboardPlaced = false;   // has a pose since it came up
+			client::VRPose keyboardPose;
+			client::VRPose keyboardPlace = client::VRDefaultKeyboardPlace();
+			int grabHand = -1;
+			client::VRPose grabRel;
+			bool squeezeHeld[2] = {false, false};
+			bool ownPointer = false; // the pointer is on the keyboard's panel
+			Vector2 ownPointerPos{0.0F, 0.0F};
+			bool grabHover = false;
+			void UpdateOwnKeyboard(View&, const client::VRFrameState&, bool triggerDown[2],
+			                       bool& pointerTaken);
 
 			int hand = client::VRHandRight;
 			bool onPanel = false;

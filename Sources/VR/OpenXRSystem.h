@@ -152,6 +152,7 @@ namespace spades {
 			void Vibrate(int hand, client::VRHapticShape shape, float amplitude,
 			             float seconds) override;
 			void SetHeldMap(bool held) override;
+			void SetKeyboardPanel(bool wanted, const client::VRPose& pose, float width) override;
 			void SetHudFollowsHead() override { hudFollowAsked = true; }
 
 		private:
@@ -213,6 +214,10 @@ namespace spades {
 			// The input trace (UpdateTrace): the file being recorded, or the
 			// lines being replayed and how far the replay is.
 			bool heldMapWanted = false;
+			// The keyboard standing on its own, asked for this frame (for the next).
+			bool keyboardWanted = false;
+			client::VRPose keyboardPose;
+			float keyboardWidth = 0.5F;
 			// The front panel (PlaceHudPanel): asked to follow the head this frame,
 			// and where it stands in the room otherwise.
 			bool hudFollowAsked = false;

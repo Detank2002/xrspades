@@ -351,6 +351,16 @@ when pressed: the menus' soft tick (a little different each time, lower for
 the big keys), a tick in the hand, and the key lit and pressed in for a tenth
 of a second.
 
+**The keyboard on its own** (`vr_keyboardDetached`, on). It comes up in
+front of you, below your eyes and tipped back like a keyboard on a desk, on
+a panel of its own rather than on the menu: aim at a key and pull the
+trigger. Squeeze the grip while pointing at it (or with your hand at it) to
+pick it up; it follows that hand until you let go, and next time it comes up
+where you left it, relative to where you face. It borrows the wrist panel,
+which typing has no use for, so the wrist HUD is away meanwhile; the chat you
+type stays in front. Until the headset has put it up (a frame), or if it
+cannot, the keyboard is on the menu panel as before.
+
 **Settings in the headset.** Setup has a **VR** tab with every VR setting:
 turning, comfort, hands and tools, your body, the HUD and performance. Text
 size, text sharpness and eye resolution take effect on the next start.
@@ -429,6 +439,7 @@ far as a normal throw.
 | `vr_twoHandedGrip` | 1 | the off hand's grip on the barrel holds a gun in both hands |
 | `vr_shoulderStock` | 1 | the off hand's trigger, held on a gun's barrel, braces it on the shoulder |
 | `vr_toolCollision` | 0 | hands and held tools stop at blocks (was `vr_solidTools`, on) |
+| `vr_keyboardDetached` | 1 | the keyboard stands on its own in front of you, and the grip moves it; 0 draws it on the menu panel |
 | `vr_hurtEdge` | 1 | a red edge round the view when hit, thicker on the hit's side, and a heartbeat at low health (the rumble stays either way) |
 | `vr_aimSmooth` | 0 | 0 to 1: how much a nearly still gun is steadied |
 | `vr_swingSpeed` | 2.5 | swinging the spade faster than this (m/s) hits; 0 turns it off |

@@ -26,8 +26,14 @@
 #include <Client/IFont.h>
 #include <Client/IRenderer.h>
 
+#include <Core/Settings.h>
+
 #include "View.h"
 #include "VRMenuPointer.h"
+
+// The keyboard stands on its own in front of you, and the grip picks it up to
+// move it. Off: it is drawn on the menu panel, as before.
+DEFINE_SPADES_SETTING(vr_keyboardDetached, "1");
 
 namespace spades {
 	namespace gui {
@@ -37,11 +43,18 @@ namespace spades {
 			// so a finger resting on the trigger never double-clicks.
 			constexpr float kPressAt = 0.75F;
 			constexpr float kReleaseAt = 0.55F;
+			// The keyboard on its own panel: the strip along its top to grab it
+			// by, in canvas pixels, and its height over its width.
+			constexpr float kGrabStrip = 64.0F;
+			constexpr float kOwnAspect = static_cast<float>(client::kVRWristCanvasHeight) /
+			                             static_cast<float>(client::kVRWristCanvasWidth);
 		} // namespace
 
 		void VRMenuPointer::Update(View& view, const client::VRFrameState& fs, float screenWidth,
 		                           float screenHeight, float dt) {
 			using namespace client;
+
+			pressedTime = std::max(0.0F, pressedTime - dt);
 
 			bool triggerDown[2];
 			for (int h = 0; h < 2; h++) {
@@ -71,7 +84,29 @@ namespace spades {
 			// the keyboard just above it: in the middle it covered the list being
 			// filtered, whose top, where the matches are, now stays in view.
 			keyboardVisible = view.AcceptsTextInput() && screenWidth > 0.0F;
-			if (keyboardVisible) {
+
+			// On its own panel (vr_keyboardDetached): put in front of you when it
+			// comes up, as you last left it. It is on its own only once the
+			// runtime has given it the panel (a frame after it was asked for);
+			// until then, and whenever it cannot be, it is on the menu panel.
+			IVRSystem* vr = GetVRSystem();
+			const bool ownWanted =
+			  keyboardVisible && (bool)vr_keyboardDetached && fs.head.valid && vr;
+			if (ownWanted && !keyboardPlaced) {
+				keyboardPose = VRPoseCompose(VRHeadYawFrame(fs.head), keyboardPlace);
+				keyboardPlaced = true;
+			} else if (!ownWanted) {
+				keyboardPlaced = false;
+				grabHand = -1;
+			}
+			keyboardOwn = ownWanted && fs.keyboardPanel;
+			ownPointer = false;
+			grabHover = false;
+
+			if (keyboardVisible && keyboardOwn) {
+				LayoutKeyboard(static_cast<float>(kVRWristCanvasWidth),
+				               static_cast<float>(kVRWristCanvasHeight), KeyboardOwnPanel);
+			} else if (keyboardVisible) {
 				AABB2 field = view.GetTextInputRect();
 				int place = KeyboardMiddle;
 				if (field.GetHeight() > 0.0F && field.GetMaxY() > screenHeight * 0.34F &&
@@ -84,7 +119,20 @@ namespace spades {
 				shift = false;
 			}
 
-			if ((!view.NeedsAbsoluteMouseCoordinate() && !keyboardVisible) || screenWidth <= 0.0F) {
+			// Whichever hand pulls its trigger becomes the pointer.
+			for (int h = 0; h < 2; h++)
+				if (triggerDown[h] && !triggerHeld[h] && !clickDown)
+					hand = h;
+
+			// The keyboard on its own panel: picked up and moved, and typed on.
+			bool pointerTaken = false;
+			if (ownWanted)
+				UpdateOwnKeyboard(view, fs, triggerDown, pointerTaken);
+			if (vr)
+				vr->SetKeyboardPanel(ownWanted, keyboardPose, kVRKeyboardWidth);
+
+			if ((!view.NeedsAbsoluteMouseCoordinate() && !keyboardVisible) || screenWidth <= 0.0F ||
+			    (pointerTaken && !view.NeedsAbsoluteMouseCoordinate())) {
 				// Gameplay: the client reads the controllers itself. Let go of a
 				// click still held from the menu that just closed.
 				if (clickDown) {
@@ -102,28 +150,28 @@ namespace spades {
 			// keyboard would be a shot.
 			const bool mouseToView = view.NeedsAbsoluteMouseCoordinate();
 
-			// Whichever hand pulls its trigger becomes the pointer.
-			for (int h = 0; h < 2; h++)
-				if (triggerDown[h] && !triggerHeld[h] && !clickDown)
-					hand = h;
+			// The keyboard on the menu panel (not on its own)
+			const bool panelKeys = keyboardVisible && !keyboardOwn;
 
 			Vector2 uv;
 			float distance;
-			onPanel = VRRayHitsHudPanel(fs, hand, screenHeight / screenWidth, uv, distance);
-			hoverKey = -1;
+			onPanel = !pointerTaken &&
+			          VRRayHitsHudPanel(fs, hand, screenHeight / screenWidth, uv, distance);
+			if (!ownPointer)
+				hoverKey = -1;
 			if (onPanel) {
 				position = MakeVector2(uv.x * screenWidth, uv.y * screenHeight);
-				if (keyboardVisible)
+				if (panelKeys)
 					hoverKey = KeyAt(position);
 				// Over the keyboard the view is not told where the pointer is, so
 				// nothing under the keyboard lights up or takes the click.
-				if (mouseToView && !(keyboardVisible && keyboardRect.Contains(position)))
+				if (mouseToView && !(panelKeys && keyboardRect.Contains(position)))
 					view.MouseEvent(position.x, position.y);
 			}
 
-			bool click = triggerDown[hand];
+			bool click = triggerDown[hand] && !pointerTaken;
 			const bool pressed = click && !triggerHeld[hand];
-			if (keyboardVisible && onPanel && keyboardRect.Contains(position) && !clickDown) {
+			if (panelKeys && onPanel && keyboardRect.Contains(position) && !clickDown) {
 				if (pressed && hoverKey >= 0) {
 					PressKey(view, keys[static_cast<std::size_t>(hoverKey)]);
 					KeyFeedback(keys[static_cast<std::size_t>(hoverKey)], hoverKey);
@@ -147,7 +195,6 @@ namespace spades {
 
 			triggerHeld[0] = triggerDown[0];
 			triggerHeld[1] = triggerDown[1];
-			pressedTime = std::max(0.0F, pressedTime - dt);
 		}
 
 		void VRMenuPointer::LayoutKeyboard(float w, float h, int place, float fieldTop) {
@@ -164,9 +211,12 @@ namespace spades {
 
 			// Five rows over 80% of the panel's width and 40% of its height. Digits,
 			// ':', '/' and '.' are there for server addresses.
-			const float kbW = w * 0.8F, kbH = h * 0.4F;
+			const bool own = place == KeyboardOwnPanel;
+			const float kbW = own ? w - 24.0F : w * 0.8F;
+			const float kbH = own ? h - kGrabStrip - 16.0F : h * 0.4F;
 			const float kbX = (w - kbW) * 0.5F;
-			const float kbY = place == KeyboardTop      ? h * 0.04F
+			const float kbY = own                       ? kGrabStrip + 4.0F
+			                  : place == KeyboardTop      ? h * 0.04F
 			                  : place == KeyboardMiddle ? h * 0.36F
 			                  : place == KeyboardAboveField
 			                    ? std::max(h * 0.04F, fieldTop - kbH - h * 0.02F)
@@ -216,6 +266,69 @@ namespace spades {
 					keys.push_back(k);
 					x += it.width * unit;
 				}
+			}
+		}
+
+		void VRMenuPointer::UpdateOwnKeyboard(View& view, const client::VRFrameState& fs,
+		                                      bool triggerDown[2], bool& pointerTaken) {
+			using namespace client;
+			IVRSystem* vr = GetVRSystem();
+
+			// The grip picks it up: pressed while that hand points at it, or with
+			// the hand at it. It keeps its place in the hand until let go, and
+			// is then left there, relative to where you face, for next time.
+			for (int h = 0; h < 2; h++) {
+				const float sq = fs.hands[h].squeeze;
+				const bool down = squeezeHeld[h] ? sq > 0.4F : sq > 0.7F;
+				const VRPose& grip = fs.hands[h].grip;
+				if (down && !squeezeHeld[h] && grabHand < 0 && grip.valid) {
+					Vector2 uv;
+					float d;
+					const bool aimed = VRRayHitsPanel(fs, h, keyboardPose, kVRKeyboardWidth,
+					                                  kOwnAspect, uv, d) &&
+					                   d < 3.0F;
+					const VRPose rel = VRPoseRelative(keyboardPose, grip);
+					const bool near =
+					  std::fabs(rel.position.z) < 0.12F &&
+					  std::fabs(rel.position.x) < kVRKeyboardWidth * 0.5F + 0.06F &&
+					  std::fabs(rel.position.y) < kVRKeyboardWidth * kOwnAspect * 0.5F + 0.06F;
+					if (aimed || near) {
+						grabHand = h;
+						grabRel = VRPoseRelative(grip, keyboardPose);
+						if (vr)
+							vr->Vibrate(h, 0.35F, 0.03F);
+					}
+				}
+				if (!down && squeezeHeld[h] && grabHand == h) {
+					grabHand = -1;
+					if (fs.head.valid)
+						keyboardPlace = VRPoseRelative(VRHeadYawFrame(fs.head), keyboardPose);
+					if (vr)
+						vr->Vibrate(h, 0.2F, 0.02F);
+				}
+				squeezeHeld[h] = down;
+			}
+			if (grabHand >= 0 && fs.hands[grabHand].grip.valid)
+				keyboardPose = VRPoseCompose(fs.hands[grabHand].grip, grabRel);
+
+			// Pointing at it: the keys, as on the panel. Only once it is up (the
+			// runtime gives it the panel a frame after it is asked for).
+			if (!keyboardOwn || grabHand == hand)
+				return;
+			Vector2 uv;
+			float d;
+			if (!VRRayHitsPanel(fs, hand, keyboardPose, kVRKeyboardWidth, kOwnAspect, uv, d))
+				return;
+			ownPointer = true;
+			pointerTaken = true;
+			ownPointerPos = MakeVector2(uv.x * static_cast<float>(kVRWristCanvasWidth),
+			                            uv.y * static_cast<float>(kVRWristCanvasHeight));
+			grabHover = ownPointerPos.y < kGrabStrip;
+			hoverKey = KeyAt(ownPointerPos);
+			const bool pressed = triggerDown[hand] && !triggerHeld[hand];
+			if (pressed && hoverKey >= 0) {
+				PressKey(view, keys[static_cast<std::size_t>(hoverKey)]);
+				KeyFeedback(keys[static_cast<std::size_t>(hoverKey)], hoverKey);
 			}
 		}
 
@@ -281,6 +394,23 @@ namespace spades {
 		void VRMenuPointer::DrawKeyboard(client::IRenderer& r, client::IFont& font) {
 			if (!keyboardVisible || keys.empty())
 				return;
+			// On its own panel: drawn there, all of it, under its grab strip.
+			const bool own = keyboardOwn && r.SetVRCanvas(1);
+			if (keyboardOwn && !own)
+				return; // not up this frame after all
+			if (own) {
+				const float cw = static_cast<float>(client::kVRWristCanvasWidth);
+				const float ch = static_cast<float>(client::kVRWristCanvasHeight);
+				r.SetColorAlphaPremultiplied(MakeVector4(0.04F, 0.05F, 0.06F, 0.92F));
+				r.DrawImage(nullptr, AABB2(0.0F, 0.0F, cw, ch));
+				const float g = grabHand >= 0 ? 0.5F : grabHover ? 0.35F : 0.18F;
+				r.SetColorAlphaPremultiplied(MakeVector4(g, g, g, 0.95F));
+				r.DrawImage(nullptr, AABB2(cw * 0.3F, 18.0F, cw * 0.4F, 14.0F));
+				const std::string hint = "Grip to move";
+				const Vector2 hs = font.Measure(hint) * 0.75F;
+				font.Draw(hint, MakeVector2(std::floor((cw - hs.x) * 0.5F), 36.0F), 0.75F,
+				          MakeVector4(0.7F, 0.7F, 0.7F, 0.9F));
+			}
 			const float pad = 8.0F;
 			r.SetColorAlphaPremultiplied(MakeVector4(0.0F, 0.0F, 0.0F, 0.75F));
 			r.DrawImage(nullptr, AABB2(keyboardRect.GetMinX() - pad, keyboardRect.GetMinY() - pad,
@@ -309,6 +439,16 @@ namespace spades {
 				                         k.rect.GetMinY() + (k.rect.GetHeight() - size.y) * 0.5F);
 				font.Draw(label, MakeVector2(std::floor(at.x), std::floor(at.y)), 1.0F,
 				          MakeVector4(1, 1, 1, 1));
+			}
+			if (own) {
+				if (ownPointer) {
+					const Vector2 at = ownPointerPos;
+					r.SetColorAlphaPremultiplied(MakeVector4(0, 0, 0, 0.6F));
+					r.DrawImage(nullptr, AABB2(at.x - 7.0F, at.y - 7.0F, 14.0F, 14.0F));
+					r.SetColorAlphaPremultiplied(MakeVector4(1, 1, 1, 1));
+					r.DrawImage(nullptr, AABB2(at.x - 4.0F, at.y - 4.0F, 8.0F, 8.0F));
+				}
+				r.SetVRCanvas(0);
 			}
 		}
 	} // namespace gui

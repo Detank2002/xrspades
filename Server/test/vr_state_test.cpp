@@ -622,6 +622,41 @@ int main() {
 		CHECK(lo <= 0.4F);
 	}
 
+	// The keyboard on its own: pose maths, and where it is first put
+	{
+		VRPose a, b;
+		a.valid = b.valid = true;
+		a.position = MakeVector3(1.0F, 1.5F, -2.0F);
+		a.orientation = VRQuat::FromAxisAngle(MakeVector3(0.3F, 0.9F, 0.1F).Normalize(), 0.8F);
+		b.position = MakeVector3(-0.4F, 1.1F, 0.7F);
+		b.orientation = VRQuat::FromAxisAngle(MakeVector3(-0.5F, 0.2F, 0.8F).Normalize(), -1.3F);
+		const VRPose back = VRPoseCompose(a, VRPoseRelative(a, b));
+		CHECK((back.position - b.position).GetLength() < 1.0E-4F);
+		for (int i = 0; i < 3; i++)
+			CHECK(Vector3::Dot(back.Axis(i), b.Axis(i)) > 0.9999F);
+
+		// Looking down and to the left: the yaw frame faces the same way, level
+		VRPose head;
+		head.valid = true;
+		head.position = MakeVector3(0.0F, 1.7F, 0.0F);
+		head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), 0.5F) *
+		                   VRQuat::FromAxisAngle(MakeVector3(1, 0, 0), -0.6F);
+		const VRPose yaw = VRHeadYawFrame(head);
+		Vector3 fh = -head.Axis(2);
+		fh.y = 0.0F;
+		CHECK(Vector3::Dot(-yaw.Axis(2), fh.Normalize()) > 0.9999F);
+		CHECK(std::fabs(yaw.Axis(1).y - 1.0F) < 1.0E-4F);
+
+		// First put: ahead of and below the eyes, its face up and towards you
+		const VRPose kb = VRPoseCompose(yaw, VRDefaultKeyboardPlace());
+		const Vector3 off = kb.position - head.position;
+		CHECK(off.y < -0.3F);
+		CHECK(Vector3::Dot(off, -yaw.Axis(2)) > 0.3F);
+		const Vector3 n = kb.Axis(2);
+		CHECK(n.y > 0.5F);                            // face up...
+		CHECK(Vector3::Dot(n, -yaw.Axis(2)) < -0.5F); // ...and back at you
+	}
+
 	std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
 	return failures ? 1 : 0;
 }

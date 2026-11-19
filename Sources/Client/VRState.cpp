@@ -98,13 +98,59 @@ namespace spades {
 
 		bool VRRayHitsHudPanel(const VRFrameState& fs, int hand, float panelAspect, Vector2& uv,
 		                       float& distance) {
+			return VRRayHitsPanel(fs, hand, fs.hudPanel, fs.hudWidth, panelAspect, uv, distance);
+		}
+
+		VRPose VRPoseRelative(const VRPose& a, const VRPose& b) {
+			VRPose r;
+			const VRQuat inv = a.orientation.Conjugate();
+			r.position = inv.Rotate(b.position - a.position);
+			r.orientation = inv * b.orientation;
+			r.valid = a.valid && b.valid;
+			return r;
+		}
+
+		VRPose VRPoseCompose(const VRPose& a, const VRPose& rel) {
+			VRPose r;
+			r.position = a.position + a.orientation.Rotate(rel.position);
+			r.orientation = a.orientation * rel.orientation;
+			r.valid = a.valid && rel.valid;
+			return r;
+		}
+
+		VRPose VRHeadYawFrame(const VRPose& head) {
+			VRPose r;
+			r.position = head.position;
+			r.valid = head.valid;
+			const Vector3 f = -head.Axis(2);
+			// About +Y by `yaw` takes -Z to (-sin yaw, 0, -cos yaw)
+			const float yaw = (std::fabs(f.x) + std::fabs(f.z) > 1.0E-5F)
+			                    ? std::atan2(-f.x, -f.z)
+			                    : 0.0F;
+			r.orientation = VRQuat::FromAxisAngle(MakeVector3(0.0F, 1.0F, 0.0F), yaw);
+			return r;
+		}
+
+		VRPose VRDefaultKeyboardPlace() {
+			VRPose r;
+			r.valid = true;
+			// 42cm ahead, 40cm under the eyes: where hands rest typing
+			r.position = MakeVector3(0.0F, -0.40F, -0.42F);
+			// Its face turned up 40 degrees from facing you: the far edge back
+			r.orientation =
+			  VRQuat::FromAxisAngle(MakeVector3(1.0F, 0.0F, 0.0F), -40.0F * 3.14159265F / 180.0F);
+			return r;
+		}
+
+		bool VRRayHitsPanel(const VRFrameState& fs, int hand, const VRPose& panel, float width,
+		                    float aspect, Vector2& uv, float& distance) {
 			const VRControllerState& c = fs.hands[hand];
 			if (!fs.head.valid || !c.aim.valid)
 				return false;
+			const float panelAspect = aspect;
 
 			// Into the panel's own space (it faces +Z, at z = 0), wherever it is:
 			// before the head, or standing in the room.
-			const VRPose& panel = fs.hudPanel;
 			VRQuat toPanel = panel.orientation.Conjugate();
 			Vector3 origin = toPanel.Rotate(c.aim.position - panel.position);
 			Vector3 dir = toPanel.Rotate(-c.aim.Axis(2)); // OpenXR aims down -Z
@@ -116,7 +162,7 @@ namespace spades {
 				return false;
 			Vector3 p = origin + dir * t;
 
-			float w = fs.hudWidth, h = fs.hudWidth * panelAspect;
+			float w = width, h = width * panelAspect;
 			uv = MakeVector2(p.x / w + 0.5F, 0.5F - p.y / h);
 			distance = t;
 			return uv.x >= 0.0F && uv.x <= 1.0F && uv.y >= 0.0F && uv.y <= 1.0F;
