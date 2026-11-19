@@ -274,6 +274,16 @@ namespace spades {
 		VRPose VRDefaultKeyboardPlace();
 		constexpr float kVRKeyboardWidth = 0.5F;
 
+		/** Physical reloading: whether the off hand, holding a magazine, is at
+		 * the gun's magazine well. Game space (z down), `scale` blocks a metre.
+		 * Anywhere under the front half of the gun, close to its line, counts:
+		 * below in the world, not in the gun hand's own frame, so it does not
+		 * matter how the wrist is rolled (testers had to turn the gun hand over,
+		 * as if to look at a watch, for the off hand's controller to reach a
+		 * point fixed under the grip in the hand's frame). */
+		bool VRMagazineAtWell(const Vector3& gunHand, const Vector3& gunForward,
+		                      const Vector3& offHand, float scale);
+
 		/** The table view: the map as a model in front of you (spectating, dead, a
 		 * demo). A point `p` in tracking space shows the world at
 		 * `centre + turn(yaw) * game(p - anchor) * scale`: `anchor` is where the

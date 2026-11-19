@@ -842,6 +842,14 @@ namespace spades {
 				// press held a moment so it lands when the spade is ready.
 				bool swingLatched = false;
 				float swingHold = 0.0F;
+				// Striking with the spade (vr_spadeContact): the spade is solid, and
+				// its tip meeting a block at speed is a hit on that block. Whether
+				// it touched last frame, and the last strike's ray (world space),
+				// which the dig acts along while the press is held.
+				bool spadeTouching = false;
+				float spadeStrikeTime = -100.0F;
+				Vector3 spadeStrikeOrigin{0.0F, 0.0F, 0.0F};
+				Vector3 spadeStrikeDir{1.0F, 0.0F, 0.0F};
 				// Holsters: the one the gun hand is at (VRHolster), and whether its
 				// grip is held since it took a tool from one.
 				int holsterHover = -1;

@@ -94,6 +94,10 @@ DEFINE_SPADES_SETTING(vr_shoulderStock, "1");
 DEFINE_SPADES_SETTING(vr_aimSmooth, "0");
 // Swinging the spade faster than this (m/s) hits, as the trigger does; 0: off.
 DEFINE_SPADES_SETTING(vr_swingSpeed, "2.5");
+// The spade is solid and hits where its tip strikes a block (testers: swinging
+// in the air tired the arm in seconds, and the hit was not where the spade
+// was). Off: swinging it anywhere faster than vr_swingSpeed hits, along it.
+DEFINE_SPADES_SETTING(vr_spadeContact, "1");
 // Tools on the body: squeeze the gun hand's grip over a shoulder or at a hip.
 DEFINE_SPADES_SETTING(vr_holsters, "1");
 // The game's frame rate on the wrist.
@@ -297,7 +301,14 @@ namespace spades {
 			// nothing is shot, dug or built from inside a wall. Players are not
 			// solid: they would be in the way all the time.
 			vrRig.toolBlocked = false;
-			if (!(int)vr_toolCollision || !vrRig.solidHands || !world || !world->GetMap())
+			// The spade is solid whatever vr_toolCollision says, while it strikes
+			// (vr_spadeContact)
+			bool spadeSolid = false;
+			if ((int)vr_spadeContact && world)
+				if (auto lp = world->GetLocalPlayer())
+					spadeSolid = lp->IsToolSpade();
+			if ((!(int)vr_toolCollision && !spadeSolid) || !vrRig.solidHands || !world ||
+			    !world->GetMap())
 				return;
 			const GameMap& map = *world->GetMap();
 			auto solid = [&](const Vector3& v) { return map.ClipBox(v.x, v.y, v.z); };
@@ -637,11 +648,8 @@ namespace spades {
 				if (O.squeeze < 0.3F) {
 					vrRig.reloadStage = 1; // dropped it: fetch another
 				} else if (vrRig.handValid[0] && vrRig.handValid[1]) {
-					const float s = vrRig.scale;
-					const Vector3 well = vrRig.handPos[toolHand] +
-					                     vrRig.handAxes[toolHand][0] * (0.10F * s) +
-					                     vrRig.handAxes[toolHand][2] * (0.10F * s);
-					if ((vrRig.handPos[offHand] - well).GetLength() < 0.12F * s) {
+					if (VRMagazineAtWell(vrRig.handPos[toolHand], vrRig.handAxes[toolHand][0],
+					                     vrRig.handPos[offHand], vrRig.scale)) {
 						vrRig.reloadStage = 0;
 						VRPulse(-1, 0.7F, 0.08F, VRHapticShape::DoubleTap);
 						return true;
@@ -1359,6 +1367,12 @@ namespace spades {
 						// a tool the eye has no line of sight to acts from the eye,
 						// along the tool's direction, as a monitor player's does.
 						// (Past a wall the far end can be clear: the line to it is not.)
+						// A spade strike digs the block its tip struck, along the
+						// strike, for as long as the press is held
+						if (p.IsToolSpade() && time - vrRig.spadeStrikeTime < 0.25F) {
+							toolOffset = vrRig.spadeStrikeOrigin - p.GetEye();
+							toolDir = vrRig.spadeStrikeDir;
+						}
 						if (!presence && (VRHeadClearance(p.GetEye(), toolOffset) < 1.0F ||
 						                  !VRLineOfSight(p.GetEye(), p.GetEye() + toolOffset)))
 							toolOffset = MakeVector3(0.0F, 0.0F, 0.0F);
@@ -1654,7 +1668,27 @@ namespace spades {
 			{
 				const float swingAt = (float)vr_swingSpeed;
 				vrRig.swingHold = std::max(0.0F, vrRig.swingHold - dt);
-				if (p.IsToolSpade() && swingAt > 0.0F && vrRig.handValid[toolHand]) {
+				const bool contact = (int)vr_spadeContact != 0;
+				if (p.IsToolSpade() && contact && vrRig.handValid[toolHand]) {
+					// A strike: the spade comes to rest on a block (it is solid:
+					// ApplyVRToolCollision stopped it) with the hand still moving
+					// into it at a brisk pace, not the arm's full swing. One strike,
+					// one hit: pull it off the block to strike again.
+					const float speed = (vrRig.handVelocity[toolHand] / vrRig.scale).GetLength();
+					const bool touching = vrRig.toolBlocked;
+					if (touching && !vrRig.spadeTouching && speed > 0.7F) {
+						const Vector3 dir = vrRig.handAxes[toolHand][0];
+						const Vector3 tip = vrRig.handPos[toolHand] + dir * vrRig.toolReach;
+						vrRig.spadeStrikeTime = time;
+						vrRig.spadeStrikeOrigin = tip - dir * 0.4F;
+						vrRig.spadeStrikeDir = dir;
+						vrRig.swingHold = 0.15F;
+						VRPulse(toolHand, Clamp(0.4F + speed * 0.2F, 0.4F, 1.0F), 0.06F,
+						        VRHapticShape::Kick);
+					}
+					vrRig.spadeTouching = touching;
+					vrRig.swingLatched = false;
+				} else if (p.IsToolSpade() && swingAt > 0.0F && vrRig.handValid[toolHand]) {
 					float speed = (vrRig.handVelocity[toolHand] / vrRig.scale).GetLength();
 					if (!vrRig.swingLatched && speed > swingAt) {
 						vrRig.swingLatched = true;

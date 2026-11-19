@@ -189,8 +189,15 @@ see your laser. `vr_laser 0` turns it off.
 
 The spade swings a little in your hand when it hits (a quick chop and back), and
 leans in as a dig builds up, so you can see the tool working. Others see it too.
-**Swinging the spade hits**, as the trigger does: a swing faster than
-`vr_swingSpeed` (2.5 m/s) is one hit.
+**Striking with the spade** (`vr_spadeContact`, on). The spade is solid: it
+stops at a block's face rather than passing through. Bring its tip onto a
+block at a brisk pace (0.7 m/s, a wrist's flick rather than the arm's full
+swing) and that block takes the hit, the controller kicking harder for a
+harder strike; pull it off the block to strike again. Testers found
+swinging in the air (the old way) tired the arm in twenty seconds and hit
+wherever the spade pointed, not where it was. With it off, **swinging the
+spade** anywhere faster than `vr_swingSpeed` (2.5 m/s) is one hit, along it.
+The trigger works as always.
 
 **Two hands on a gun.** Put your off hand on the gun's barrel and squeeze its
 grip: the gun now points from your gun hand to your off hand, which is steadier
@@ -398,8 +405,10 @@ size, text sharpness and eye resolution take effect on the next start.
 **Reloading.** B reloads, as R does on a keyboard; the laser is amber until it
 is done, and the gun hand buzzes. **By hand** (`vr_reloadGesture`): B drops
 the magazine; take a new one from your belt with the off hand's grip (anywhere
-at your waist) and bring it to the gun, just under its front: that is the
-reload, with its usual time to finish. Pressing B again at any point just
+at your waist) and bring it anywhere under the front half of the gun,
+within about 17cm of it: that is the reload (under in the world, not in the
+gun hand's own frame, so the gun hand need not be rolled over as if to look
+at a watch, which a tester found it did; `VRMagazineAtWell`), with its usual time to finish. Pressing B again at any point just
 reloads. It was the default (as `vr_physicalReload`) until testers found two
 actions for every reload too many, and the sound alone too quiet a sign that
 it was done; it was renamed so that configs which had saved the old default
@@ -473,6 +482,7 @@ far as a normal throw.
 | `vr_keyboardDetached` | 1 | the keyboard stands on its own in front of you, and the grip moves it; 0 draws it on the menu panel |
 | `vr_hurtEdge` | 1 | a red edge round the view when hit, thicker on the hit's side, and a heartbeat at low health (the rumble stays either way) |
 | `vr_aimSmooth` | 0 | 0 to 1: how much a nearly still gun is steadied |
+| `vr_spadeContact` | 1 | the spade is solid, and its tip striking a block hits it; 0: swinging it in the air hits |
 | `vr_swingSpeed` | 2.5 | swinging the spade faster than this (m/s) hits; 0 turns it off |
 | `vr_holsters` | 1 | take tools from the body with the gun hand's grip |
 | `vr_showFps` | 1 | the frame rate on the wrist |

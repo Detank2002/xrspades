@@ -138,6 +138,23 @@ namespace spades {
 			}
 		} // namespace
 
+		bool VRMagazineAtWell(const Vector3& gunHand, const Vector3& gunForward,
+		                      const Vector3& offHand, float scale) {
+			if (gunForward.GetLength() < 1.0E-4F || scale <= 0.0F)
+				return false;
+			const Vector3 f = gunForward.Normalize();
+			const Vector3 rel = (offHand - gunHand) / scale; // metres
+			// Along the gun: from just ahead of the grip to 30cm out
+			const float along = Vector3::Dot(rel, f);
+			if (along < -0.02F || along > 0.30F)
+				return false;
+			// Off the gun's line, and below it (z is down)
+			const Vector3 off = rel - f * along;
+			if (off.GetLength() > 0.17F)
+				return false;
+			return off.z > -0.03F; // under the gun, or level with it
+		}
+
 		Vector3 VRTableToWorld(const VRTablePose& t, const Vector3& anchor, const Vector3& p) {
 			return t.centre + TurnGame(VRTrackingToGameAxes(p - anchor), t.yaw) * t.scale;
 		}

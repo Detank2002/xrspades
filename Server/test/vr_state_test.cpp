@@ -689,6 +689,26 @@ int main() {
 		CHECK(t.scale >= 300.0F);
 	}
 
+	// The magazine well: under the front of the gun, however the wrist is rolled
+	{
+		const float s = 1.4F;
+		const Vector3 hand = MakeVector3(10.0F, 10.0F, 30.0F);
+		const Vector3 fwd = MakeVector3(1.0F, 0.0F, 0.0F);
+		// 10cm ahead, 8cm under: in
+		CHECK(VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.10F, 0.0F, 0.08F) * s, s));
+		// a little to the side too (the controllers' rings in the way): in
+		CHECK(VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.12F, 0.09F, 0.10F) * s, s));
+		// above the gun: out
+		CHECK(!VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.10F, 0.0F, -0.10F) * s, s));
+		// behind the grip, or far off: out
+		CHECK(!VRMagazineAtWell(hand, fwd, hand + MakeVector3(-0.15F, 0.0F, 0.08F) * s, s));
+		CHECK(!VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.10F, 0.0F, 0.30F) * s, s));
+		// the gun pointing down a slope: still under its front half
+		const Vector3 slope = MakeVector3(1.0F, 0.0F, 0.5F).Normalize();
+		CHECK(VRMagazineAtWell(hand, slope, hand + slope * (0.12F * s) +
+		                                      MakeVector3(-0.04F, 0.0F, 0.08F) * s, s));
+	}
+
 	std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
 	return failures ? 1 : 0;
 }

@@ -505,6 +505,8 @@ namespace spades {
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Dot"),
 			                  _Tr("Preferences", "Cross")},
 			                 {0, 3, 4});
+			l.AddToggleField(_Tr("Preferences", "Strike Blocks With The Spade's Tip"),
+			                 "vr_spadeContact");
 			l.AddSliderField(_Tr("Preferences", "Swing Spade To Hit"), "vr_swingSpeed", 0, 5, 0.25F,
 			                 zeroMeans(_Tr("Preferences", "Off"), 2, " m/s"));
 			l.AddSliderField(_Tr("Preferences", "Full Grenade Throw"), "vr_throwSpeed", 2, 10, 0.5F,
