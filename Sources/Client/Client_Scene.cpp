@@ -66,6 +66,8 @@ SPADES_SETTING(cg_ragdoll);
 SPADES_SETTING(cg_hurtScreenEffects);
 SPADES_SETTING(cg_orientationSmoothing);
 
+DEFINE_SPADES_SETTING(cg_fogColorOverride, "");
+
 namespace spades {
 	namespace client {
 
@@ -207,6 +209,14 @@ namespace spades {
 
 			if (world) {
 				IntVector3 fogColor = world->GetFogColor();
+				// cg_fogColorOverride "R,G,B": another sky than the server's, for
+				// shots of a demo (empty, the server's)
+				{
+					int r, g, b;
+					const std::string over = cg_fogColorOverride;
+					if (!over.empty() && std::sscanf(over.c_str(), "%d,%d,%d", &r, &g, &b) == 3)
+						fogColor = MakeIntVector3(r, g, b);
+				}
 				renderer->SetFogColor(ConvertColorRGB(fogColor));
 
 				// Without a time of day the scene keeps its default, full daylight.

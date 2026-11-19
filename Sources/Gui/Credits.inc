@@ -16,6 +16,8 @@ XRSpades
 "siecvi" - the zombie model
 The menu's maps: "Influx" (Normandie), "Serious_Sim" (Ghost Town,
 Mashesswood Island), "Detank" (Quarantine)
+"wiktor kurzak" - the launch screen's stunt double: stood on the wrong
+block, met the horde face first. No zombies were harmed (many were).
 
 
 Credits
