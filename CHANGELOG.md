@@ -16,6 +16,7 @@ one change, in a player's words.
 - Improved: the VR keyboard has caps lock (Shift twice), arrow keys to fix typos, a Close key, and Back repeats while held
 - New: in VR, put the controllers down and use your hands in the menus: point, and pinch to click
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
+- Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
 
 ## 0.3.6
