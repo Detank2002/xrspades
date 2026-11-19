@@ -55,6 +55,8 @@ namespace spades {
 			using namespace client;
 
 			pressedTime = std::max(0.0F, pressedTime - dt);
+			clock += dt;
+			lastDt = dt;
 
 			bool triggerDown[2];
 			for (int h = 0; h < 2; h++) {
@@ -117,6 +119,7 @@ namespace spades {
 				LayoutKeyboard(screenWidth, screenHeight, place, field.GetMinY());
 			} else {
 				shift = false;
+				capsLock = false;
 			}
 
 			// Whichever hand pulls its trigger becomes the pointer.
@@ -176,6 +179,7 @@ namespace spades {
 					PressKey(view, keys[static_cast<std::size_t>(hoverKey)]);
 					KeyFeedback(keys[static_cast<std::size_t>(hoverKey)], hoverKey);
 				}
+				RepeatHeldKey(view, click, pressed);
 			} else if (mouseToView && click != clickDown && (onPanel || !click)) {
 				view.KeyEvent("LeftMouseButton", click);
 				clickDown = click;
@@ -249,7 +253,10 @@ namespace spades {
 			for (auto& it : chars("zxcvbnm,.?!"))
 				rows.back().push_back(it);
 			rows.push_back(chars("@_"));
-			rows.back().insert(rows.back().begin() + 1, {"Space", ' ', KeySpace, 7.0F});
+			rows.back().insert(rows.back().begin() + 1, {"Space", ' ', KeySpace, 6.0F});
+			rows.back().push_back({"<", 0, KeyLeft, 1.0F});
+			rows.back().push_back({">", 0, KeyRight, 1.0F});
+			rows.back().push_back({"Close", 0, KeyClose, 1.5F});
 
 			for (std::size_t r = 0; r < rows.size(); r++) {
 				float rowWidth = 0.0F;
@@ -330,6 +337,34 @@ namespace spades {
 				PressKey(view, keys[static_cast<std::size_t>(hoverKey)]);
 				KeyFeedback(keys[static_cast<std::size_t>(hoverKey)], hoverKey);
 			}
+			RepeatHeldKey(view, triggerDown[hand], pressed);
+		}
+
+		void VRMenuPointer::RepeatHeldKey(View& view, bool held, bool pressed) {
+			// Back and the cursor keys repeat while held: after half a second,
+			// then fifteen a second.
+			auto repeats = [&](int k) {
+				if (k < 0 || k >= static_cast<int>(keys.size()))
+					return false;
+				const KeyAction a = keys[static_cast<std::size_t>(k)].action;
+				return a == KeyBack || a == KeyLeft || a == KeyRight;
+			};
+			if (pressed) {
+				repeatKey = repeats(hoverKey) ? hoverKey : -1;
+				repeatTimer = 0.5F;
+				return;
+			}
+			if (!held || repeatKey < 0 || repeatKey != hoverKey) {
+				repeatKey = -1;
+				return;
+			}
+			repeatTimer -= lastDt;
+			if (repeatTimer <= 0.0F) {
+				repeatTimer += 1.0F / 15.0F;
+				PressKey(view, keys[static_cast<std::size_t>(repeatKey)]);
+				pressedKey = repeatKey;
+				pressedTime = 0.06F;
+			}
 		}
 
 		int VRMenuPointer::KeyAt(const Vector2& p) const {
@@ -372,7 +407,8 @@ namespace spades {
 					// Let go of it, as a keyboard does: the UI repeats a typed
 					// character until a key comes up ("bbbbbb" in 0.1.7).
 					view.KeyEvent(std::string(1, key.ch), false);
-					shift = false; // one capital, like a phone's
+					if (!capsLock)
+						shift = false; // one capital, like a phone's
 					break;
 				}
 				case KeySpace:
@@ -387,7 +423,29 @@ namespace spades {
 					view.KeyEvent("Enter", true);
 					view.KeyEvent("Enter", false);
 					break;
-				case KeyShift: shift = !shift; break;
+				case KeyShift:
+					// Twice quickly: capitals stay on (a phone's caps lock)
+					if (capsLock) {
+						capsLock = shift = false;
+					} else if (shift && clock - lastShiftTime < 0.4F) {
+						capsLock = true;
+					} else {
+						shift = !shift;
+					}
+					lastShiftTime = clock;
+					break;
+				case KeyLeft:
+					view.KeyEvent("Left", true);
+					view.KeyEvent("Left", false);
+					break;
+				case KeyRight:
+					view.KeyEvent("Right", true);
+					view.KeyEvent("Right", false);
+					break;
+				case KeyClose:
+					view.KeyEvent("Escape", true);
+					view.KeyEvent("Escape", false);
+					break;
 			}
 		}
 
@@ -419,7 +477,7 @@ namespace spades {
 			for (std::size_t i = 0; i < keys.size(); i++) {
 				const Key& k = keys[i];
 				const bool hot = static_cast<int>(i) == hoverKey;
-				const bool on = k.action == KeyShift && shift;
+				const bool on = k.action == KeyShift && (shift || capsLock);
 				const bool down = static_cast<int>(i) == pressedKey && pressedTime > 0.0F;
 				const float a = down ? 0.8F : hot ? 0.55F : on ? 0.4F : 0.22F;
 				r.SetColorAlphaPremultiplied(MakeVector4(a, a, a, 0.9F));
@@ -429,7 +487,7 @@ namespace spades {
 				                           k.rect.GetWidth() - in * 2.0F,
 				                           k.rect.GetHeight() - in * 2.0F));
 
-				std::string label = k.label;
+				std::string label = k.action == KeyShift && capsLock ? std::string("CAPS") : k.label;
 				if (k.action == KeyChar && shift &&
 				    std::isalpha(static_cast<unsigned char>(k.ch)))
 					label = std::string(1, static_cast<char>(std::toupper(

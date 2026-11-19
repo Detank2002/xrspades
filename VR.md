@@ -346,7 +346,11 @@ then (names, pings) is drawn through it onto the world and only lines up with
 the world from in front of your eyes (`OpenXRSystem::PlaceHudPanel`). Point at it with either controller; a dot shows where. The trigger
 clicks and the stick scrolls. When something wants typing (chat, a server
 address) a keyboard comes up on the panel, in the half the text box is not in;
-point and pull the trigger to type. Shift is for one capital. A key answers
+point and pull the trigger to type. Shift is for one capital; Shift twice
+quickly locks capitals (CAPS) until Shift again. Back, and the < and > keys
+that move the text cursor to mend a typo, repeat while the trigger is held on
+them (after half a second, fifteen a second). Close puts the keyboard away,
+as Escape does. A key answers
 when pressed: the menus' soft tick (a little different each time, lower for
 the big keys), a tick in the hand, and the key lit and pressed in for a tenth
 of a second.

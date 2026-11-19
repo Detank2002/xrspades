@@ -73,7 +73,16 @@ namespace spades {
 		private:
 			// A keyboard you point at, as there is no keyboard to look at in a
 			// headset. Clicks on it type into the view instead of reaching it.
-			enum KeyAction { KeyChar, KeyBack, KeyEnter, KeyShift, KeySpace };
+			enum KeyAction {
+				KeyChar,
+				KeyBack,
+				KeyEnter,
+				KeyShift,
+				KeySpace,
+				KeyLeft,  // the text cursor, to mend a typo
+				KeyRight,
+				KeyClose // Escape: puts the keyboard (and the chat) away
+			};
 			struct Key {
 				std::string label;
 				char ch;
@@ -91,6 +100,15 @@ namespace spades {
 				KeyboardOwnPanel // all of its own panel, under a strip to grab it by
 			};
 			bool shift = false;
+			// Shift twice in quick succession: capitals until Shift again
+			bool capsLock = false;
+			float lastShiftTime = -10.0F;
+			float clock = 0.0F;
+			// Back (and the cursor keys) held: repeat, after half a second
+			int repeatKey = -1;
+			float repeatTimer = 0.0F;
+			float lastDt = 0.0F;
+			void RepeatHeldKey(View&, bool held, bool pressed);
 			int hoverKey = -1;
 			AABB2 keyboardRect;
 			float laidOutW = 0.0F, laidOutH = 0.0F;
