@@ -388,6 +388,22 @@ for a controller that is not there, and only in the menus
 (`VRFrameState::handTracked`): the game never reads it, so a pinch can never
 fire a gun. The Quest's manifest asks for hand tracking, not requiring it.
 
+**Change buttons** (the menu's **Controls**, then **Change buttons**). The
+controllers in use, drawn bare, with a drop-down beside each button joined to
+it by a line. Each lists every action the layout has, the common ones first
+(fire, jump, reload, crouch, sprint, the big map), then the rest, and Nothing;
+a choice is saved at once to `vr_bindings` (`VRParseBindings`: only what
+differs from the default, e.g. `tool.primary=off.secondary,off.grip=none`).
+Bindings belong to the hands' roles, the gun hand's and the other's, so they
+follow a left-handed player. **Sticks** swaps walking and turning between the
+sticks (`vr_swapSticks`); **Reset to default** clears both. The remapping is
+done where the controllers are read (`OpenXRSystem::ApplyBindings`, after the
+input trace, which keeps the buttons as pressed), so everything in the game
+follows it. The menus alone take the buttons as pressed
+(`VRFrameState::rawHands`): no binding can lock anyone out of them, this
+screen included. The pictures and the buttons' places on them come from
+`Tools/vr-controls/make_controls.py bind` (`Bind-<controllers>.png`, `.json`).
+
 **The keyboard on its own** (`vr_keyboardDetached`, on). It comes up in
 front of you, below your eyes and tipped back like a keyboard on a desk, on
 a panel of its own rather than on the menu: aim at a key and pull the
@@ -478,6 +494,8 @@ far as a normal throw.
 | `vr_twoHandedGrip` | 1 | the off hand's grip on the barrel holds a gun in both hands |
 | `vr_shoulderStock` | 1 | the off hand's trigger, held on a gun's barrel, braces it on the shoulder |
 | `vr_toolCollision` | 0 | hands and held tools stop at blocks (was `vr_solidTools`, on) |
+| `vr_bindings` | (empty) | the buttons moved about (Change buttons); empty is the default layout |
+| `vr_swapSticks` | 0 | walk with the gun hand's stick and turn with the other's |
 | `vr_handTracking` | 1 | with the controllers put down, a tracked hand points at the menus and a pinch clicks; read at start |
 | `vr_keyboardDetached` | 1 | the keyboard stands on its own in front of you, and the grip moves it; 0 draws it on the menu panel |
 | `vr_hurtEdge` | 1 | a red edge round the view when hit, thicker on the hit's side, and a heartbeat at low health (the rumble stays either way) |

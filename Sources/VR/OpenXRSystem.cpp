@@ -71,6 +71,11 @@ SPADES_SETTING(vr_wristWidth);
 // Tracked hands point at the menus and pinch to click, when the controllers
 // are put down (Quest; a PC runtime with hand tracking). Read at start.
 DEFINE_SPADES_SETTING(vr_handTracking, "1");
+// The controllers' buttons, moved about (VRParseBindings; the in-game Controls
+// screen's Change Buttons writes it). Empty: the default layout.
+DEFINE_SPADES_SETTING(vr_bindings, "");
+// Walk with the tool hand's stick and turn with the other's.
+DEFINE_SPADES_SETTING(vr_swapSticks, "0");
 
 namespace spades {
 	namespace vr {
@@ -920,6 +925,7 @@ namespace spades {
 			UpdateInput();
 			UpdateHandTracking();
 			UpdateTrace();
+			ApplyBindings();
 			PlaceHudPanel();
 
 			frameState.wristWidth = std::max(0.08F, (float)vr_wristWidth);
@@ -1242,6 +1248,21 @@ namespace spades {
 				c.buttonSecondary = getBool(secondaryAction);
 				c.menu = getBool(menuAction);
 			}
+		}
+
+		void OpenXRSystem::ApplyBindings() {
+			// After the trace, so a trace holds the controllers as they were
+			// pressed and replays under whatever bindings are set then.
+			const std::string text = vr_bindings;
+			if (text != bindingsText) {
+				bindingsText = text;
+				bindings = client::VRParseBindings(text);
+				SPLog("[VR] Button bindings: %s", text.empty() ? "the default layout" : text.c_str());
+			}
+			frameState.rawHands[0] = frameState.hands[0];
+			frameState.rawHands[1] = frameState.hands[1];
+			client::VRApplyBindings(frameState.rawHands, frameState.hands, client::VRToolHand(),
+			                        bindings, (bool)vr_swapSticks);
 		}
 
 		void OpenXRSystem::CreateHandTrackers() {

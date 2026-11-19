@@ -709,6 +709,49 @@ int main() {
 		                                      MakeVector3(-0.04F, 0.0F, 0.08F) * s, s));
 	}
 
+	// Rebinding: the text round trip, and the buttons moved about
+	{
+		CHECK(VRFormatBindings(VRDefaultBindings()).empty());
+		VRBindings b = VRParseBindings(
+		  " tool.primary = off.secondary ,off.grip=none, bogus=tool.trigger, tool.menu=tool.x");
+		CHECK(b.target[VRRoleTool][(int)VRInput::Primary].role == VRRoleOff);
+		CHECK(b.target[VRRoleTool][(int)VRInput::Primary].input == VRInput::Secondary);
+		CHECK(b.target[VRRoleOff][(int)VRInput::Grip].role < 0);
+		CHECK(b.target[VRRoleTool][(int)VRInput::Menu].role == VRRoleTool); // bad: default
+		CHECK(VRFormatBindings(b) == "tool.primary=off.secondary,off.grip=none");
+		CHECK(VRFormatBindings(VRParseBindings(VRFormatBindings(b))) == VRFormatBindings(b));
+
+		// Right-handed: tool = right. The right A now does what the left Y did
+		// (the big map); the left grip does nothing; a stick click pulls the
+		// trigger fully.
+		b = VRParseBindings("tool.primary=off.secondary,off.grip=none,"
+		                    "off.stickclick=tool.trigger");
+		VRControllerState in[2], out[2];
+		in[VRHandRight].buttonPrimary = true;
+		in[VRHandLeft].squeeze = 0.9F;
+		in[VRHandLeft].thumbstickClick = true;
+		in[VRHandLeft].thumbstick = MakeVector2(0.0F, 1.0F);
+		VRApplyBindings(in, out, VRHandRight, b, false);
+		CHECK(out[VRHandLeft].buttonSecondary);
+		CHECK(!out[VRHandRight].buttonPrimary);
+		CHECK(out[VRHandLeft].squeeze == 0.0F);
+		CHECK(out[VRHandRight].trigger == 1.0F);
+		CHECK(!out[VRHandLeft].thumbstickClick);
+		CHECK(out[VRHandLeft].thumbstick.y == 1.0F);
+		// Left-handed, the same bindings follow the hands
+		VRControllerState inL[2], outL[2];
+		inL[VRHandLeft].buttonPrimary = true;
+		VRApplyBindings(inL, outL, VRHandLeft, b, false);
+		CHECK(outL[VRHandRight].buttonSecondary);
+		// Sticks swapped
+		VRApplyBindings(in, out, VRHandRight, VRDefaultBindings(), true);
+		CHECK(out[VRHandRight].thumbstick.y == 1.0F && out[VRHandLeft].thumbstick.y == 0.0F);
+		// The defaults change nothing
+		VRApplyBindings(in, out, VRHandRight, VRDefaultBindings(), false);
+		CHECK(out[VRHandRight].buttonPrimary && out[VRHandLeft].squeeze == 0.9F &&
+		      out[VRHandLeft].thumbstickClick);
+	}
+
 	std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
 	return failures ? 1 : 0;
 }

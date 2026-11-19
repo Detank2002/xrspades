@@ -18,6 +18,7 @@ one change, in a player's words.
 - New: bullets and the spade leave chipped holes in blocks, one per hit (Options, Effects to turn them off)
 - Improved: in VR, the spade is solid and hits where its tip strikes a block, with a flick instead of a full swing
 - Improved: in VR, reloading by hand takes the magazine anywhere under the front of the gun, without twisting your wrist
+- New: in VR, change what every controller button does, on a picture of your controllers (Controls, Change buttons), and swap the sticks
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

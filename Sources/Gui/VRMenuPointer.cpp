@@ -58,8 +58,13 @@ namespace spades {
 			// it points with its aim, and a pinch is the trigger. Only here, for
 			// the menus; the game never sees it.
 			VRFrameState withHands = rawFs;
+			// The menus take the buttons as pressed, whatever vr_bindings says, so
+			// no binding can lock anyone out of them (the rebinding screen
+			// included)
+			withHands.hands[0] = rawFs.rawHands[0];
+			withHands.hands[1] = rawFs.rawHands[1];
 			for (int h = 0; h < 2; h++) {
-				if (rawFs.hands[h].active || !rawFs.handTracked[h])
+				if (rawFs.rawHands[h].active || !rawFs.handTracked[h])
 					continue;
 				VRControllerState& c = withHands.hands[h];
 				c = VRControllerState();
@@ -83,7 +88,9 @@ namespace spades {
 
 			// The menu button (or both B/Y buttons, for controllers whose menu
 			// button belongs to the system) is Escape.
+			// (and whatever button the bindings made the menu button)
 			bool menu = fs.hands[VRHandLeft].menu || fs.hands[VRHandRight].menu ||
+			            rawFs.hands[VRHandLeft].menu || rawFs.hands[VRHandRight].menu ||
 			            (fs.hands[VRHandLeft].buttonSecondary &&
 			             fs.hands[VRHandRight].buttonSecondary);
 			if (menu && !menuHeld) {

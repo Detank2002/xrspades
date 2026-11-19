@@ -125,6 +125,14 @@ namespace spades {
 				AddChild(button.GetPointerOrNull());
 			}
 			{
+				// Rebinding: the controllers in use, a drop-down at each button
+				Handle<Button> button = Handle<Button>::New(manager);
+				button->caption = _Tr("Client", "Change buttons");
+				button->SetBounds(AABB2(imageRect.GetMaxX() - 340.0F, by, 180.0F, buttonH));
+				button->activated = [this](UIElement&) { this->ui->EnterVRBindingsWindow(); };
+				AddChild(button.GetPointerOrNull());
+			}
+			{
 				Handle<Button> button = Handle<Button>::New(manager);
 				button->caption = _Tr("Client", "Back");
 				button->hotKeyText = _Tr("Client", "[Esc]");

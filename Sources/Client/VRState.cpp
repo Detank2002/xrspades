@@ -138,6 +138,152 @@ namespace spades {
 			}
 		} // namespace
 
+		VRBindings VRDefaultBindings() {
+			VRBindings b;
+			for (int r = 0; r < 2; r++)
+				for (int i = 0; i < kVRInputCount; i++) {
+					b.target[r][i].role = r;
+					b.target[r][i].input = static_cast<VRInput>(i);
+				}
+			return b;
+		}
+
+		const char* VRInputName(VRInput i) {
+			switch (i) {
+				case VRInput::Trigger: return "trigger";
+				case VRInput::Grip: return "grip";
+				case VRInput::Primary: return "primary";
+				case VRInput::Secondary: return "secondary";
+				case VRInput::StickClick: return "stickclick";
+				case VRInput::Menu: return "menu";
+				default: return "";
+			}
+		}
+
+		namespace {
+			bool ParseBindEnd(const std::string& s, int& role, VRInput& input) {
+				if (s == "none") {
+					role = -1;
+					return true;
+				}
+				const auto dot = s.find('.');
+				if (dot == std::string::npos)
+					return false;
+				const std::string h = s.substr(0, dot), n = s.substr(dot + 1);
+				if (h == "tool")
+					role = VRRoleTool;
+				else if (h == "off")
+					role = VRRoleOff;
+				else
+					return false;
+				for (int i = 0; i < kVRInputCount; i++)
+					if (n == VRInputName(static_cast<VRInput>(i))) {
+						input = static_cast<VRInput>(i);
+						return true;
+					}
+				return false;
+			}
+			std::string TrimBind(const std::string& s) {
+				const auto a = s.find_first_not_of(" \t");
+				const auto b = s.find_last_not_of(" \t");
+				return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+			}
+			float GetBindInput(const VRControllerState& c, VRInput i) {
+				switch (i) {
+					case VRInput::Trigger: return c.trigger;
+					case VRInput::Grip: return c.squeeze;
+					case VRInput::Primary: return c.buttonPrimary ? 1.0F : 0.0F;
+					case VRInput::Secondary: return c.buttonSecondary ? 1.0F : 0.0F;
+					case VRInput::StickClick: return c.thumbstickClick ? 1.0F : 0.0F;
+					case VRInput::Menu: return c.menu ? 1.0F : 0.0F;
+					default: return 0.0F;
+				}
+			}
+			void AddBindInput(VRControllerState& c, VRInput i, float v, bool analogSource) {
+				// An analog source presses a button past half
+				const bool pressed = analogSource ? v > 0.5F : v > 0.0F;
+				switch (i) {
+					case VRInput::Trigger: c.trigger = std::max(c.trigger, v); break;
+					case VRInput::Grip: c.squeeze = std::max(c.squeeze, v); break;
+					case VRInput::Primary: c.buttonPrimary = c.buttonPrimary || pressed; break;
+					case VRInput::Secondary: c.buttonSecondary = c.buttonSecondary || pressed; break;
+					case VRInput::StickClick:
+						c.thumbstickClick = c.thumbstickClick || pressed;
+						break;
+					case VRInput::Menu: c.menu = c.menu || pressed; break;
+					default: break;
+				}
+			}
+		} // namespace
+
+		VRBindings VRParseBindings(const std::string& text) {
+			VRBindings b = VRDefaultBindings();
+			std::size_t at = 0;
+			while (at <= text.size()) {
+				std::size_t comma = text.find(',', at);
+				if (comma == std::string::npos)
+					comma = text.size();
+				const std::string entry = TrimBind(text.substr(at, comma - at));
+				at = comma + 1;
+				const auto eq = entry.find('=');
+				if (eq == std::string::npos)
+					continue;
+				int fromRole = -1, toRole = -1;
+				VRInput from = VRInput::Trigger, to = VRInput::Trigger;
+				if (!ParseBindEnd(TrimBind(entry.substr(0, eq)), fromRole, from) || fromRole < 0 ||
+				    !ParseBindEnd(TrimBind(entry.substr(eq + 1)), toRole, to))
+					continue;
+				VRBindTarget& t = b.target[fromRole][static_cast<int>(from)];
+				t.role = toRole;
+				t.input = to;
+			}
+			return b;
+		}
+
+		std::string VRFormatBindings(const VRBindings& b) {
+			const VRBindings d = VRDefaultBindings();
+			std::string out;
+			for (int r = 0; r < 2; r++)
+				for (int i = 0; i < kVRInputCount; i++) {
+					const VRBindTarget& t = b.target[r][i];
+					if (t == d.target[r][i])
+						continue;
+					if (!out.empty())
+						out += ",";
+					out += std::string(r == VRRoleTool ? "tool." : "off.") +
+					       VRInputName(static_cast<VRInput>(i)) + "=";
+					if (t.role < 0)
+						out += "none";
+					else
+						out += std::string(t.role == VRRoleTool ? "tool." : "off.") +
+						       VRInputName(t.input);
+				}
+			return out;
+		}
+
+		void VRApplyBindings(const VRControllerState in[2], VRControllerState out[2], int toolHand,
+		                     const VRBindings& b, bool swapSticks) {
+			const int handOf[2] = {toolHand, 1 - toolHand}; // by role
+			for (int h = 0; h < 2; h++) {
+				out[h] = in[h];
+				out[h].trigger = out[h].squeeze = 0.0F;
+				out[h].buttonPrimary = out[h].buttonSecondary = false;
+				out[h].thumbstickClick = out[h].menu = false;
+			}
+			for (int r = 0; r < 2; r++)
+				for (int i = 0; i < kVRInputCount; i++) {
+					const VRBindTarget& t = b.target[r][i];
+					if (t.role < 0)
+						continue;
+					const VRInput from = static_cast<VRInput>(i);
+					const float v = GetBindInput(in[handOf[r]], from);
+					const bool analog = from == VRInput::Trigger || from == VRInput::Grip;
+					AddBindInput(out[handOf[t.role]], t.input, v, analog);
+				}
+			if (swapSticks)
+				std::swap(out[0].thumbstick, out[1].thumbstick);
+		}
+
 		bool VRMagazineAtWell(const Vector3& gunHand, const Vector3& gunForward,
 		                      const Vector3& offHand, float scale) {
 			if (gunForward.GetLength() < 1.0E-4F || scale <= 0.0F)

@@ -170,6 +170,10 @@ namespace spades {
 			void UpdateInput();
 			// Tracked hands, for the menus (VRFrameState::handTracked)
 			void CreateHandTrackers();
+			// vr_bindings, parsed when it changes, applied to each frame's hands
+			void ApplyBindings();
+			std::string bindingsText = "\x01"; // never a real setting: parse once
+			client::VRBindings bindings = client::VRDefaultBindings();
 			void DestroyHandTrackers();
 			void UpdateHandTracking();
 #ifdef XR_EXT_hand_tracking

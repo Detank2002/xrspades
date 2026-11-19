@@ -150,6 +150,10 @@ namespace spades {
 			 * (XR_FB_hand_tracking_aim's, or the palm's), and a pinch of thumb
 			 * and index finger is its trigger, 0..1 (VRMenuPointer). The game
 			 * itself never reads these: a pinch must not fire a gun. */
+			/** The controllers as the runtime gave them, before vr_bindings moved
+			 * their buttons about (`hands` is after). The menus read these: no
+			 * binding can lock anyone out of them. */
+			VRControllerState rawHands[2];
 			bool handTracked[2] = {false, false};
 			VRPose handAim[2];
 			float handPinch[2] = {0.0F, 0.0F};
@@ -273,6 +277,38 @@ namespace spades {
 		 * front of the eyes, tipped back like a keyboard on a desk. */
 		VRPose VRDefaultKeyboardPlace();
 		constexpr float kVRKeyboardWidth = 0.5F;
+
+		/** Rebinding the controllers' buttons (vr_bindings, VRBindingsWindow).
+		 * Each physical button of each hand, by its role (the tool hand's or the
+		 * other's, so a left-handed player's bindings follow their hands), does
+		 * what a button of the default layout does: any button, of either hand,
+		 * or nothing. The sticks' moving and turning swap with vr_swapSticks. */
+		enum class VRInput { Trigger, Grip, Primary, Secondary, StickClick, Menu, Count };
+		constexpr int kVRInputCount = static_cast<int>(VRInput::Count);
+		enum VRHandRole { VRRoleTool = 0, VRRoleOff = 1 };
+		struct VRBindTarget {
+			int role = -1; // VRHandRole, -1 for nothing
+			VRInput input = VRInput::Trigger;
+			bool operator==(const VRBindTarget& o) const {
+				return role == o.role && (role < 0 || input == o.input);
+			}
+		};
+		struct VRBindings {
+			VRBindTarget target[2][kVRInputCount]; // [role][physical input]
+		};
+		VRBindings VRDefaultBindings();
+		const char* VRInputName(VRInput); // "trigger", "grip", "primary", ...
+		/** "tool.primary=off.secondary,off.grip=none": only what differs from the
+		 * default. Unknown entries are skipped. */
+		VRBindings VRParseBindings(const std::string&);
+		std::string VRFormatBindings(const VRBindings&);
+		/** `in` (by hand) into `out` (by hand) under `b`: each button's state goes to
+		 * the button it is bound to (several to one: any of them). A button bound
+		 * to a trigger or grip pulls it fully; a trigger or grip bound to a
+		 * button presses it past half. The rest of each controller (poses, stick)
+		 * is copied; `swapSticks` swaps the two sticks' directions. */
+		void VRApplyBindings(const VRControllerState in[2], VRControllerState out[2], int toolHand,
+		                     const VRBindings& b, bool swapSticks);
 
 		/** Physical reloading: whether the off hand, holding a magazine, is at
 		 * the gun's magazine well. Game space (z down), `scale` blocks a metre.
