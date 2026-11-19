@@ -30,6 +30,7 @@
 #include <Core/Strings.h>
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include "Corpse.h"
 #include "CTFGameMode.h"
 #include "DaytimeWeather.h"
@@ -784,6 +785,8 @@ namespace spades {
 					ent->Render3D();
 
 				bloodMarks->Draw();
+				if (impactMarks)
+					impactMarks->Draw();
 
 				if (maybePlayer) { // localplayer exists
 					Player& p = maybePlayer.value();

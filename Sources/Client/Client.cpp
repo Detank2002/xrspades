@@ -52,6 +52,7 @@
 #include "Teamplay.h"
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include <Gui/UI/Components/SoftwareCursor.h>
 #include <Gui/UI/Components/LimboMenu.h>
 #include "Corpse.h"
@@ -354,6 +355,7 @@ namespace spades {
 
 			RemoveAllLocalEntities();
 			bloodMarks.reset();
+			impactMarks.reset();
 
 			renderer->SetGameMap(nullptr);
 			audioDevice->SetGameMap(nullptr);
@@ -555,6 +557,7 @@ namespace spades {
 
 			// init blood marks
 			bloodMarks = stmp::make_unique<BloodMarks>(*this);
+			impactMarks = stmp::make_unique<ImpactMarks>(*this);
 
 			// create block cursor model
 			{

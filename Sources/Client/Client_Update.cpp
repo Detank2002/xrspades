@@ -31,6 +31,7 @@
 #include "IAudioDevice.h"
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include "CenterMessageView.h"
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
@@ -406,6 +407,8 @@ namespace spades {
 
 				// update blood marks
 				bloodMarks->Update(gameplayDt);
+				if (impactMarks)
+					impactMarks->Update(gameplayDt);
 
 				// wait for corpse update to finish
 				corpseDispatch.Join();
@@ -1220,6 +1223,8 @@ namespace spades {
 			bool isFirstPerson = IsPlayerInFirstPerson(p.GetId());
 			if (isFirstPerson && p.IsLocalPlayer())
 				VRPulse(VRToolHand(), 0.45F, 0.04F);
+			if (impactMarks)
+				impactMarks->Add(hitPos, blockPos, normal, true);
 			if (isFirstPerson)
 				localFireVibrationTime = time;
 
@@ -1826,6 +1831,9 @@ namespace spades {
 			};
 
 			const auto& shiftedHitPos = hitPos + (MakeVector3(normal) * 0.1F);
+
+			if (impactMarks)
+				impactMarks->Add(hitPos, blockPos, normal, false);
 
 			if (blockPos.z >= 63) {
 				BulletHitWaterSurface(shiftedHitPos);

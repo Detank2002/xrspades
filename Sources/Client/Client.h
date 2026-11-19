@@ -86,6 +86,7 @@ namespace spades {
 		class TCProgressView;
 		class ClientPlayer;
 		class BloodMarks;
+		class ImpactMarks;
 		class ClientUI;
 		class PieMenuView;
 		class Teamplay;
@@ -597,6 +598,7 @@ namespace spades {
 			void RemoveAllLocalEntities();
 
 			std::unique_ptr<BloodMarks> bloodMarks;
+			std::unique_ptr<ImpactMarks> impactMarks;
 			Handle<IModel> blockCursorModel;
 
 			int nextMapShotIndex;

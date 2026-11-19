@@ -33,6 +33,7 @@
 #include "IAudioDevice.h"
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include "Corpse.h"
 #include "ILocalEntity.h"
 #include "ParticleSpriteEntity.h"
@@ -130,6 +131,8 @@ namespace spades {
 
 			if (bloodMarks)
 				bloodMarks->Clear();
+			if (impactMarks)
+				impactMarks->Clear();
 		}
 
 		stmp::optional<std::tuple<Player&, hitTag_t>> Client::HotTrackedPlayer(bool includeEnemies) {

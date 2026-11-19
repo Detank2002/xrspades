@@ -73,6 +73,8 @@ namespace spades {
 
 			l.AddHeading(_Tr("Preferences", "Effects"));
 			l.AddToggleField(_Tr("Preferences", "Headshot Gore"), "cg_headshotGore");
+			l.AddToggleField(_Tr("Preferences", "Bullet And Spade Holes In Blocks"),
+			                 "cg_impactMarks");
 			l.AddChoiceField(_Tr("Preferences", "Blood"), "cg_blood",
 			                 {_Tr("Preferences", "MARKS"), _Tr("Preferences", "NORMAL"),
 			                  _Tr("Preferences", "OFF")},
