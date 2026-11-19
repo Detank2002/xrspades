@@ -370,6 +370,17 @@ monitor, with `--demo-camera`). Click the stick again, or respawn, to leave
 it. The maths is `VRTableToWorld` and the hold functions beside it, tested in
 `vr_state_test`.
 
+**Hands for the menus** (`vr_handTracking`, on; read at start). Put the
+controllers down and, where the runtime tracks hands (a Quest, or a PC runtime
+with XR_EXT_hand_tracking), a hand points at the menus and the keyboard, and
+a pinch of thumb and index finger clicks. On a Quest the runtime's own aim
+and pinch are used (XR_FB_hand_tracking_aim), and its menu gesture is the
+menu button; elsewhere the palm points and the thumb's tip coming within a
+few centimetres of the index finger's is the pinch. A hand only stands in
+for a controller that is not there, and only in the menus
+(`VRFrameState::handTracked`): the game never reads it, so a pinch can never
+fire a gun. The Quest's manifest asks for hand tracking, not requiring it.
+
 **The keyboard on its own** (`vr_keyboardDetached`, on). It comes up in
 front of you, below your eyes and tipped back like a keyboard on a desk, on
 a panel of its own rather than on the menu: aim at a key and pull the
@@ -458,6 +469,7 @@ far as a normal throw.
 | `vr_twoHandedGrip` | 1 | the off hand's grip on the barrel holds a gun in both hands |
 | `vr_shoulderStock` | 1 | the off hand's trigger, held on a gun's barrel, braces it on the shoulder |
 | `vr_toolCollision` | 0 | hands and held tools stop at blocks (was `vr_solidTools`, on) |
+| `vr_handTracking` | 1 | with the controllers put down, a tracked hand points at the menus and a pinch clicks; read at start |
 | `vr_keyboardDetached` | 1 | the keyboard stands on its own in front of you, and the grip moves it; 0 draws it on the menu panel |
 | `vr_hurtEdge` | 1 | a red edge round the view when hit, thicker on the hit's side, and a heartbeat at low health (the rumble stays either way) |
 | `vr_aimSmooth` | 0 | 0 to 1: how much a nearly still gun is steadied |

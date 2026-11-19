@@ -14,6 +14,7 @@ one change, in a player's words.
 - New: in VR, watch a game or a demo as a model on a table in front of you: grab it, turn it and zoom with your hands
 - New: in VR, the keyboard stands on its own in front of you, and you can grab it with the grip and put it where you like
 - Improved: the VR keyboard has caps lock (Shift twice), arrow keys to fix typos, a Close key, and Back repeats while held
+- New: in VR, put the controllers down and use your hands in the menus: point, and pinch to click
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
 

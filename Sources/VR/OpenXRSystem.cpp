@@ -68,6 +68,9 @@ DEFINE_SPADES_SETTING(vr_traceRecord, "");
 DEFINE_SPADES_SETTING(vr_traceReplay, "");
 SPADES_SETTING(vr_wristHud);
 SPADES_SETTING(vr_wristWidth);
+// Tracked hands point at the menus and pinch to click, when the controllers
+// are put down (Quest; a PC runtime with hand tracking). Read at start.
+DEFINE_SPADES_SETTING(vr_handTracking, "1");
 
 namespace spades {
 	namespace vr {
@@ -310,6 +313,19 @@ namespace spades {
 			    !load("xrPerfSettingsSetPerformanceLevelEXT",
 			          reinterpret_cast<PFN_xrVoidFunction*>(&pfnPerfSettingsSetPerformanceLevel)))
 				pfnPerfSettingsSetPerformanceLevel = nullptr;
+#ifdef XR_EXT_hand_tracking
+			if (caps[XrCap::HandTracking] &&
+			    !(load("xrCreateHandTrackerEXT",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnCreateHandTracker)) &&
+			      load("xrDestroyHandTrackerEXT",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnDestroyHandTracker)) &&
+			      load("xrLocateHandJointsEXT",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnLocateHandJoints)))) {
+				pfnCreateHandTracker = nullptr;
+				pfnDestroyHandTracker = nullptr;
+				pfnLocateHandJoints = nullptr;
+			}
+#endif
 
 			// Required before a session may be created, and it says which Vulkan
 			// version the instance has to ask for.
@@ -380,6 +396,7 @@ namespace spades {
 			if (actionSet != XR_NULL_HANDLE)
 				xrDestroyActionSet(actionSet);
 			actionSet = XR_NULL_HANDLE;
+			DestroyHandTrackers();
 			if (session != XR_NULL_HANDLE) {
 				if (sessionRunning)
 					xrEndSession(session);
@@ -478,6 +495,7 @@ namespace spades {
 
 			if (!CreateActions())
 				return false;
+			CreateHandTrackers();
 
 			SPLog("[OpenXR] Session created");
 			return true;
@@ -900,6 +918,7 @@ namespace spades {
 
 			LocateViews();
 			UpdateInput();
+			UpdateHandTracking();
 			UpdateTrace();
 			PlaceHudPanel();
 
@@ -1223,6 +1242,93 @@ namespace spades {
 				c.buttonSecondary = getBool(secondaryAction);
 				c.menu = getBool(menuAction);
 			}
+		}
+
+		void OpenXRSystem::CreateHandTrackers() {
+#ifdef XR_EXT_hand_tracking
+			if (!(bool)vr_handTracking || !pfnCreateHandTracker || session == XR_NULL_HANDLE)
+				return;
+			for (int h = 0; h < 2; h++) {
+				XrHandTrackerCreateInfoEXT ci{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+				ci.hand = h == client::VRHandLeft ? XR_HAND_LEFT_EXT : XR_HAND_RIGHT_EXT;
+				ci.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
+				if (XR_FAILED(pfnCreateHandTracker(session, &ci, &handTrackers[h]))) {
+					handTrackers[h] = XR_NULL_HANDLE;
+					SPLog("[OpenXR] Hand tracking: no tracker for the %s hand",
+					      h == client::VRHandLeft ? "left" : "right");
+				}
+			}
+			if (handTrackers[0] != XR_NULL_HANDLE || handTrackers[1] != XR_NULL_HANDLE)
+				SPLog("[OpenXR] Hand tracking for the menus (%s)",
+				      caps[XrCap::HandTrackingAim] ? "the runtime's aim and pinch"
+				                                   : "the palm, and thumb to finger");
+#endif
+		}
+
+		void OpenXRSystem::DestroyHandTrackers() {
+#ifdef XR_EXT_hand_tracking
+			for (auto& t : handTrackers) {
+				if (t != XR_NULL_HANDLE && pfnDestroyHandTracker)
+					pfnDestroyHandTracker(t);
+				t = XR_NULL_HANDLE;
+			}
+#endif
+		}
+
+		void OpenXRSystem::UpdateHandTracking() {
+			for (int h = 0; h < 2; h++) {
+				frameState.handTracked[h] = false;
+				frameState.handPinch[h] = 0.0F;
+				frameState.handMenu[h] = false;
+			}
+#ifdef XR_EXT_hand_tracking
+			if (!pfnLocateHandJoints || appSpace == XR_NULL_HANDLE)
+				return;
+			for (int h = 0; h < 2; h++) {
+				if (handTrackers[h] == XR_NULL_HANDLE)
+					continue;
+				XrHandJointsLocateInfoEXT li{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+				li.baseSpace = appSpace;
+				li.time = predictedDisplayTime;
+				XrHandJointLocationEXT joints[XR_HAND_JOINT_COUNT_EXT];
+				XrHandJointLocationsEXT locs{XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
+				locs.jointCount = XR_HAND_JOINT_COUNT_EXT;
+				locs.jointLocations = joints;
+#ifdef XR_FB_hand_tracking_aim
+				XrHandTrackingAimStateFB aim{XR_TYPE_HAND_TRACKING_AIM_STATE_FB};
+				if (caps[XrCap::HandTrackingAim])
+					locs.next = &aim;
+#endif
+				if (XR_FAILED(pfnLocateHandJoints(handTrackers[h], &li, &locs)) || !locs.isActive)
+					continue;
+#ifdef XR_FB_hand_tracking_aim
+				if (caps[XrCap::HandTrackingAim] && (aim.status & XR_HAND_TRACKING_AIM_VALID_BIT_FB)) {
+					frameState.handAim[h] = ToPose(aim.aimPose, true);
+					frameState.handPinch[h] = aim.pinchStrengthIndex;
+					frameState.handMenu[h] = (aim.status & XR_HAND_TRACKING_AIM_MENU_PRESSED_BIT_FB) != 0;
+					frameState.handTracked[h] = true;
+					continue;
+				}
+#endif
+				// Without the runtime's aim: the palm points (its -Z runs along the
+				// fingers), and the thumb's tip to the index finger's is the pinch,
+				// full at 1cm, none from 4cm.
+				const XrHandJointLocationEXT& palm = joints[XR_HAND_JOINT_PALM_EXT];
+				const XrHandJointLocationEXT& thumb = joints[XR_HAND_JOINT_THUMB_TIP_EXT];
+				const XrHandJointLocationEXT& index = joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+				if (!PoseValid(palm.locationFlags))
+					continue;
+				frameState.handAim[h] = ToPose(palm.pose, true);
+				if (PoseValid(thumb.locationFlags) && PoseValid(index.locationFlags)) {
+					const float dx = thumb.pose.position.x - index.pose.position.x;
+					const float dy = thumb.pose.position.y - index.pose.position.y;
+					const float dz = thumb.pose.position.z - index.pose.position.z;
+					const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+					frameState.handPinch[h] = std::max(0.0F, std::min(1.0F, (0.04F - d) / 0.03F));
+				}
+				frameState.handTracked[h] = true;
+			}
+#endif
 		}
 
 		bool OpenXRSystem::AcquireEyeImage(int eye, VkImage& image) {

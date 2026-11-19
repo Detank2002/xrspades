@@ -145,6 +145,15 @@ namespace spades {
 			 * wrist menu. `wristGrow` eases 0..1 as it does. */
 			bool wristExpanded = false;
 			float wristGrow = 0.0F;
+			/** Tracked hands (XR_EXT_hand_tracking, vr_handTracking), for the
+			 * menus only: a hand without its controller points with its aim
+			 * (XR_FB_hand_tracking_aim's, or the palm's), and a pinch of thumb
+			 * and index finger is its trigger, 0..1 (VRMenuPointer). The game
+			 * itself never reads these: a pinch must not fire a gun. */
+			bool handTracked[2] = {false, false};
+			VRPose handAim[2];
+			float handPinch[2] = {0.0F, 0.0F};
+			bool handMenu[2] = {false, false};
 			/** The wrist panel is the keyboard this frame, standing on its own
 			 * where VRMenuPointer put it (IVRSystem::SetKeyboardPanel), not the HUD. */
 			bool keyboardPanel = false;

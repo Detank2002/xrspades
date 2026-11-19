@@ -168,6 +168,16 @@ namespace spades {
 			                       VkImage& image, const char* what);
 			void ReleasePanelImage(XRSwapchain& sc, const char* what);
 			void UpdateInput();
+			// Tracked hands, for the menus (VRFrameState::handTracked)
+			void CreateHandTrackers();
+			void DestroyHandTrackers();
+			void UpdateHandTracking();
+#ifdef XR_EXT_hand_tracking
+			XrHandTrackerEXT handTrackers[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
+			PFN_xrCreateHandTrackerEXT pfnCreateHandTracker = nullptr;
+			PFN_xrDestroyHandTrackerEXT pfnDestroyHandTracker = nullptr;
+			PFN_xrLocateHandJointsEXT pfnLocateHandJoints = nullptr;
+#endif
 			void LocateViews();
 			/** vr_traceRecord / vr_traceReplay, after the frame's input is read. */
 			void UpdateTrace();

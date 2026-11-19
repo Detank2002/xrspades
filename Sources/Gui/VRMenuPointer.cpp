@@ -50,9 +50,26 @@ namespace spades {
 			                             static_cast<float>(client::kVRWristCanvasWidth);
 		} // namespace
 
-		void VRMenuPointer::Update(View& view, const client::VRFrameState& fs, float screenWidth,
-		                           float screenHeight, float dt) {
+		void VRMenuPointer::Update(View& view, const client::VRFrameState& rawFs,
+		                           float screenWidth, float screenHeight, float dt) {
 			using namespace client;
+
+			// A tracked hand stands in for its controller when that is put down:
+			// it points with its aim, and a pinch is the trigger. Only here, for
+			// the menus; the game never sees it.
+			VRFrameState withHands = rawFs;
+			for (int h = 0; h < 2; h++) {
+				if (rawFs.hands[h].active || !rawFs.handTracked[h])
+					continue;
+				VRControllerState& c = withHands.hands[h];
+				c = VRControllerState();
+				c.active = true;
+				c.aim = rawFs.handAim[h];
+				c.grip = rawFs.handAim[h];
+				c.trigger = rawFs.handPinch[h];
+				c.menu = rawFs.handMenu[h];
+			}
+			const VRFrameState& fs = withHands;
 
 			pressedTime = std::max(0.0F, pressedTime - dt);
 			clock += dt;
