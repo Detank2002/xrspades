@@ -3465,6 +3465,7 @@ namespace spades {
 				// The headset's alone: the window's preview is taken before it
 				DrawInEachVREye(
 				  [&]() {
+					  DrawVRHurtEdge();
 					  DrawVRVignette();
 					  if (vrRig.fade > 0.0F) {
 						  renderer->SetColorAlphaPremultiplied(MakeVector4(0, 0, 0, vrRig.fade));

@@ -246,6 +246,16 @@ namespace spades {
 			bool lastHitWasScoped;
 			bool lastHitWasAirborne;
 			int damageTaken;
+			// Where the last hit came from (LocalPlayerHurt), for the rumble and
+			// the red edge in a headset: world space, and whether it is known
+			// (not a fall or drowning) and recent enough to be this hit's.
+			Vector3 vrHurtSource{0.0F, 0.0F, 0.0F};
+			bool vrHurtSourceKnown = false;
+			float vrHurtSourceTime = -100.0F;
+			// The hit's side for the red edge (-1 left to 1 right, of the head
+			// when it was taken) and how far behind (0 ahead to 1 behind).
+			float vrHurtSide = 0.0F;
+			float vrHurtBehind = 0.0F;
 			int lastHealth;
 			int lastScore;
 			int curKills;
@@ -1069,6 +1079,11 @@ namespace spades {
 		private:
 			/** The comfort vignette, drawn in the eye being drawn. */
 			void DrawVRVignette();
+			/** A hit taken in a headset: rumble from its side, scaled by `damage`. */
+			void VRHurtFeedback(int damage);
+			/** The red edge after a hit and at low health, in each eye. */
+			void DrawVRHurtEdge();
+			Handle<IImage> vrHurtEdgeImage;
 			Handle<IImage> vrVignetteImage;
 			/** The physical reload (vr_reloadGesture); true to press reload now. */
 			bool UpdateVRReload(Player&, const VRFrameState&);

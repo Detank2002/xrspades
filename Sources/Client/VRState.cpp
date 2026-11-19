@@ -316,6 +316,53 @@ namespace spades {
 			return deg * 3.14159265F / 180.0F;
 		}
 
+		VRHurtRumble VRHurtRumbleFor(int damage, float side, bool known) {
+			// 10 damage is a light tap, 50 and over (a headshot, a big fall)
+			// as hard as the motors go.
+			const float d = std::max(0.0F, std::min(1.0F, (damage - 5) / 45.0F));
+			VRHurtRumble r;
+			r.seconds = 0.08F + 0.17F * d;
+			const float amp = 0.45F + 0.55F * d;
+			if (!known) {
+				r.amplitude[VRHandLeft] = r.amplitude[VRHandRight] = amp;
+				return r;
+			}
+			const float s = std::max(-1.0F, std::min(1.0F, side));
+			// Straight ahead or behind: both alike. Fully to one side: the far
+			// hand at a quarter.
+			const float far = amp * (1.0F - 0.75F * std::fabs(s));
+			r.amplitude[VRHandRight] = s >= 0.0F ? amp : far;
+			r.amplitude[VRHandLeft] = s >= 0.0F ? far : amp;
+			return r;
+		}
+
+		float VRHurtEdgeAmount(int damage, float age) {
+			if (damage <= 0 || age < 0.0F)
+				return 0.0F;
+			const float d = std::max(0.0F, std::min(1.0F, damage / 50.0F));
+			const float peak = 0.35F + 0.65F * d;
+			const float fade = 0.5F + 0.5F * d;
+			if (age >= fade)
+				return 0.0F;
+			const float t = 1.0F - age / fade;
+			return peak * t * t;
+		}
+
+		float VRLowHealthEdge(int health, float time) {
+			if (health <= 0 || health > 30)
+				return 0.0F;
+			const float low = 1.0F - (health - 1) / 30.0F; // ~0 at 30, 1 at 1
+			// A heartbeat: two quick beats a second and a bit apart, faster when lower
+			const float period = 1.2F - 0.4F * low;
+			const float ph = std::fmod(std::max(0.0F, time), period) / period;
+			auto beat = [](float x, float at) {
+				const float u = (x - at) / 0.08F;
+				return std::exp(-u * u);
+			};
+			const float pulse = std::max(beat(ph, 0.1F), 0.7F * beat(ph, 0.3F));
+			return (0.12F + 0.28F * low) * (0.4F + 0.6F * pulse);
+		}
+
 		namespace {
 			// The trace's fields, in order, as floats: a pose is position,
 			// orientation, valid; a controller is active, grip, aim, velocity and

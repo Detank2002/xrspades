@@ -322,6 +322,8 @@ namespace spades {
 							lastHurtTime = time;
 						lastHealTime = -100.0F;
 						damageTaken = lastHealth - health;
+						if (lastHealth > 0)
+							VRHurtFeedback(damageTaken);
 					} else {
 						lastHurtTime = -100.0F;
 						if (lastHealth > 0)
@@ -2096,7 +2098,11 @@ namespace spades {
 		void Client::LocalPlayerHurt(HurtType type, spades::Vector3 source) {
 			SPADES_MARK_FUNCTION();
 
-			VRPulse(-1, 0.9F, 0.15F);
+			// The rumble waits for the health, so it knows how hard the hit was
+			// (VRHurtFeedback); here, where it came from.
+			vrHurtSourceKnown = type != HurtTypeFall && source.GetSquaredLength() >= 0.01F;
+			vrHurtSource = source;
+			vrHurtSourceTime = time;
 
 			if (source.GetSquaredLength() < 0.01F) {
 				// should this be handled on the server side?

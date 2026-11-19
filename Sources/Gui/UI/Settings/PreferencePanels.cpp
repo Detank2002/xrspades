@@ -473,6 +473,7 @@ namespace spades {
 			l.AddToggleField(_Tr("Preferences", "Comfort Camera When Dead"), "vr_comfortCamera");
 			l.AddSliderField(_Tr("Preferences", "Comfort Vignette"), "vr_vignette", 0, 1, 0.1F,
 			                 zeroMeans(_Tr("Preferences", "Off"), 1, ""));
+			l.AddToggleField(_Tr("Preferences", "Red Edge When Hit"), "vr_hurtEdge");
 			l.AddToggleField(_Tr("Preferences", "Walking In The Room Moves You"), "vr_roomScale");
 			l.AddToggleField(_Tr("Preferences", "Controllers Only (No Keyboard Or Mouse)"),
 			                 "vr_controllersOnly");

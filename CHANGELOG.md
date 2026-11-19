@@ -9,6 +9,8 @@ one change, in a player's words.
 
 - New: ZeroSpades X is now XRSpades, same game, new name
 - New: the menu's links take you to XRSpades' releases, code and Discord
+- New: in VR, getting hit kicks the controller on the side it came from, harder for bigger hits, and reddens the edge of your view
+- New: in VR, a heartbeat at the edge of your view when your health is low
 
 ## 0.3.6
 

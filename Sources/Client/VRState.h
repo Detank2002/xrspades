@@ -358,6 +358,25 @@ namespace spades {
 		 * of 0.5 closes to 40. */
 		float VRVignetteClearAngle(float amount, float strength);
 
+		/** Taking damage in a headset: the rumble in each hand (amplitude 0 to 1,
+		 * by VRHandIndex) and how long it lasts. A bigger hit is harder and
+		 * longer. `side` is where the hit came from across the head, -1 fully to
+		 * the left to 1 fully to the right; with `known` false (a fall, drowning,
+		 * no source) both hands get it alike. The hand on the hit's side gets it
+		 * all, the other less the more the hit was to one side. */
+		struct VRHurtRumble {
+			float amplitude[2];
+			float seconds;
+		};
+		VRHurtRumble VRHurtRumbleFor(int damage, float side, bool known);
+		/** The red edge of the view after a hit, 0 to 1: `damage` taken
+		 * `age` seconds ago. Shows at once and fades over half a second to a
+		 * second (longer for bigger hits). */
+		float VRHurtEdgeAmount(int damage, float age);
+		/** The low-health edge, 0 to 1: nothing over 30 health, then a slow
+		 * heartbeat (`time` in seconds) that is stronger the lower it gets. */
+		float VRLowHealthEdge(int health, float time);
+
 		/** A held tool is solid against the map. `solid` says whether a point
 		 * (world space) is inside a block. The hand is stopped where the line
 		 * from `anchor` (the eyes: known clear) to it first meets a block, and the

@@ -587,6 +587,41 @@ int main() {
 		CHECK(worstRounded > 20.0F * 3.14159265F / 180.0F); // the control
 	}
 
+	// Taking damage: harder for bigger hits, and on the side it came from
+	{
+		VRHurtRumble small = VRHurtRumbleFor(10, 0.0F, true);
+		VRHurtRumble big = VRHurtRumbleFor(60, 0.0F, true);
+		CHECK(big.amplitude[VRHandLeft] > small.amplitude[VRHandLeft]);
+		CHECK(big.seconds > small.seconds);
+		CHECK(big.amplitude[VRHandLeft] <= 1.0F);
+		CHECK(small.amplitude[VRHandLeft] == small.amplitude[VRHandRight]);
+		VRHurtRumble right = VRHurtRumbleFor(30, 1.0F, true);
+		CHECK(right.amplitude[VRHandRight] > right.amplitude[VRHandLeft] * 3.5F);
+		VRHurtRumble left = VRHurtRumbleFor(30, -0.7F, true);
+		CHECK(left.amplitude[VRHandLeft] > left.amplitude[VRHandRight]);
+		VRHurtRumble fall = VRHurtRumbleFor(30, 1.0F, false);
+		CHECK(fall.amplitude[VRHandLeft] == fall.amplitude[VRHandRight]);
+
+		CHECK(VRHurtEdgeAmount(20, 0.0F) > 0.3F);
+		CHECK(VRHurtEdgeAmount(80, 0.0F) > VRHurtEdgeAmount(10, 0.0F));
+		CHECK(VRHurtEdgeAmount(20, 0.3F) < VRHurtEdgeAmount(20, 0.0F));
+		CHECK(VRHurtEdgeAmount(20, 2.0F) == 0.0F);
+		CHECK(VRHurtEdgeAmount(0, 0.0F) == 0.0F);
+
+		CHECK(VRLowHealthEdge(31, 0.1F) == 0.0F);
+		CHECK(VRLowHealthEdge(0, 0.1F) == 0.0F);
+		float lo = 0.0F, hi = 0.0F, lo5 = 1.0F;
+		for (int i = 0; i < 200; i++) {
+			const float v = VRLowHealthEdge(20, i * 0.01F);
+			hi = std::max(hi, v);
+			lo5 = std::min(lo5, v);
+			lo = std::max(lo, VRLowHealthEdge(5, i * 0.01F));
+		}
+		CHECK(hi > lo5 * 1.5F); // it beats
+		CHECK(lo > hi);         // and is stronger when lower
+		CHECK(lo <= 0.4F);
+	}
+
 	std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
 	return failures ? 1 : 0;
 }

@@ -122,6 +122,10 @@ DEFINE_SPADES_SETTING(vr_scope, "1");
 // reaches configs that saved the old one): aiming round cover, the gun
 // stopped at the corner and slid back, and the aim went with it.
 DEFINE_SPADES_SETTING(vr_toolCollision, "0");
+// Taking damage: a red edge round the view, thicker on the side the hit came
+// from, and a heartbeat at low health. 0: off (the rumble stays).
+DEFINE_SPADES_SETTING(vr_hurtEdge, "1");
+SPADES_SETTING(cg_hurtScreenEffects);
 
 SPADES_SETTING(cg_keyAttack);
 SPADES_SETTING(cg_keyAltAttack);
@@ -776,6 +780,95 @@ namespace spades {
 				font.Draw(l, MakeVector2(box.GetMinX() + pad, y), k, MakeVector4(1, 1, 1, 1));
 				y += lh * k;
 			}
+		}
+
+		void Client::VRHurtFeedback(int damage) {
+			if (!IsVRActive() || damage <= 0)
+				return;
+			// Where it came from, across the head (LocalPlayerHurt comes with the
+			// health packet, just before)
+			const bool known = vrHurtSourceKnown && time - vrHurtSourceTime < 0.5F;
+			float side = 0.0F, behind = 0.0F;
+			if (known) {
+				Vector3 rel = vrHurtSource - vrRig.camera;
+				rel.z = 0.0F;
+				if (rel.GetSquaredLength() > 1.0E-4F) {
+					rel = rel.Normalize();
+					Vector3 fw = vrRig.headAxes[0], rt = vrRig.headAxes[1];
+					fw.z = rt.z = 0.0F;
+					if (fw.GetSquaredLength() > 1.0E-4F && rt.GetSquaredLength() > 1.0E-4F) {
+						side = Vector3::Dot(rel, rt.Normalize());
+						behind = std::max(0.0F, -Vector3::Dot(rel, fw.Normalize()));
+					}
+				}
+			}
+			vrHurtSide = side;
+			vrHurtBehind = behind;
+			const VRHurtRumble r = VRHurtRumbleFor(damage, side, known);
+			for (int hand = 0; hand < 2; hand++)
+				if (r.amplitude[hand] > 0.0F)
+					VRPulse(hand, r.amplitude[hand], r.seconds, VRHapticShape::Kick);
+		}
+
+		void Client::DrawVRHurtEdge() {
+			// Per eye, as the vignette: a red ring, its clear middle pushed away
+			// from the hit's side so that edge is thicker.
+			if (!(bool)vr_hurtEdge || !(bool)cg_hurtScreenEffects)
+				return;
+			if (!world)
+				return;
+			stmp::optional<Player&> p = world->GetLocalPlayer();
+			if (!p || !p->IsAlive() || p->IsSpectator())
+				return;
+			const float hit = VRHurtEdgeAmount(damageTaken, time - lastHurtTime);
+			const float low = VRLowHealthEdge(lastHealth, time);
+			if (hit <= 0.001F && low <= 0.001F)
+				return;
+			constexpr float kInner = 0.55F;
+			if (!vrHurtEdgeImage) {
+				const int n = 256;
+				auto bmp = Handle<Bitmap>::New(n, n);
+				uint32_t* px = bmp->GetPixels();
+				for (int y = 0; y < n; y++)
+					for (int x = 0; x < n; x++) {
+						const float dx = (x + 0.5F) / n * 2.0F - 1.0F;
+						const float dy = (y + 0.5F) / n * 2.0F - 1.0F;
+						float t = (std::sqrt(dx * dx + dy * dy) - kInner) / (1.0F - kInner);
+						t = Clamp(t, 0.0F, 1.0F);
+						t = t * t;
+						px[y * n + x] = static_cast<uint32_t>(t * 255.0F + 0.5F) << 24;
+					}
+				vrHurtEdgeImage = renderer->CreateImage(*bmp);
+			}
+			const SceneDefinition& d = lastSceneDef;
+			// The ring's clear part reaches 40 degrees out; the eye sees ~50
+			const float clear = 40.0F * 3.14159265F / 180.0F;
+			Vector2 c, e;
+			if (!Project(d.viewOrigin + d.viewAxis[2], c) ||
+			    !Project(d.viewOrigin + d.viewAxis[2] + d.viewAxis[0] * std::tan(clear), e))
+				return;
+			const float r = (e - c).GetLength() / kInner;
+			const float w = renderer->ScreenWidth(), h = renderer->ScreenHeight();
+			// The hit's side: the middle moves away from it, so that side
+			// closes in (a hit from behind closes in all round, a little more)
+			const float shift = hit > low ? vrHurtSide : 0.0F;
+			const float grow = hit > low ? 1.0F - 0.15F * vrHurtBehind : 1.0F;
+			const Vector2 cc = MakeVector2(c.x - shift * r * 0.35F, c.y);
+			const float rr = r * grow;
+			const float a = std::min(0.85F, std::max(hit, low));
+			// Premultiplied: a dark red
+			renderer->SetColorAlphaPremultiplied(MakeVector4(0.55F * a, 0.0F, 0.0F, a));
+			renderer->DrawImage(vrHurtEdgeImage, AABB2(cc.x - rr, cc.y - rr, rr * 2.0F, rr * 2.0F));
+			auto rect = [&](float x0, float y0, float x1, float y1) {
+				x0 = std::max(x0, 0.0F), y0 = std::max(y0, 0.0F);
+				x1 = std::min(x1, w), y1 = std::min(y1, h);
+				if (x1 > x0 && y1 > y0)
+					renderer->DrawImage(nullptr, AABB2(x0, y0, x1 - x0, y1 - y0));
+			};
+			rect(0.0F, 0.0F, w, cc.y - rr);
+			rect(0.0F, cc.y + rr, w, h);
+			rect(0.0F, cc.y - rr, cc.x - rr, cc.y + rr);
+			rect(cc.x + rr, cc.y - rr, w, cc.y + rr);
 		}
 
 		void Client::DrawVRVignette() {

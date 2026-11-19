@@ -325,6 +325,17 @@ In a headset there is no crosshair or scope (the gun in your hand is the
 sight), no hit marker (the controller buzzes instead), and no full-screen hurt
 or heal effects, which on a floating panel are a tinted rectangle in the air.
 
+**Taking damage.** Both controllers kick, harder and longer for a bigger hit
+(a light tap at 10 damage, as hard as they go from 50), and stronger in the
+hand on the side the hit came from: fully to one side, the far hand gets a
+quarter of it. A fall or drowning, with no side, kicks both alike
+(`VRHurtRumbleFor`). Each eye gets a dark red edge that closes in and fades over
+half a second to a second, thicker on the hit's side, and below 30 health a
+faint heartbeat at the edge, quicker and stronger the lower it gets
+(`Client::DrawVRHurtEdge`; `vr_hurtEdge 0`, or the game's Hurt Screen Effects
+off, turns the edge off but not the rumble). A headset itself has no rumble:
+the Quest 3's has no motor, and OpenXR has no way to reach the one PS VR2 has.
+
 **Menus.** Every 2D screen (main menu, server browser, team and weapon
 picker, scoreboard, in-game menu) is drawn on a panel. A menu stands in the
 room: it is put down in front of you, level, at eye height, and stays there,
@@ -418,6 +429,7 @@ far as a normal throw.
 | `vr_twoHandedGrip` | 1 | the off hand's grip on the barrel holds a gun in both hands |
 | `vr_shoulderStock` | 1 | the off hand's trigger, held on a gun's barrel, braces it on the shoulder |
 | `vr_toolCollision` | 0 | hands and held tools stop at blocks (was `vr_solidTools`, on) |
+| `vr_hurtEdge` | 1 | a red edge round the view when hit, thicker on the hit's side, and a heartbeat at low health (the rumble stays either way) |
 | `vr_aimSmooth` | 0 | 0 to 1: how much a nearly still gun is steadied |
 | `vr_swingSpeed` | 2.5 | swinging the spade faster than this (m/s) hits; 0 turns it off |
 | `vr_holsters` | 1 | take tools from the body with the gun hand's grip |
@@ -1501,41 +1513,35 @@ which captures a key press; VR's controls are fixed, so it has nothing to bind.
 
 ## Open
 
-- The HUD is not shown on the monitor while 3D is being drawn (the mirror is a
-  plain copy of the left eye).
-- Screen tints (hit flash, underwater tint) are not applied in VR.
+Checked against the code on 2026-11-19; done since first written: the HUD on
+the monitor (the wrist panel is drawn into the mirror), the hit flash (the red
+edge), the CI and release workflows (every release since 0.3.0, the Quest APK
+built there), multiview (the Quest presets turn it on; measured on a Quest 3),
+auto exposure's render-pass mismatch under HDR (cc02dd2b), and the scope,
+keyboard and wrist, all used by testers.
+
+- The underwater tint is not applied in VR.
 - Grip points per tool want tuning in the headset.
 - With a headset in use but asleep, the monitor shows the 16:9 VR layout
   stretched over the window, and a window of another shape shows the 3D
   stretched too.
-- The wrist panel's place over the wrist (8cm down the grip, 4cm off the back
-  of the hand), its show/hide angles and the 15 degree aim tilt are first
-  guesses, not yet tried in a headset.
-- Not yet tried in a headset: the scope, physical reloading, your body, the
-  comfort camera, holding the frame rate, the keyboard, the VR settings tab.
-  The lens and magazine-well places are first guesses.
-- The scope shows no water.
+- The scope shows no water (its pass skips it: `vrScopePass`).
 - Off-hand weapon actions: a shotgun pump (off hand back and forward along
   the barrel between shots) and a grenade pin (the off hand pulls it to start
   the cook) were built and unit-tested in 4a96027, both optional and never
   faster than the trigger, then taken out on 2026-10-11 until there is a better
   idea of how they should work in play. That commit has the stroke and pin
   detection (`VRPumpStep`, `VRPinStep`) and their tests.
-- The CI and release workflows (`ci.yml`, `release.yml`) have not run on
-  GitHub yet. The Android build is known to build and link locally and the
-  APK to package with `build-apk.ps1`; `build-apk.sh` and the Linux arm64 job
-  are untested.
-- Multiview (`vr_multiview`) has not been seen in a headset.
+- `build-apk.sh` and the Linux arm64 job are untested.
 - With Fog2 (`r_fogShadow 2` and radiosity) the per-eye path's right eye shows
   an unfogged void past a stepped edge in the far corner of the overview
   camera, where multiview draws fog over terrain. It does not happen without
   Fog2, and the cause is not found yet.
-- Under HDR, auto exposure's two gain render passes have different dependency
-  counts (`VkRenderPassBeginInfo-renderPass-00904`); predates multiview.
 - The off-centre eyes are verified on a monitor, not yet in a headset. The
   water's reflections and refractions were not in view in that test.
 - Validation warnings in VR that predate this work: a depth image copied into
   a colour one (`vkCmdCopyImage-srcImage-01551`), pipelines drawn in a render
   pass whose dependencies differ from the one they were made with
   (`vkCmdDrawIndexed-renderPass-02684`), and SPIR-V capabilities the device
-  does not declare (`VkShaderModuleCreateInfo-pCode-08740/08742`).
+  does not declare (`VkShaderModuleCreateInfo-pCode-08740/08742`). Not
+  rechecked since.
