@@ -944,6 +944,25 @@ namespace spades {
 				Vector3 throwPeakDir{1.0F, 0.0F, 0.0F};
 			};
 			VRRig vrRig;
+			/** The table view (VRTablePose): spectating, dead or watching a demo
+			 * in a headset, the map as a model in front of you. The off hand's
+			 * stick click (or the wrist menu) turns it on and off; a grip holds
+			 * the model where it is gripped, both grips turn and size it, and the
+			 * off hand's stick zooms and turns it. */
+			struct VRTableView {
+				bool active = false;
+				VRTablePose pose;
+				Vector3 anchor{0.0F, 0.0F, 0.0F}; // tracking space
+				bool held[2] = {false, false};
+				Vector3 heldWorld[2];
+				bool toggleLatched = false;
+				bool fogFar = false;
+			};
+			VRTableView vrTable;
+			/** Not in your own body: spectating, dead, or a demo. */
+			bool VRTableAllowed();
+			void SetVRTable(bool on);
+			void UpdateVRTable(const VRFrameState&, float dt);
 			/** Synthetic keys the controllers are holding down, by key name. */
 			std::unordered_map<std::string, bool> vrHeldKeys;
 

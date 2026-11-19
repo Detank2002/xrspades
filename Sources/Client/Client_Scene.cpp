@@ -67,6 +67,7 @@ SPADES_SETTING(cg_hurtScreenEffects);
 SPADES_SETTING(cg_orientationSmoothing);
 
 DEFINE_SPADES_SETTING(cg_fogColorOverride, "");
+DEFINE_SPADES_SETTING(r_debugWholeMap, "0");
 
 namespace spades {
 	namespace client {
@@ -546,6 +547,14 @@ namespace spades {
 
 				def.zNear = 0.05F;
 				def.skipWorld = false;
+				// r_debugWholeMap: the whole map, unfogged, as the VR table view
+				// draws it, for checking that on a monitor (with --demo-camera)
+				if ((bool)r_debugWholeMap) {
+					def.wholeMap = true;
+					def.zNear = 0.5F;
+					def.zFar = 8192.0F;
+					renderer->SetFogDistance(8192.0F);
+				}
 			} else {
 				// `cameraMode` is local to the has-world branch above; query it again
 				// here (GetCameraMode() returns None when there's no world). Without

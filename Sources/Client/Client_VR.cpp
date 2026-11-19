@@ -573,7 +573,13 @@ namespace spades {
 				case VRWristButton::QuickTarget: vrRig.wristToTeam = !vrRig.wristToTeam; break;
 				case VRWristButton::Colour: SetBlockColor(b.color); break;
 				case VRWristButton::Menu: scriptedUI->EnterClientMenu(); break;
-				case VRWristButton::Light: ToggleLocalFlashlight(); break;
+				case VRWristButton::Light:
+					// Not in a body (spectating, dead, a demo): the table view
+					if (VRTableAllowed())
+						SetVRTable(!vrTable.active);
+					else
+						ToggleLocalFlashlight();
+					break;
 				case VRWristButton::Team:
 					// As the limbo key (cg_keyLimbo) does.
 					inGameLimbo = true;
@@ -810,6 +816,85 @@ namespace spades {
 					VRPulse(hand, r.amplitude[hand], r.seconds, VRHapticShape::Kick);
 		}
 
+		bool Client::VRTableAllowed() {
+			if (!vrRig.active || !world || !world->GetMap())
+				return false;
+			if (IsDemoMode())
+				return true;
+			auto p = world->GetLocalPlayer();
+			return !p || p->IsSpectator() || !p->IsAlive();
+		}
+
+		void Client::SetVRTable(bool on) {
+			IVRSystem* vr = GetVRSystem();
+			if (on && (!vr || !VRTableAllowed()))
+				return;
+			if (on == vrTable.active)
+				return;
+			vrTable.active = on;
+			vrTable.held[0] = vrTable.held[1] = false;
+			if (!on) {
+				VRPulse(-1, 0.3F, 0.05F);
+				return;
+			}
+			const VRFrameState& fs = vr->GetFrameState();
+			// On a table in front of you: 55cm ahead and half a metre under the
+			// eyes, the whole map about 90cm across, turned the way you face.
+			Vector3 ahead = -fs.head.Axis(2);
+			ahead.y = 0.0F;
+			ahead = ahead.GetLength() > 1.0E-3F ? ahead.Normalize() : MakeVector3(0, 0, -1);
+			vrTable.anchor = fs.head.position + ahead * 0.55F + MakeVector3(0.0F, -0.5F, 0.0F);
+			const GameMap& map = *world->GetMap();
+			const float size = static_cast<float>(std::max(map.Width(), map.Height()));
+			vrTable.pose.centre = MakeVector3(map.Width() * 0.5F, map.Height() * 0.5F, 58.0F);
+			vrTable.pose.scale = size / 0.9F;
+			vrTable.pose.yaw = vrRig.bodyYaw;
+			VRPulse(-1, 0.4F, 0.06F);
+			ShowAlert(_Tr("Client", "Table view: grip to hold the map, both grips to turn and "
+			                        "size it, stick to zoom"),
+			          AlertType::Notice, 6.0F);
+		}
+
+		void Client::UpdateVRTable(const VRFrameState& fs, float dt) {
+			if (!world || !world->GetMap())
+				return;
+			const GameMap& map = *world->GetMap();
+			const float size = static_cast<float>(std::max(map.Width(), map.Height()));
+			// From 3m across down to 15cm a map's width... and a single block 2cm
+			const float minScale = size / 3.0F, maxScale = std::max(size / 0.15F, 50.0F);
+
+			// A grip holds the point of the model it closed on
+			for (int h = 0; h < 2; h++) {
+				const VRControllerState& c = fs.hands[h];
+				const bool down =
+				  c.grip.valid && (vrTable.held[h] ? c.squeeze > 0.4F : c.squeeze > 0.7F);
+				if (down && !vrTable.held[h]) {
+					vrTable.heldWorld[h] =
+					  VRTableToWorld(vrTable.pose, vrTable.anchor, c.grip.position);
+					VRPulse(h, 0.3F, 0.03F);
+				}
+				vrTable.held[h] = down;
+			}
+			if (vrTable.held[0] && vrTable.held[1]) {
+				VRTableHoldTwo(vrTable.pose, vrTable.anchor, vrTable.heldWorld[0],
+				               vrTable.heldWorld[1], fs.hands[0].grip.position,
+				               fs.hands[1].grip.position, minScale, maxScale);
+			} else if (vrTable.held[0] || vrTable.held[1]) {
+				const int h = vrTable.held[0] ? 0 : 1;
+				VRTableHoldOne(vrTable.pose, vrTable.anchor, vrTable.heldWorld[h],
+				               fs.hands[h].grip.position);
+			} else {
+				// The off hand's stick: up zooms in, sideways turns it, about the
+				// middle of the table.
+				const Vector2 st = fs.hands[1 - VRToolHand()].thumbstick;
+				if (std::fabs(st.y) > 0.2F)
+					vrTable.pose.scale =
+					  Clamp(vrTable.pose.scale * std::exp(-st.y * 1.2F * dt), minScale, maxScale);
+				if (std::fabs(st.x) > 0.2F)
+					vrTable.pose.yaw -= st.x * 1.2F * dt;
+			}
+		}
+
 		void Client::DrawVRHurtEdge() {
 			// Per eye, as the vignette: a red ring, its clear middle pushed away
 			// from the hit's side so that edge is thicker.
@@ -1017,6 +1102,11 @@ namespace spades {
 
 			IVRSystem* vr = GetVRSystem();
 			if (!vr || !vr->GetFrameState().running) {
+				if (vrTable.fogFar) {
+					renderer->SetFogDistance(128.0F);
+					vrTable.fogFar = false;
+				}
+				vrTable.active = false;
 				if (vrRig.active) {
 					// Back on the monitor: let go of everything the controllers held.
 					VRReleaseAllKeys();
@@ -1304,8 +1394,19 @@ namespace spades {
 				UpdateVRRigTransforms(fs, lastSceneDef.viewOrigin);
 				UpdateVRWrist(fs, dt, menu);
 
+				// The table view: the off hand's stick click alone (both together
+				// recentre) turns it on and off.
+				const bool tableClick = O.thumbstickClick && !T.thumbstickClick;
+				if (!menu && tableClick && !vrTable.toggleLatched)
+					SetVRTable(!vrTable.active);
+				vrTable.toggleLatched = O.thumbstickClick;
+
 				if (menu) {
 					VRReleaseAllKeys();
+				} else if (vrTable.active) {
+					// The hands hold the model; nothing else.
+					VRReleaseAllKeys();
+					UpdateVRTable(fs, dt);
 				} else {
 					// Dead or spectating: the triggers cycle whom to follow and A
 					// switches the follow camera, as the mouse and space bar do.
@@ -1741,6 +1842,22 @@ namespace spades {
 			} else if ((int)vr_comfortCamera && IsVRComfortMode(mode) && vrRig.comfortAnchored) {
 				origin = vrRig.comfortAnchor;
 			}
+			// The table view: the head is outside the world, looking at it as a
+			// model. Seen through the same eyes, at the table's scale and turn.
+			const bool table = vrTable.active && VRTableAllowed();
+			if (!table)
+				vrTable.active = false;
+			const float bodyYaw = vrRig.bodyYaw, bodyScale = vrRig.scale;
+			if (table) {
+				origin = VRTableToWorld(vrTable.pose, vrTable.anchor, fs.head.position);
+				vrRig.bodyYaw = vrTable.pose.yaw;
+				vrRig.scale = vrTable.pose.scale;
+			}
+			if (table != vrTable.fogFar) {
+				// From outside, the fog would hide it all
+				renderer->SetFogDistance(table ? 8192.0F : 128.0F);
+				vrTable.fogFar = table;
+			}
 			UpdateVRRigTransforms(fs, origin);
 
 			// The single view is the head. Its field of view is the HUD panel's, so
@@ -1767,6 +1884,13 @@ namespace spades {
 				e.tangents = FovTangents{fs.eyeLeft[i], fs.eyeRight[i], fs.eyeDown[i], fs.eyeUp[i]};
 			}
 			def.numVREyes = 2;
+			if (table) {
+				vrRig.bodyYaw = bodyYaw;
+				vrRig.scale = bodyScale;
+				def.wholeMap = true;
+				def.zNear = 0.5F;
+				def.zFar = 8192.0F;
+			}
 
 			// Nothing that moves the picture without the head moving: that is
 			// what makes people sick. Shake, roll and zoom are already gone with

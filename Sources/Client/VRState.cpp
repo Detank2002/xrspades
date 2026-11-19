@@ -131,6 +131,38 @@ namespace spades {
 			return r;
 		}
 
+		namespace {
+			Vector3 TurnGame(const Vector3& g, float yaw) {
+				const float c = std::cos(yaw), s = std::sin(yaw);
+				return MakeVector3(g.x * c - g.y * s, g.x * s + g.y * c, g.z);
+			}
+		} // namespace
+
+		Vector3 VRTableToWorld(const VRTablePose& t, const Vector3& anchor, const Vector3& p) {
+			return t.centre + TurnGame(VRTrackingToGameAxes(p - anchor), t.yaw) * t.scale;
+		}
+
+		void VRTableHoldOne(VRTablePose& t, const Vector3& anchor, const Vector3& a,
+		                    const Vector3& p) {
+			t.centre = a - TurnGame(VRTrackingToGameAxes(p - anchor), t.yaw) * t.scale;
+		}
+
+		void VRTableHoldTwo(VRTablePose& t, const Vector3& anchor, const Vector3& a, const Vector3& b,
+		                    const Vector3& pa, const Vector3& pb, float minScale, float maxScale) {
+			// Across: the hands' line, in the game's ground plane, against the held
+			// points'.
+			const Vector3 d = VRTrackingToGameAxes(pb - pa);
+			const Vector3 w = b - a;
+			const float dl = std::sqrt(d.x * d.x + d.y * d.y);
+			const float wl = std::sqrt(w.x * w.x + w.y * w.y);
+			if (dl > 0.02F && wl > 1.0E-3F) {
+				t.scale = std::max(minScale, std::min(maxScale, wl / dl));
+				t.yaw = std::atan2(w.y, w.x) - std::atan2(d.y, d.x);
+			}
+			// The middle of the held points under the middle of the hands
+			VRTableHoldOne(t, anchor, (a + b) * 0.5F, (pa + pb) * 0.5F);
+		}
+
 		VRPose VRDefaultKeyboardPlace() {
 			VRPose r;
 			r.valid = true;

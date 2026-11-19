@@ -11,6 +11,7 @@ one change, in a player's words.
 - New: the menu's links take you to XRSpades' releases, code and Discord
 - New: in VR, getting hit kicks the controller on the side it came from, harder for bigger hits, and reddens the edge of your view
 - New: in VR, a heartbeat at the edge of your view when your health is low
+- New: in VR, watch a game or a demo as a model on a table in front of you: grab it, turn it and zoom with your hands
 - New: in VR, the keyboard stands on its own in front of you, and you can grab it with the grip and put it where you like
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

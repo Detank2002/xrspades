@@ -265,6 +265,27 @@ namespace spades {
 		VRPose VRDefaultKeyboardPlace();
 		constexpr float kVRKeyboardWidth = 0.5F;
 
+		/** The table view: the map as a model in front of you (spectating, dead, a
+		 * demo). A point `p` in tracking space shows the world at
+		 * `centre + turn(yaw) * game(p - anchor) * scale`: `anchor` is where the
+		 * model's centre sits in the room, `scale` blocks per metre, `yaw` its
+		 * turn (radians, as the body's). */
+		struct VRTablePose {
+			Vector3 centre{256.0F, 256.0F, 56.0F};
+			float scale = 500.0F;
+			float yaw = 0.0F;
+		};
+		Vector3 VRTableToWorld(const VRTablePose&, const Vector3& anchor, const Vector3& p);
+		/** One hand holding the world point `a` at `p`: moves the centre so it
+		 * stays under the hand. */
+		void VRTableHoldOne(VRTablePose&, const Vector3& anchor, const Vector3& a,
+		                    const Vector3& p);
+		/** Two hands holding `a` at `pa` and `b` at `pb`: the scale and turn that
+		 * keep both under them across (their height from their middle), within
+		 * `minScale`..`maxScale`. */
+		void VRTableHoldTwo(VRTablePose&, const Vector3& anchor, const Vector3& a, const Vector3& b,
+		                    const Vector3& pa, const Vector3& pb, float minScale, float maxScale);
+
 		/** Places the wrist panel just over the back of `hand`'s wrist, facing
 		 * the eyes and upright as they see it, and says whether it is up: the
 		 * back of the wrist is turned towards the eyes, within arm's length and

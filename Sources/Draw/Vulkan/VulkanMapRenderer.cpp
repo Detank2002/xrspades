@@ -183,6 +183,8 @@ namespace spades {
 
 			float cullDistance = 128.0F;
 			float releaseDistance = cullDistance + 32.0F;
+			// The whole map, seen from outside (a VR table view): every chunk
+			const bool whole = renderer.GetSceneDef().wholeMap;
 
 			// Calculate distance and realize/unrealize chunks based on distance
 			for (int i = 0; i < numChunks; i++) {
@@ -192,7 +194,7 @@ namespace spades {
 					chunkInfos[i].distance = dist;
 
 					// Frustum culling via distance-based LOD
-					if (dist < cullDistance) {
+					if (whole || dist < cullDistance) {
 						chunk->SetRealized(true);
 					} else if (dist > releaseDistance) {
 						chunk->SetRealized(false);
@@ -263,6 +265,16 @@ namespace spades {
 
 			// The view the pass sees the world through (set 3)
 			renderer.BindSceneView(commandBuffer, pipelineLayout);
+
+			// The whole map once, unwrapped (a VR table view sees it from outside,
+			// where the wrap would show copies of it all round)
+			if (renderer.GetSceneDef().wholeMap) {
+				for (int x = 0; x < numChunkWidth; x++)
+					for (int y = 0; y < numChunkHeight; y++)
+						for (int cz = 0; cz < numChunkDepth; cz++)
+							DrawColumn(commandBuffer, x, y, cz);
+				return;
+			}
 
 			// Draw from nearest to farthest for optimal depth testing
 			// Include all vertical chunks

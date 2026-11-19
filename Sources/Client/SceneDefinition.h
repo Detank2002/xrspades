@@ -64,6 +64,9 @@ namespace spades {
 			 *  scene that feeds it (the model editor wants voxels under the model,
 			 *  not the map's sea). */
 			bool skipWater;
+			/** Draw the whole map once, every chunk, without wrapping it round the
+			 * view (a VR table view, which sees it from outside as a model). */
+			bool wholeMap;
 
 			/** Whether the frame may draw models flagged `xray` through the world. The
 			 * renderer skips the whole pass when this is clear, so it has to be set on
@@ -134,6 +137,7 @@ namespace spades {
 				skipWorld = false;
 				allowPlayerXRay = false;
 				skipWater = false;
+				wholeMap = false;
 				flatModelLighting = false;
 				forceOutlines = false;
 				depthOfFieldFocalLength = 0.0F;

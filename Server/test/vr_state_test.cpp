@@ -657,6 +657,38 @@ int main() {
 		CHECK(Vector3::Dot(n, -yaw.Axis(2)) < -0.5F); // ...and back at you
 	}
 
+	// The table view: what a hand holds stays under it
+	{
+		const Vector3 anchor = MakeVector3(0.1F, 1.0F, -0.5F);
+		VRTablePose t;
+		t.centre = MakeVector3(256.0F, 256.0F, 56.0F);
+		t.scale = 500.0F;
+		t.yaw = 0.7F;
+		// The anchor shows the centre
+		CHECK((VRTableToWorld(t, anchor, anchor) - t.centre).GetLength() < 1.0E-3F);
+
+		// One hand: grab, move 10cm, the point follows
+		const Vector3 p0 = MakeVector3(0.3F, 1.1F, -0.4F);
+		const Vector3 a = VRTableToWorld(t, anchor, p0);
+		const Vector3 p1 = p0 + MakeVector3(0.1F, -0.05F, 0.07F);
+		VRTableHoldOne(t, anchor, a, p1);
+		CHECK((VRTableToWorld(t, anchor, p1) - a).GetLength() < 1.0E-2F);
+
+		// Two hands level: pulled apart and turned, both points stay under them
+		const Vector3 pa = MakeVector3(-0.2F, 1.0F, -0.5F), pb = MakeVector3(0.2F, 1.0F, -0.5F);
+		const Vector3 wa = VRTableToWorld(t, anchor, pa), wb = VRTableToWorld(t, anchor, pb);
+		const Vector3 qa = MakeVector3(-0.3F, 1.0F, -0.35F), qb = MakeVector3(0.25F, 1.0F, -0.7F);
+		VRTableHoldTwo(t, anchor, wa, wb, qa, qb, 10.0F, 5000.0F);
+		CHECK((VRTableToWorld(t, anchor, qa) - wa).GetLength() < 0.05F);
+		CHECK((VRTableToWorld(t, anchor, qb) - wb).GetLength() < 0.05F);
+		CHECK(t.scale < 500.0F); // further apart: bigger model, fewer blocks a metre
+
+		// And never past the limits
+		VRTableHoldTwo(t, anchor, wa, wb, MakeVector3(-1.0F, 1.0F, 0.0F),
+		               MakeVector3(1.0F, 1.0F, 0.0F), 300.0F, 5000.0F);
+		CHECK(t.scale >= 300.0F);
+	}
+
 	std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
 	return failures ? 1 : 0;
 }

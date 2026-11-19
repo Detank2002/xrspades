@@ -3027,6 +3027,14 @@ namespace spades {
 						break;
 					case VRWristButton::Menu: centred(mid, _Tr("Client", "Menu"), b.rect); break;
 					case VRWristButton::Light: {
+						// Not in a body: the table view instead
+						if (VRTableAllowed()) {
+							centred(mid,
+							        vrTable.active ? _Tr("Client", "Table: on")
+							                       : _Tr("Client", "Table: off"),
+							        b.rect);
+							break;
+						}
 						auto local = world->GetLocalPlayer();
 						centred(mid,
 						        local && local->IsFlashlightOn() ? _Tr("Client", "Light: on")

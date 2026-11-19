@@ -351,6 +351,21 @@ when pressed: the menus' soft tick (a little different each time, lower for
 the big keys), a tick in the hand, and the key lit and pressed in for a tenth
 of a second.
 
+**The table view.** Spectating, dead or watching a demo, the map can sit in
+front of you as a model on a table: click the off hand's stick (or press
+**Table** on the wrist menu, where the headlamp's button is while you have no
+body). It comes up 55cm ahead and half a metre below your eyes, the whole map
+about 90cm across. Close a grip on it and the point you gripped stays in your
+hand: drag it about, lift it, lower it. Both grips together turn it and size
+it, as you would stretch a picture on a phone; the off hand's stick zooms
+(up and down) and turns it (sideways). It is drawn as the camera does any
+view, from eyes far outside the world at the model's scale, so the players,
+names and smoke are all in it; the map is drawn whole and unwrapped, without
+fog (`SceneDefinition::wholeMap`; `r_debugWholeMap 1` shows the same on a
+monitor, with `--demo-camera`). Click the stick again, or respawn, to leave
+it. The maths is `VRTableToWorld` and the hold functions beside it, tested in
+`vr_state_test`.
+
 **The keyboard on its own** (`vr_keyboardDetached`, on). It comes up in
 front of you, below your eyes and tipped back like a keyboard on a desk, on
 a panel of its own rather than on the menu: aim at a key and pull the

@@ -338,7 +338,8 @@ namespace spades {
 			Vector3 diff = eye - centerPos;
 			float sx = 0.0F, sy = 0.0F;
 
-			{
+			// (Not when the whole map is drawn once, seen from outside.)
+			if (!renderer.renderer.GetSceneDef().wholeMap) {
 				const float mw = (float)map->Width();
 				const float mh = (float)map->Height();
 				if (diff.x >  (mw * 0.5F)) sx += mw;
@@ -394,7 +395,8 @@ namespace spades {
 			Vector3 diff = eye - centerPos;
 			float sx = 0.0F, sy = 0.0F;
 
-			{
+			// (Not when the whole map is drawn once, seen from outside.)
+			if (!renderer.renderer.GetSceneDef().wholeMap) {
 				const float mw = (float)map->Width();
 				const float mh = (float)map->Height();
 				if (diff.x >  (mw * 0.5F)) sx += mw;
