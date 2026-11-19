@@ -171,7 +171,7 @@ namespace spades {
 				vrPresenceCheckAt = time + 4.0F;
 
 			// display discord invite
-			s = _Tr("Client", "Join our official Discord {0}", "https://discord.gg/t64rKedpAu");
+			s = _Tr("Client", "Join the XRSpades Discord {0}", "https://discord.gg/24JDJbpKV9");
 			s = ChatWindow::ColoredMessage(s, MsgColorSysInfo);
 			chatWindow->AddMessage(s);
 			scriptedUI->RecordChatLog(s, chatWindow->GetColor(MsgColorSysInfo));
