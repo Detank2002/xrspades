@@ -303,52 +303,61 @@ def wmr(s, cx, cy, hand):
 
 
 def frame(s, cx, cy, hand):
-    """Steam Frame: a handle under a round face, no ring. A bumper over the
-    trigger, like a gamepad's; the stick by the thumb; on the left a D-pad and
-    View, on the right A, B, X and Y and Menu (Valve's Steamworks input page:
-    /interaction_profiles/valve/frame_controller_valve)."""
+    """Steam Frame (from a photo of the pair): a round disc for a head on a
+    curved handle, no ring. Left: the D-pad on the outer side, the stick in
+    toward the thumb, View between them at the top, the Steam button below.
+    Right: the stick low and in, A, B, X and Y up and out (Y top, A bottom),
+    Menu beside Y, the Steam button below the stick. Trigger under the disc,
+    a bumper over it (not seen from the front)."""
     m = hand
-    s.poly([(cx - 50, cy + 40), (cx + 50, cy + 40), (cx + 38 + 12 * m, cy + 300),
-            (cx - 38 + 12 * m, cy + 300)], fill=BODY, outline=BODY_EDGE, width=3)
-    s.ellipse(cx + 12 * m, cy + 300, 38, 17, fill=BODY, outline=BODY_EDGE, width=3)
-    s.rrect(cx - 128, cy - 100, cx + 128, cy + 92, 70, fill=BODY, outline=BODY_EDGE, width=3)
-    # Bumper over the trigger, both along the top front
-    s.rrect(cx - 54, cy - 132, cx + 54, cy - 112, 9, fill=PART, outline=PART_EDGE, width=2)
-    s.rrect(cx - 30, cy - 110, cx + 30, cy - 92, 9, fill=COLOURS["trigger"])
-    gx = cx - 44 * m
-    s.poly([(gx - 10, cy + 70), (gx + 10, cy + 70), (gx + 10 + 6 * m, cy + 230),
-            (gx - 10 + 6 * m, cy + 230)], fill=COLOURS["grip"])
-    st = (cx - 50 * m, cy - 18)
-    stick(s, *st, r=28)
-    c = (cx + 52 * m, cy + 18)
-    pts = {"trigger": (cx, cy - 101), "grip": (gx, cy + 150), "stick": st,
-           "bumper": (cx, cy - 122)}
+    # Handle, curving down and in under the disc
+    s.poly([(cx - 46, cy + 60), (cx + 46, cy + 60), (cx + 40 + 22 * m, cy + 300),
+            (cx - 36 + 22 * m, cy + 300)], fill=BODY, outline=BODY_EDGE, width=3)
+    s.ellipse(cx + 2 + 22 * m, cy + 300, 38, 17, fill=BODY, outline=BODY_EDGE, width=3)
+    # Bumper and trigger at the top front
+    s.rrect(cx - 50, cy - 140, cx + 50, cy - 122, 9, fill=PART, outline=PART_EDGE, width=2)
+    s.rrect(cx - 30, cy - 124, cx + 30, cy - 106, 9, fill=COLOURS["trigger"])
+    # The disc
+    s.ellipse(cx, cy, 122, 118, fill=BODY, outline=BODY_EDGE, width=3)
+    gx = cx - 40 * m
+    s.poly([(gx - 10, cy + 110), (gx + 10, cy + 110), (gx + 10 + 8 * m, cy + 240),
+            (gx - 10 + 8 * m, cy + 240)], fill=COLOURS["grip"])
+    pts = {"trigger": (cx, cy - 115), "grip": (gx, cy + 175), "bumper": (cx, cy - 131)}
     if m < 0:
-        # D-pad: a cross
+        st = (cx + 38, cy + 14)
+        stick(s, *st, r=28)
+        c = (cx - 52, cy - 12)
         a, b = 12, 38
         x0, y0 = c
         s.poly([(x0 - a, y0 - b), (x0 + a, y0 - b), (x0 + a, y0 - a), (x0 + b, y0 - a),
                 (x0 + b, y0 + a), (x0 + a, y0 + a), (x0 + a, y0 + b), (x0 - a, y0 + b),
                 (x0 - a, y0 + a), (x0 - b, y0 + a), (x0 - b, y0 - a), (x0 - a, y0 - a)],
                fill=PART, outline=PART_EDGE, width=2)
-        pts["lo"] = (c[0], c[1] + 24)
-        pts["hi"] = (c[0], c[1] - 24)
-        view = (cx + 6, cy - 68)
+        pts["lo"] = (x0, y0 + 24)
+        pts["hi"] = (x0, y0 - 24)
+        view = (cx + 4, cy - 72)
         s.rrect(view[0] - 13, view[1] - 7, view[0] + 13, view[1] + 7, 6, fill=PART,
                 outline=PART_EDGE, width=2)
         pts["view"] = view
+        steam = (cx - 20, cy + 62)
     else:
-        # A, B, X, Y in a diamond: Y top, A bottom, X toward the stick, B out
+        st = (cx - 42, cy + 28)
+        stick(s, *st, r=28)
+        c = (cx + 42, cy - 22)
         for key, (dx, dy), letter in (("y", (0, -28), "Y"), ("lo", (0, 28), "A"),
                                       ("x", (-28, 0), "X"), ("b", (28, 0), "B")):
             button(s, c[0] + dx, c[1] + dy, 15, letter)
             pts[key] = (c[0] + dx, c[1] + dy)
-        # The secondary is B (and X, Y as well): its marker on B
-        pts["hi"] = pts["b"]
-        menu = (cx - 6, cy - 68)
+        pts["hi"] = pts["b"]  # the secondary is B (and X, Y as well)
+        menu = (c[0] - 46, c[1] - 30)
         s.rrect(menu[0] - 13, menu[1] - 7, menu[0] + 13, menu[1] + 7, 6, fill=PART,
                 outline=PART_EDGE, width=2)
+        for k in (-3, 0, 3):
+            s.line([(menu[0] - 6, menu[1] + k), (menu[0] + 6, menu[1] + k)], TEXT, 1)
         pts["menu"] = menu
+        steam = (cx + 12, cy + 72)
+    s.ellipse(steam[0], steam[1], 12, 12, fill=PART, outline=PART_EDGE, width=2)
+    pts["stick"] = st
     return pts
 
 
