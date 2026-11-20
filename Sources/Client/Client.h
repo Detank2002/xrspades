@@ -915,6 +915,9 @@ namespace spades {
 				bool reflexActive = false;
 				Vector3 reflexCenter, reflexDir;
 				float reflexRadius = 0.0F;
+				// The gun's own right and up there: the reticle cants with the gun.
+				Vector3 reflexRight{1.0F, 0.0F, 0.0F};
+				Vector3 reflexUp{0.0F, 0.0F, -1.0F};
 				// The picture's half-angles (radians): what the centre of the lens
 				// shows at the monitor's magnification, and what its rim reaches.
 				float scopeCentreHalf = 0.05F;

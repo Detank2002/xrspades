@@ -2168,6 +2168,9 @@ namespace spades {
 					client.vrRig.reflexCenter = sights.reflexCenter;
 					client.vrRig.reflexDir = along.Normalize();
 					client.vrRig.reflexRadius = sights.reflexRadius;
+					const Matrix4 gunFrame = VRToolOriginMatrix(pos[toolHand], axes[toolHand]);
+					client.vrRig.reflexRight = gunFrame.GetAxis(0).Normalize();
+					client.vrRig.reflexUp = (gunFrame.GetAxis(2) * -1.0F).Normalize();
 				}
 			}
 			// The tool in the hand (currentTool), not the one chosen: the hand

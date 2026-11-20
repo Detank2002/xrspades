@@ -2800,43 +2800,102 @@ namespace spades {
 		}
 
 		void Client::DrawVRReflexDot() {
-			// Called per eye: the dot is where this eye's line along the barrel
-			// crosses the sight's window, and is seen only through it, so it
-			// stands at infinity on the barrel's line, as a reflex sight's does,
-			// in both eyes alike. Its size is a fixed angle, 3 milliradians.
-			// The setting's Cross (4) draws a thin cross there instead.
+			// Called per eye: the reticle is where this eye's line along the barrel
+			// crosses the sight's window, so it stands at infinity on the barrel's
+			// line, as a reflex sight's does, in both eyes alike. Its size is a
+			// fixed angle. It is seen only through the window: clipped to it, so
+			// the part behind the sight's frame goes and the rest stays (it used to
+			// vanish whole once its centre left the window, testers' report).
 			const Vector3 eye = lastSceneDef.viewOrigin;
 			const Vector3 dir = vrRig.reflexDir;
 			const float depth = Vector3::Dot(vrRig.reflexCenter - eye, dir);
 			if (depth < 0.02F)
 				return;
+			const bool holo = (int)cg_reflexScope == 4;
+			// How far the reticle reaches from its centre, in milliradians
+			const float reach = holo ? 16.0F : 6.0F;
 			const Vector3 at = eye + dir * depth;
-			if ((at - vrRig.reflexCenter).GetLength() > vrRig.reflexRadius)
+			if ((at - vrRig.reflexCenter).GetLength() > vrRig.reflexRadius + depth * reach * 0.001F)
 				return;
-			Vector3 side = Vector3::Cross(dir, MakeVector3(0.0F, 0.0F, 1.0F));
+
+			// The window on screen: its rim, seen nearly along the barrel, a circle
+			Vector3 side = Vector3::Cross(dir, vrRig.reflexUp);
 			if (side.GetLength() < 1.0E-3F)
-				side = MakeVector3(1.0F, 0.0F, 0.0F);
-			Vector2 centre, edge;
-			if (!Project(at, centre) || !Project(at + side.Normalize() * (depth * 0.003F), edge))
+				side = vrRig.reflexRight;
+			side = side.Normalize();
+			Vector2 windowCentre, windowEdge;
+			if (!Project(vrRig.reflexCenter, windowCentre) ||
+			    !Project(vrRig.reflexCenter + side * vrRig.reflexRadius, windowEdge))
 				return;
-			const float r = std::max(1.5F, (edge - centre).GetLength());
-			if ((int)cg_reflexScope == 4) {
-				// Two bars, 8 milliradians across, added to what is behind them
-				const float len = r * (8.0F / 3.0F), thick = std::max(1.0F, r * 0.3F);
-				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.1F, 0.06F, 0.0F));
-				renderer->DrawImage(nullptr, AABB2(centre.x - len, centre.y - thick * 0.5F,
-				                                   len * 2.0F, thick));
-				renderer->DrawImage(nullptr, AABB2(centre.x - thick * 0.5F, centre.y - len, thick,
-				                                   len * 2.0F));
+			const float windowR = (windowEdge - windowCentre).GetLength();
+			if (windowR < 1.0F)
 				return;
+
+			// One milliradian along the gun's own right and up, on screen: the
+			// reticle cants with the gun, not with the head.
+			Vector2 centre, rightEnd, upEnd;
+			const float mrad = depth * 0.001F;
+			if (!Project(at, centre) || !Project(at + vrRig.reflexRight * (mrad * 4.0F), rightEnd) ||
+			    !Project(at + vrRig.reflexUp * (mrad * 4.0F), upEnd))
+				return;
+			const Vector2 u = (rightEnd - centre) * 0.25F; // screen up is -y
+			const Vector2 v = (centre - upEnd) * 0.25F;
+			const float px = std::max(1.0E-3F, (u.GetLength() + v.GetLength()) * 0.5F);
+
+			renderer->BeginClippingCircle(windowCentre, windowR);
+			if (holo) {
+				// A ring with four ticks out from it and a dot in the middle, lit
+				// red over what is behind it: a soft wide pass, then the bright core.
+				auto at2 = [&](float x, float y) { return centre + u * x - v * y; };
+				auto line = [&](Vector2 p0, Vector2 p1, float width) {
+					Vector2 d = p1 - p0;
+					const float l = d.GetLength();
+					if (l < 1.0E-3F)
+						return;
+					d = d * (1.0F / l);
+					const Vector2 n = MakeVector2(-d.y, d.x) * (width * 0.5F);
+					p0 = p0 - d * (width * 0.5F);
+					p1 = p1 + d * (width * 0.5F);
+					renderer->DrawImage(nullptr, p0 - n, p1 - n, p0 + n,
+					                    AABB2(0.0F, 0.0F, 1.0F, 1.0F));
+				};
+				// About a holographic sight's 65 MOA ring
+				const float ring = 9.5F, tickIn = 9.5F, tickOut = 15.0F;
+				const int segments = 48;
+				for (int pass = 0; pass < 2; pass++) {
+					const float width = pass == 0 ? std::max(3.0F, px * 2.5F) : std::max(1.2F, px * 0.8F);
+					renderer->SetColorAlphaPremultiplied(
+					  pass == 0 ? MakeVector4(0.35F, 0.02F, 0.01F, 0.0F)
+					            : MakeVector4(1.0F, 0.18F, 0.12F, 0.0F));
+					for (int k = 0; k < segments; k++) {
+						const float a0 = 6.2831853F * k / segments;
+						const float a1 = 6.2831853F * (k + 1) / segments;
+						line(at2(std::cos(a0) * ring, std::sin(a0) * ring),
+						     at2(std::cos(a1) * ring, std::sin(a1) * ring), width);
+					}
+					line(at2(tickIn, 0.0F), at2(tickOut, 0.0F), width);
+					line(at2(-tickIn, 0.0F), at2(-tickOut, 0.0F), width);
+					line(at2(0.0F, tickIn), at2(0.0F, tickOut), width);
+					line(at2(0.0F, -tickIn), at2(0.0F, -tickOut), width);
+				}
+				Handle<IImage> ball = renderer->RegisterImage("Gfx/Ball.png");
+				const float d = std::max(1.5F, px * 1.2F);
+				renderer->SetColorAlphaPremultiplied(MakeVector4(0.6F, 0.03F, 0.02F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - d * 2.0F, centre.y - d * 2.0F,
+				                                 d * 4.0F, d * 4.0F));
+				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.5F, 0.4F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - d, centre.y - d, d * 2.0F, d * 2.0F));
+			} else {
+				// A red glow round a bright core, 6 milliradians across
+				const float r = std::max(1.5F, px * 3.0F);
+				Handle<IImage> ball = renderer->RegisterImage("Gfx/Ball.png");
+				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.05F, 0.03F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - r * 2.0F, centre.y - r * 2.0F,
+				                                 r * 4.0F, r * 4.0F));
+				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.6F, 0.5F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - r, centre.y - r, r * 2.0F, r * 2.0F));
 			}
-			Handle<IImage> ball = renderer->RegisterImage("Gfx/Ball.png");
-			// A red glow round a bright core, added to what is behind it
-			renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.05F, 0.03F, 0.0F));
-			renderer->DrawImage(*ball, AABB2(centre.x - r * 2.0F, centre.y - r * 2.0F, r * 4.0F,
-			                                 r * 4.0F));
-			renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.6F, 0.5F, 0.0F));
-			renderer->DrawImage(*ball, AABB2(centre.x - r, centre.y - r, r * 2.0F, r * 2.0F));
+			renderer->EndClippingCircle();
 		}
 
 		void Client::DrawVRScopeLens() {
