@@ -250,32 +250,38 @@ namespace spades {
 
 						// Emit faces for this voxel
 						// +Z face (up)
-						if (!IsSolid(wx, wy, wz + 1)) {
+						// A face drawn by something else in its place (a chipped
+						// one, ImpactMarks) is left out
+						auto shown = [&](int face) {
+							return !renderer.IsFaceHidden(wx, wy, wz, face);
+						};
+
+						if (!IsSolid(wx, wy, wz + 1) && shown(4)) {
 							EmitVertex(wx, wy, wz + 1, x + 1, y, z + 1, -1, 0, 0, 1, color, 0, 0, 1);
 						}
 
 						// -Z face (down)
-						if (!IsSolid(wx, wy, wz - 1)) {
+						if (!IsSolid(wx, wy, wz - 1) && shown(5)) {
 							EmitVertex(wx, wy, wz - 1, x, y, z, 1, 0, 0, 1, color, 0, 0, -1);
 						}
 
 						// -X face
-						if (!IsSolid(wx - 1, wy, wz)) {
+						if (!IsSolid(wx - 1, wy, wz) && shown(1)) {
 							EmitVertex(wx - 1, wy, wz, x, y + 1, z, 0, 0, 0, -1, color, -1, 0, 0);
 						}
 
 						// +X face
-						if (!IsSolid(wx + 1, wy, wz)) {
+						if (!IsSolid(wx + 1, wy, wz) && shown(0)) {
 							EmitVertex(wx + 1, wy, wz, x + 1, y, z, 0, 0, 0, 1, color, 1, 0, 0);
 						}
 
 						// -Y face
-						if (!IsSolid(wx, wy - 1, wz)) {
+						if (!IsSolid(wx, wy - 1, wz) && shown(3)) {
 							EmitVertex(wx, wy - 1, wz, x, y, z, 0, 0, 1, 0, color, 0, -1, 0);
 						}
 
 						// +Y face
-						if (!IsSolid(wx, wy + 1, wz)) {
+						if (!IsSolid(wx, wy + 1, wz) && shown(2)) {
 							EmitVertex(wx, wy + 1, wz, x + 1, y + 1, z, 0, 0, -1, 0, color, 0, 1, 0);
 						}
 					}

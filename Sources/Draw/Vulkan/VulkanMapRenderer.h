@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <unordered_set>
+
 #include "VulkanPushConstants.h"
 
 #include <vulkan/vulkan.h>
@@ -113,6 +115,20 @@ namespace spades {
 			static void PreloadShaders(VulkanRenderer&);
 
 			void GameMapChanged(int x, int y, int z, client::GameMap*);
+
+			/** Faces left out of the mesh (IRenderer::SetMapFaceHidden), by
+			 * block and face (0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z). */
+			void SetFaceHidden(int x, int y, int z, int face, bool hidden);
+			bool IsFaceHidden(int x, int y, int z, int face) const {
+				return !hiddenFaces.empty() &&
+				       hiddenFaces.count(FaceKey(x, y, z, face)) != 0;
+			}
+			static uint64_t FaceKey(int x, int y, int z, int face) {
+				return (static_cast<uint64_t>(x & 0xFFFF) << 32) |
+				       (static_cast<uint64_t>(y & 0xFFFF) << 16) |
+				       (static_cast<uint64_t>(z & 0xFF) << 3) | static_cast<uint64_t>(face & 7);
+			}
+			std::unordered_set<uint64_t> hiddenFaces;
 
 			// Access to renderer for chunks
 			VulkanRenderer& GetRenderer() { return renderer; }

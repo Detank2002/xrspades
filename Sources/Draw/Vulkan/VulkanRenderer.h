@@ -702,6 +702,8 @@ namespace spades {
 
 			// IGameMapListener implementation
 			void GameMapChanged(int x, int y, int z, client::GameMap*) override;
+			bool SetMapFaceHidden(const IntVector3& block, const IntVector3& normal,
+			                      bool hidden) override;
 
 			// Vulkan-specific methods
 			VulkanMapRenderer* GetMapRenderer() { return mapRenderer.get(); }

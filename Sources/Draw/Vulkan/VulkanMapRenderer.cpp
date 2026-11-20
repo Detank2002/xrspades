@@ -142,6 +142,18 @@ namespace spades {
 			                     "Shaders/Vulkan/ShadowMap.frag.spv"});
 		}
 
+		void VulkanMapRenderer::SetFaceHidden(int x, int y, int z, int face, bool hidden) {
+			const uint64_t k = FaceKey(x, y, z, face);
+			const bool was = hiddenFaces.count(k) != 0;
+			if (was == hidden)
+				return;
+			if (hidden)
+				hiddenFaces.insert(k);
+			else
+				hiddenFaces.erase(k);
+			GameMapChanged(x, y, z, gameMap);
+		}
+
 		void VulkanMapRenderer::GameMapChanged(int x, int y, int z, client::GameMap* map) {
 			SPADES_MARK_FUNCTION();
 

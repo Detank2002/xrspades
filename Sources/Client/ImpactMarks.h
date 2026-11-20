@@ -51,6 +51,9 @@ namespace spades {
 			void Add(const Vector3& hitPos, const IntVector3& block, const IntVector3& normal,
 			         bool spade);
 			void Update(float dt);
+			/** Cut into the face itself, where the renderer can leave it out. */
+			bool AddCarved(const Vector3& hitPos, const IntVector3& block, const IntVector3& normal,
+			               bool spade);
 			void Draw();
 		};
 	} // namespace client

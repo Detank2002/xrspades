@@ -15,7 +15,7 @@ one change, in a player's words.
 - New: in VR, the keyboard stands on its own in front of you, and you can grab it with the grip and put it where you like
 - Improved: the VR keyboard has caps lock (Shift twice), arrow keys to fix typos, a Close key, and Back repeats while held
 - New: in VR, put the controllers down and use your hands in the menus: point, and pinch to click
-- New: bullets and the spade leave chipped holes in blocks, one per hit (Options, Effects to turn them off)
+- New: bullets and the spade chip real holes out of blocks, pits you can see into from any side; they heal with the block or after a while (Options, Effects to turn them off)
 - Improved: in VR, the spade is solid and hits where its tip strikes a block, with a flick instead of a full swing
 - Improved: in VR, reloading by hand takes the magazine anywhere under the front of the gun, without twisting your wrist
 - New: in VR, change what every controller button does, on a picture of your controllers (Controls, Change buttons), and swap the sticks

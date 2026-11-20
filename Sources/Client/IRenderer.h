@@ -331,6 +331,15 @@ namespace spades {
 			 * is every renderer outside a headset frame.
 			 */
 			virtual bool SetVRCanvas(int canvas) { return canvas == 0; }
+			/** Leave out one face of a block from the map's mesh (`normal`: the
+			 * face's outward axis), for something drawn in its place: the chipped
+			 * face of a block a bullet hit (ImpactMarks). False if this renderer
+			 * cannot. */
+			virtual bool SetMapFaceHidden(const IntVector3& block, const IntVector3& normal,
+			                              bool hidden) {
+				(void)block, (void)normal, (void)hidden;
+				return false;
+			}
 
 
 			/**
