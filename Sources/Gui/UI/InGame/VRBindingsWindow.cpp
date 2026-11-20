@@ -22,6 +22,7 @@
 #include "VRControlsWindow.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include <json/json.h>
@@ -152,6 +153,11 @@ namespace spades {
 					Handle<Button> b = Handle<Button>::New(manager);
 					b->SetBounds(c.rect);
 					b->activated = [this, i](UIElement&) { Choose(i); };
+					b->mouseEntered = [this, i](UIElement&) { hovered = static_cast<int>(i); };
+					b->mouseLeft = [this, i](UIElement&) {
+						if (hovered == static_cast<int>(i))
+							hovered = -1;
+					};
 					AddChild(b.GetPointerOrNull());
 					c.button = b.GetPointerOrNull();
 					y += rowH + 26.0F;
@@ -222,6 +228,18 @@ namespace spades {
 						c.input = input;
 						c.point = MakeVector2(static_cast<float>(p[0u].asDouble()), static_cast<float>(p[1u].asDouble()));
 						c.button = nullptr;
+						c.colour = MakeVector4(0.96F, 0.70F, 0.24F, 1.0F);
+						// Its name on this controller ("X button" on a left Touch),
+						// else the generic one
+						const Json::Value& label = root["label"][side][name];
+						c.caption = label.isString() ? label.asString()
+						                             : std::string(InputCaption(input));
+						const Json::Value& col = root["colour"][name];
+						if (col.isArray() && col.size() == 3)
+							c.colour = MakeVector4(static_cast<float>(col[0u].asDouble()) / 255.0F,
+							                       static_cast<float>(col[1u].asDouble()) / 255.0F,
+							                       static_cast<float>(col[2u].asDouble()) / 255.0F,
+							                       1.0F);
 						controls.push_back(c);
 					}
 				}
@@ -310,12 +328,19 @@ namespace spades {
 			const std::string title = _Tr("Client", "Change buttons");
 			font.Draw(title, pos + imageRect.min + MakeVector2(16.0F, 12.0F), 1.5F,
 			          MakeVector4(1.0F, 1.0F, 1.0F, 1.0F));
-			const Vector4 lineCol = MakeVector4(0.96F, 0.70F, 0.24F, 1.0F);
-			for (const Control& c : controls) {
+			for (std::size_t ci = 0; ci < controls.size(); ci++) {
+				const Control& c = controls[ci];
+				// In its marker's colour; while one drop-down is pointed at, the
+				// others step back and its button is ringed
+				const bool focus = hovered == static_cast<int>(ci);
+				const bool dim = hovered >= 0 && !focus;
+				Vector4 lineCol = c.colour;
+				if (dim)
+					lineCol.w = 0.3F;
 				// The button's name over its drop-down
-				font.Draw(_Tr("Client", InputCaption(c.input)),
+				font.Draw(_Tr("Client", c.caption.c_str()),
 				          pos + c.rect.min + MakeVector2(2.0F, -20.0F), 1.0F,
-				          MakeVector4(0.96F, 0.70F, 0.24F, 1.0F));
+				          dim ? MakeVector4(c.colour.x, c.colour.y, c.colour.z, 0.5F) : c.colour);
 				const Vector2 to = pos + PicturePoint(c.point);
 				const bool leftCol = c.rect.GetMinX() < imageRect.GetMinX() + imageRect.GetWidth() * 0.5F;
 				const Vector2 from = pos + MakeVector2(leftCol ? c.rect.GetMaxX() : c.rect.GetMinX(),
@@ -324,10 +349,26 @@ namespace spades {
 				const Vector2 d = to - from;
 				const float len = d.GetLength();
 				const int n = std::max(2, static_cast<int>(len / 3.0F));
+				const float w = focus ? 2.0F : 1.0F;
 				SetColorNP(r, lineCol);
 				for (int k = 0; k <= n; k++) {
 					const Vector2 q = from + d * (static_cast<float>(k) / static_cast<float>(n));
-					r.DrawImage(nullptr, AABB2(q.x - 1.0F, q.y - 1.0F, 2.0F, 2.0F));
+					r.DrawImage(nullptr, AABB2(q.x - w, q.y - w, w * 2.0F, w * 2.0F));
+				}
+				if (focus) {
+					// A ring round the button, breathing, so it is found at a glance
+					const float scale = imageRect.GetWidth() / pictureSize.x;
+					const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+					                  std::chrono::steady_clock::now().time_since_epoch())
+					                  .count();
+					const float t = static_cast<float>(ms % 1000) / 1000.0F;
+					const float radius = (24.0F + 4.0F * std::sin(t * 6.2831853F)) * scale;
+					const int dots = 48;
+					for (int k = 0; k < dots; k++) {
+						const float a = static_cast<float>(k) / dots * 6.2831853F;
+						const Vector2 q = to + MakeVector2(std::cos(a), std::sin(a)) * radius;
+						r.DrawImage(nullptr, AABB2(q.x - 2.0F, q.y - 2.0F, 4.0F, 4.0F));
+					}
 				}
 			}
 

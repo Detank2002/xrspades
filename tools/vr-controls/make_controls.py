@@ -475,28 +475,103 @@ BIND_INPUTS = {
 }
 
 
+# What colour each of the game's inputs is drawn in, on the picture and on
+# the rebinding screen's line and label to it (the JSON's "colour")
+BIND_COLOURS = {"Trigger": "trigger", "Grip": "grip", "StickClick": "stick",
+                "Primary": "button", "Secondary": "button", "Menu": "menu"}
+
+
+# What each control is called on that controller, per drawing point and hand
+# (-1 left, 1 right): the rebinding screen's caption over its drop-down
+def bind_label(name, key, m):
+    touch_family = name.startswith("Quest")
+    if key == "trigger":
+        return "Trigger"
+    if key == "grip":
+        return "Grip"
+    if key == "stick":
+        return "Thumbstick click"
+    if key == "pad":
+        return "Trackpad click" if name in ("Vive", "Index") else "Touchpad click"
+    if key == "menu":
+        return "Menu button"
+    if key == "sys":
+        return "Menu button"
+    if key == "lo":
+        return ("X button" if m < 0 else "A button") if touch_family else "A button"
+    if key == "hi":
+        return ("Y button" if m < 0 else "B button") if touch_family else "B button"
+    return key
+
+
+def shade(img, bg):
+    """Depth for the flat drawing: a soft shadow under the controllers, and
+    light from above over them (lighter at the top, darker at the bottom)."""
+    from PIL import ImageChops, ImageFilter
+    w, h = img.size
+    base = Image.new("RGB", (w, h), bg)
+    diff = ImageChops.difference(img, base).convert("L")
+    mask = diff.point(lambda v: 255 if v > 6 else 0)
+    shadow = mask.filter(ImageFilter.GaussianBlur(S(14)))
+    shadow = ImageChops.offset(shadow, S(6), S(12)).point(lambda v: int(v * 0.55))
+    out = Image.composite(Image.new("RGB", (w, h), (8, 9, 12)), base, shadow)
+    out = Image.composite(img, out, mask)
+    # Light from above: a vertical ramp over the drawing only
+    ramp = Image.linear_gradient("L").resize((w, h))  # 0 at the top, 255 at the bottom
+    light = Image.new("RGB", (w, h), (255, 255, 255))
+    dark = Image.new("RGB", (w, h), (0, 0, 0))
+    top = ramp.point(lambda v: int(max(0, 150 - v) * 0.30))     # up to 18% lighter
+    bottom = ramp.point(lambda v: int(max(0, v - 120) * 0.35))  # up to 18% darker
+    lit = Image.composite(light, out, ImageChops.multiply(top, mask))
+    lit = Image.composite(dark, lit, ImageChops.multiply(bottom, mask))
+    return lit
+
+
 def bind_slides():
     import json
+    from PIL import ImageFilter
     for name, (draw, inputs, ring) in BIND_INPUTS.items():
         if inputs is None:
             inputs = BIND_INPUTS["Quest2"][1]
         s = Slide("", "")
-        lx, rx, cy = 620, 980, 430
+        # A little closer together than the cheat sheet's: the drop-downs
+        # stand in columns at the picture's sides
+        lx, rx, cy = 630, 970, 420
         if draw is touch:
             lp = touch(s, lx, cy, -1, ring)
             rp = touch(s, rx, cy, 1, ring)
         else:
             lp = draw(s, lx, cy, -1)
             rp = draw(s, rx, cy, 1)
+        s.img = shade(s.img, BG)
+        s.d = ImageDraw.Draw(s.img)
         s.text((lx, H - 60), "LEFT HAND", 22, DIM, bold=True, anchor="mm")
         s.text((rx, H - 60), "RIGHT HAND", 22, DIM, bold=True, anchor="mm")
-        pts = {"size": [W, H], "left": {}, "right": {}}
+        pts = {"size": [W, H], "left": {}, "right": {}, "colour": {},
+               "label": {"left": {}, "right": {}}}
+        # Each control's marker in its own colour, glowing a little, so the
+        # line and label of the same colour lead the eye to it
+        glow = Image.new("RGB", s.img.size, (0, 0, 0))
+        gd = ImageDraw.Draw(glow)
+        marks = []
         for side, p, inp in (("left", lp, inputs[0]), ("right", rp, inputs[1])):
             for key, game in inp.items():
                 if key in p:
                     x, y = p[key]
-                    s.ellipse(x, y, 15, 15, outline=COLOURS["button"], width=3)
+                    col = COLOURS[BIND_COLOURS.get(game, "button")]
+                    marks.append((x, y, col))
+                    gd.ellipse([S(x - 19), S(y - 19), S(x + 19), S(y + 19)], outline=col,
+                               width=S(8))
                     pts[side][game] = [round(x), round(y)]
+                    pts["colour"][game] = list(col)
+                    pts["label"][side][game] = bind_label(name, key,
+                                                          -1 if side == "left" else 1)
+        from PIL import ImageChops
+        s.img = ImageChops.add(s.img, glow.filter(ImageFilter.GaussianBlur(S(6))))
+        s.d = ImageDraw.Draw(s.img)
+        for x, y, col in marks:
+            s.ellipse(x, y, 16, 16, outline=(16, 18, 22), width=6)
+            s.ellipse(x, y, 16, 16, outline=col, width=3)
         s.save("Bind-" + name + ".png")
         with open(os.path.join(OUT, "Bind-" + name + ".json"), "w") as f:
             json.dump(pts, f, indent=1)

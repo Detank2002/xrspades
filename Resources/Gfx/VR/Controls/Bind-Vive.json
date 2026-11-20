@@ -5,38 +5,84 @@
  ],
  "left": {
   "Trigger": [
-   620,
-   312
+   630,
+   302
   ],
   "Grip": [
-   682,
-   550
+   692,
+   540
   ],
   "StickClick": [
-   620,
-   420
+   630,
+   410
   ],
   "Menu": [
-   620,
-   354
+   630,
+   344
   ]
  },
  "right": {
   "Trigger": [
-   980,
-   312
+   970,
+   302
   ],
   "Grip": [
-   918,
-   550
+   908,
+   540
   ],
   "Primary": [
-   980,
-   420
+   970,
+   410
   ],
   "Secondary": [
-   980,
-   354
+   970,
+   344
   ]
+ },
+ "colour": {
+  "Trigger": [
+   232,
+   84,
+   72
+  ],
+  "Grip": [
+   88,
+   196,
+   112
+  ],
+  "StickClick": [
+   84,
+   160,
+   240
+  ],
+  "Menu": [
+   196,
+   132,
+   236
+  ],
+  "Primary": [
+   244,
+   178,
+   60
+  ],
+  "Secondary": [
+   244,
+   178,
+   60
+  ]
+ },
+ "label": {
+  "left": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "StickClick": "Trackpad click",
+   "Menu": "Menu button"
+  },
+  "right": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "Primary": "Trackpad click",
+   "Secondary": "Menu button"
+  }
  }
 }

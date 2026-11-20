@@ -5,42 +5,89 @@
  ],
  "left": {
   "Trigger": [
-   620,
-   308
+   630,
+   298
   ],
   "Grip": [
-   672,
-   560
+   682,
+   550
   ],
   "StickClick": [
-   656,
-   380
+   666,
+   370
   ],
   "Menu": [
-   608,
-   440
+   618,
+   430
   ]
  },
  "right": {
   "Trigger": [
-   980,
-   308
+   970,
+   298
   ],
   "Grip": [
-   928,
-   560
+   918,
+   550
   ],
   "StickClick": [
-   944,
-   380
+   934,
+   370
   ],
   "Primary": [
-   1010,
-   386
+   1000,
+   376
   ],
   "Secondary": [
-   992,
-   440
+   982,
+   430
   ]
+ },
+ "colour": {
+  "Trigger": [
+   232,
+   84,
+   72
+  ],
+  "Grip": [
+   88,
+   196,
+   112
+  ],
+  "StickClick": [
+   84,
+   160,
+   240
+  ],
+  "Menu": [
+   196,
+   132,
+   236
+  ],
+  "Primary": [
+   244,
+   178,
+   60
+  ],
+  "Secondary": [
+   244,
+   178,
+   60
+  ]
+ },
+ "label": {
+  "left": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "StickClick": "Thumbstick click",
+   "Menu": "Menu button"
+  },
+  "right": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "StickClick": "Thumbstick click",
+   "Primary": "Touchpad click",
+   "Secondary": "Menu button"
+  }
  }
 }

@@ -59,8 +59,13 @@ namespace spades {
 				Vector2 point;       // on the picture, its pixels
 				AABB2 rect;          // the drop-down, in this element
 				gui::ui::Button* button; // weak: a child
+				Vector4 colour;          // its marker's on the picture
+				std::string caption;     // what it is called on this controller
 			};
 			std::vector<Control> controls;
+			/** The control whose drop-down the pointer is on, or -1: its button
+			 * on the picture is ringed and its line drawn bold. */
+			int hovered = -1;
 			gui::ui::Button* swapButton = nullptr; // weak
 
 			VRBindings bindings;

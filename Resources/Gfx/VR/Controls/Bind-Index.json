@@ -5,46 +5,89 @@
  ],
  "left": {
   "Trigger": [
-   620,
-   248
+   630,
+   238
   ],
   "Grip": [
-   674,
-   580
+   684,
+   570
   ],
   "StickClick": [
-   628,
-   312
+   638,
+   302
   ],
   "Primary": [
-   594,
-   378
+   604,
+   368
   ],
   "Secondary": [
-   594,
-   346
+   604,
+   336
   ]
  },
  "right": {
   "Trigger": [
-   980,
-   248
+   970,
+   238
   ],
   "Grip": [
-   926,
-   580
+   916,
+   570
   ],
   "StickClick": [
-   972,
-   312
+   962,
+   302
   ],
   "Primary": [
-   1006,
-   378
+   996,
+   368
   ],
   "Secondary": [
-   1006,
-   346
+   996,
+   336
   ]
+ },
+ "colour": {
+  "Trigger": [
+   232,
+   84,
+   72
+  ],
+  "Grip": [
+   88,
+   196,
+   112
+  ],
+  "StickClick": [
+   84,
+   160,
+   240
+  ],
+  "Primary": [
+   244,
+   178,
+   60
+  ],
+  "Secondary": [
+   244,
+   178,
+   60
+  ]
+ },
+ "label": {
+  "left": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "StickClick": "Thumbstick click",
+   "Primary": "A button",
+   "Secondary": "B button"
+  },
+  "right": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "StickClick": "Thumbstick click",
+   "Primary": "A button",
+   "Secondary": "B button"
+  }
  }
 }
