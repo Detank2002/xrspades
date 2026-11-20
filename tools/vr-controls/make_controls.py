@@ -451,5 +451,59 @@ def body_slide():
     s.save("Body.png")
 
 
+# The rebinding screen's pictures (VRBindingsWindow): the controllers alone,
+# no labels (the game puts a drop-down beside each control), and where each
+# control is, by the game's name for it (VRInput), in the picture's pixels.
+# Per family, which of the drawing's points is which input, as OpenXR binds them
+# (OpenXRSystem::CreateActions): left hand, then right.
+BIND_INPUTS = {
+    "Quest2": (touch, ({"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                        "lo": "Primary", "hi": "Secondary", "sys": "Menu"},
+                       {"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                        "lo": "Primary", "hi": "Secondary"}), True),
+    "Quest3": (touch, None, False),
+    "Index": (index, ({"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                       "lo": "Primary", "hi": "Secondary"},
+                      {"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                       "lo": "Primary", "hi": "Secondary"}), None),
+    "Vive": (vive, ({"trigger": "Trigger", "grip": "Grip", "pad": "StickClick", "menu": "Menu"},
+                    {"trigger": "Trigger", "grip": "Grip", "pad": "Primary",
+                     "menu": "Secondary"}), None),
+    "WMR": (wmr, ({"trigger": "Trigger", "grip": "Grip", "stick": "StickClick", "menu": "Menu"},
+                  {"trigger": "Trigger", "grip": "Grip", "stick": "StickClick", "pad": "Primary",
+                   "menu": "Secondary"}), None),
+}
+
+
+def bind_slides():
+    import json
+    for name, (draw, inputs, ring) in BIND_INPUTS.items():
+        if inputs is None:
+            inputs = BIND_INPUTS["Quest2"][1]
+        s = Slide("", "")
+        lx, rx, cy = 620, 980, 430
+        if draw is touch:
+            lp = touch(s, lx, cy, -1, ring)
+            rp = touch(s, rx, cy, 1, ring)
+        else:
+            lp = draw(s, lx, cy, -1)
+            rp = draw(s, rx, cy, 1)
+        s.text((lx, H - 60), "LEFT HAND", 22, DIM, bold=True, anchor="mm")
+        s.text((rx, H - 60), "RIGHT HAND", 22, DIM, bold=True, anchor="mm")
+        pts = {"size": [W, H], "left": {}, "right": {}}
+        for side, p, inp in (("left", lp, inputs[0]), ("right", rp, inputs[1])):
+            for key, game in inp.items():
+                if key in p:
+                    x, y = p[key]
+                    s.ellipse(x, y, 15, 15, outline=COLOURS["button"], width=3)
+                    pts[side][game] = [round(x), round(y)]
+        s.save("Bind-" + name + ".png")
+        with open(os.path.join(OUT, "Bind-" + name + ".json"), "w") as f:
+            json.dump(pts, f, indent=1)
+        print("wrote", "Bind-" + name + ".json")
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "bind":
+        sys.exit(bind_slides())
     sys.exit(main())
