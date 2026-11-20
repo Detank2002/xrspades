@@ -103,6 +103,9 @@ DEFINE_SPADES_SETTING(vr_holsters, "1");
 // 1: the holsters turn with every turn of the head, as before 0.4.0. 0: they face
 // the body's way, which lets the head look aside (VRHolsterFrame).
 DEFINE_SPADES_SETTING(vr_holsterFollow, "0");
+// Spectating or watching a demo in a headset starts in the table view (the off
+// hand's stick click still turns it off). Not when merely dead between lives.
+DEFINE_SPADES_SETTING(vr_tableWhenSpectating, "1");
 // The game's frame rate on the wrist.
 DEFINE_SPADES_SETTING(vr_showFps, "1");
 // Dead or following someone: the view holds still and moves in blinks.
@@ -1411,6 +1414,7 @@ namespace spades {
 				// you looked in it (testers).
 				if (!menu && fs.focused)
 					p.SetOrientation(facing.Normalize());
+				vrTable.wasSpectating = false; // playing: the next spectate brings the table
 			} else {
 				if (maybePlayer)
 					maybePlayer->ClearVRToolRay();
@@ -1433,6 +1437,13 @@ namespace spades {
 				if (!menu && tableClick && !vrTable.toggleLatched)
 					SetVRTable(!vrTable.active);
 				vrTable.toggleLatched = O.thumbstickClick;
+				{
+					auto lp = world ? world->GetLocalPlayer() : stmp::optional<Player&>();
+					const bool spectating = IsDemoMode() || !lp || lp->IsSpectator();
+					if (spectating && !vrTable.wasSpectating && (int)vr_tableWhenSpectating)
+						SetVRTable(true);
+					vrTable.wasSpectating = spectating;
+				}
 
 				if (menu) {
 					VRReleaseAllKeys();

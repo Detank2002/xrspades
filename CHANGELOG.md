@@ -35,6 +35,7 @@ one change, in a player's words.
 - New: an Audio tab with every volume, and an Advanced tab for debug and technical settings; graphics settings that only the quality preset could reach have their own rows
 - New: a scope type that uses your crosshair while aiming
 - Changed: mouse acceleration off and muzzle flashes on by default; games are recorded by default (the newest 10 kept)
+- Improved: in VR, spectating and demos start on the table view (Settings, VR to turn it off)
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

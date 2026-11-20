@@ -641,7 +641,12 @@ namespace spades {
 			                 "vr_handTracking");
 
 			l.Simple();
-			l.AddHeading(_Tr("Preferences", "Hands and Tools"));
+			l.AddToggleField(_Tr("Preferences", "Spectate On A Table"), "vr_tableWhenSpectating");
+			l.AddHelp(_Tr("Preferences", "Spectating or watching a demo starts with the whole map "
+			                             "as a model in front of you. The left stick click turns "
+			                             "it on and off."));
+
+						l.AddHeading(_Tr("Preferences", "Hands and Tools"));
 			l.AddToggleField(_Tr("Preferences", "Left Handed"), "vr_leftHanded");
 			l.AddToggleField(_Tr("Preferences", "Holsters On Your Body"), "vr_holsters");
 			l.AddHelp(_Tr("Preferences", "Squeeze the grip over a shoulder (gun, spade) or at a hip "

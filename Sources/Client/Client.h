@@ -975,6 +975,9 @@ namespace spades {
 				Vector3 heldWorld[2];
 				bool toggleLatched = false;
 				bool fogFar = false;
+				// Spectating (or a demo) last frame: the table comes up by itself
+				// when that starts (vr_tableWhenSpectating)
+				bool wasSpectating = false;
 			};
 			VRTableView vrTable;
 			/** Not in your own body: spectating, dead, or a demo. */
