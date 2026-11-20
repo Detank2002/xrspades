@@ -20,6 +20,7 @@
 
 #include "ClientMenu.h"
 #include "ModsWindow.h"
+#include "WeaponWindow.h"
 #include <Client/ClientUI.h>
 #include <Client/ClientUIHelper.h>
 #include <Client/Fonts.h>
@@ -77,7 +78,7 @@ namespace spades {
 
 			// In a headset, Controls and Reset Height under Mods.
 			forVR = helper->IsVRActive();
-			const int rows = forVR ? 7 : 5;
+			const int rows = forVR ? 8 : 6;
 			float winW = 180.0F, winH = 32.0F * rows - 2.0F;
 			float winX = (sw - winW) * 0.5F;
 			float winY = (sh - winH) * 0.5F;
@@ -143,6 +144,15 @@ namespace spades {
 				rowY += 32.0F;
 			}
 			{
+				// The sight and aiming options, without digging through Settings
+				Handle<Button> button = Handle<Button>::New(manager);
+				button->caption = _Tr("Client", "Weapon");
+				button->SetBounds(AABB2(winX, rowY, winW, 30.0F));
+				button->activated = [this](UIElement& s) { OnWeapon(s); };
+				AddChild(button.GetPointerOrNull());
+				rowY += 32.0F;
+			}
+			{
 				Handle<Button> button = Handle<Button>::New(manager);
 				button->caption = helper->IsDemoMode() ? _Tr("Client", "Exit Demo")
 				                                       : _Tr("Client", "Disconnect");
@@ -194,6 +204,17 @@ namespace spades {
 		}
 
 		void ClientMenu::OnChatLog(UIElement&) { ui->EnterChatLogWindow(); }
+
+		void ClientMenu::OnWeapon(UIElement&) {
+			if (escHint)
+				escHint->visible = false;
+			Handle<WeaponWindow> window = Handle<WeaponWindow>::New(this, ui, forVR);
+			window->closed = [this](UIElement&) {
+				if (escHint)
+					escHint->visible = true;
+			};
+			window->Run();
+		}
 
 		void ClientMenu::OnDisconnect(UIElement&) { ui->shouldExit = true; }
 

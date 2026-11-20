@@ -28,6 +28,9 @@ one change, in a player's words.
 - New: in VR, a first-time setup for your hand, standing or seated, turning and the comfort vignette
 - Improved: in VR, the main menu stands you in one of the real maps the flat menu flies round
 - Improved: the main menu says Singleplayer again
+- New: a Weapon page in the Escape menu to change sights and aiming without digging through Settings
+- Improved: in VR, the rifle uses its open iron sights by default; the scope is one click away on the Weapon page
+- Improved: in VR, grabbing from the holsters is far more forgiving: bigger zones, a squeeze a moment early or late still counts, the hips sit at your own height, and looking aside no longer moves them
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

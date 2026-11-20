@@ -855,6 +855,8 @@ namespace spades {
 				// Holsters: the one the gun hand is at (VRHolster), and whether its
 				// grip is held since it took a tool from one.
 				int holsterHover = -1;
+				// Which way the holsters face and how low the hips are (VRHolsterFrame)
+				VRHolsterFrame holsterFrame;
 				// Each holster in the world, for the tool hand, to draw what is
 				// carried there where it is grabbed (VRHolsterPlace): its
 				// centre and the body's level forward and right there

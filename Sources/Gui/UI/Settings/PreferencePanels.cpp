@@ -514,6 +514,14 @@ namespace spades {
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Dot"),
 			                  _Tr("Preferences", "Cross")},
 			                 {0, 3, 4});
+			l.AddToggleField(_Tr("Preferences", "Holsters On Your Body"), "vr_holsters");
+			l.AddHelp(_Tr("Preferences", "Squeeze the grip over a shoulder (gun, spade) or at a hip "
+			                             "(blocks, grenades) to take that tool."));
+			l.AddToggleField(_Tr("Preferences", "Holsters Turn With Your Head"), "vr_holsterFollow");
+			l.AddHelp(_Tr("Preferences", "Off: the holsters face your body's way, so you can look "
+			                             "aside while you reach for one. On: they turn with every "
+			                             "turn of your head."));
+			l.AddToggleField(_Tr("Preferences", "Grenades And Blocks On Your Belt"), "vr_holsterItems");
 			l.AddToggleField(_Tr("Preferences", "Strike Blocks With The Spade's Tip"),
 			                 "vr_spadeContact");
 			l.AddSliderField(_Tr("Preferences", "Swing Spade To Hit"), "vr_swingSpeed", 0, 5, 0.25F,

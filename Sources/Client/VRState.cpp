@@ -719,7 +719,14 @@ namespace spades {
 			return s.on && !was;
 		}
 
-		int VRGripUpdate(VRGripState& s, bool grip, int slot) {
+		int VRGripUpdate(VRGripState& s, bool grip, int slot, float dt, bool mayHolster) {
+			const bool grace = dt > 0.0F;
+			if (slot >= 0) {
+				s.recentSlot = slot;
+				s.sinceSlot = 0.0F;
+			} else {
+				s.sinceSlot += grace ? dt : 1.0E9F;
+			}
 			const bool pressed = grip && !s.prev;
 			s.prev = grip;
 			int take = VRHolsterNone;
@@ -727,25 +734,91 @@ namespace spades {
 				if (slot >= 0) {
 					take = slot;
 					s.fromHolster = true;
+				} else if (grace && mayHolster && s.recentSlot >= 0 &&
+				           s.sinceSlot <= kVRGripGrace) {
+					// Squeezed just after the hand left the slot
+					take = s.recentSlot;
+					s.fromHolster = true;
 				} else {
 					s.action = true;
+					s.actionTime = 0.0F;
+					s.armed = !grace || !mayHolster;
+				}
+			} else if (grip && s.action && !s.armed) {
+				// Squeezed just before the hand reached the slot
+				s.actionTime += dt;
+				if (slot >= 0 && mayHolster) {
+					take = slot;
+					s.action = false;
+					s.fromHolster = true;
+				} else if (s.actionTime >= kVRGripGrace || !mayHolster) {
+					s.armed = true;
 				}
 			}
-			if (!grip)
-				s.fromHolster = s.action = false;
+			if (!grip) {
+				s.fromHolster = s.action = s.armed = false;
+				s.actionTime = 0.0F;
+			}
+			if (take >= 0)
+				s.recentSlot = -1; // taken: not again from the same reach
 			return take;
 		}
 
+		void VRHolsterFrameUpdate(VRHolsterFrame& f, const VRFrameState& fs, float dt,
+		                          float eyeHeight, bool followHead) {
+			// The hips a share of the standing eye height: 60 cm for eyes at 1.6 m,
+			// within reason for the tallest and shortest
+			f.hipDrop = std::max(0.42F, std::min(0.8F, eyeHeight * 0.375F));
+			if (!fs.head.valid)
+				return;
+			Vector3 h = fs.head.Axis(2) * -1.0F;
+			h.y = 0.0F;
+			if (h.GetLength() < 0.1F)
+				return; // looking straight up or down: keep the last heading
+			h = h.Normalize();
+			if (!f.valid || followHead) {
+				f.forward = h;
+				f.valid = true;
+				return;
+			}
+			// The angle from the body's heading to the head's, signed (about +Y)
+			const float cross = f.forward.z * h.x - f.forward.x * h.z;
+			const float dot = f.forward.x * h.x + f.forward.z * h.z;
+			const float angle = std::atan2(-cross, dot);
+			const float excess = std::fabs(angle) - kVRHolsterDeadZone;
+			if (excess <= 0.0F)
+				return;
+			// Past the dead zone the body comes round, quickly enough that a turn
+			// of the whole body is followed in about half a second
+			const float turn = (angle > 0.0F ? 1.0F : -1.0F) * excess * std::min(1.0F, 6.0F * dt);
+			const float c = std::cos(turn), sn = std::sin(turn);
+			// Rotate about +Y by `turn`, the way that brings it towards the head
+			const Vector3 r = MakeVector3(f.forward.x * c - f.forward.z * sn, 0.0F,
+			                              f.forward.x * sn + f.forward.z * c);
+			// Whichever way round brings it nearer
+			const Vector3 r2 = MakeVector3(f.forward.x * c + f.forward.z * sn, 0.0F,
+			                               -f.forward.x * sn + f.forward.z * c);
+			f.forward = (Vector3::Dot(r, h) >= Vector3::Dot(r2, h) ? r : r2).Normalize();
+		}
+
 		bool VRHolsterPlace(const VRFrameState& fs, int hand, int slot, Vector3& at,
-		                    float& radius, Vector3& forward, Vector3& right) {
+		                    float& radius, Vector3& forward, Vector3& right,
+		                    const VRHolsterFrame* frame) {
 			if (!fs.head.valid || slot < 0 || slot > 3)
 				return false;
 			// Tracking space: +X right, +Y up, -Z forward.
-			Vector3 f = fs.head.Axis(2) * -1.0F;
-			f.y = 0.0F;
-			if (f.GetLength() < 0.1F)
-				return false; // looking straight up or down: no heading
-			f = f.Normalize();
+			Vector3 f;
+			float hipDrop = 0.6F;
+			if (frame && frame->valid) {
+				f = frame->forward;
+				hipDrop = frame->hipDrop;
+			} else {
+				f = fs.head.Axis(2) * -1.0F;
+				f.y = 0.0F;
+				if (f.GetLength() < 0.1F)
+					return false; // looking straight up or down: no heading
+				f = f.Normalize();
+			}
 			const Vector3 r = MakeVector3(-f.z, 0.0F, f.x);
 			const Vector3 up = MakeVector3(0.0F, 1.0F, 0.0F);
 			const Vector3 h = fs.head.position;
@@ -753,16 +826,16 @@ namespace spades {
 			// Metres from the eyes. Seated, the hips are beside the seat.
 			switch (slot) {
 				case VRHolsterGun: // own shoulder
-					at = h + r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.18F;
+					at = h + r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.22F;
 					break;
 				case VRHolsterSpade: // other shoulder
-					at = h - r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.18F;
+					at = h - r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.22F;
 					break;
 				case VRHolsterBlocks: // own hip
-					at = h + r * (0.22F * side) - up * 0.60F, radius = 0.20F;
+					at = h + r * (0.22F * side) - up * hipDrop, radius = 0.25F;
 					break;
 				default: // grenades: other hip
-					at = h - r * (0.22F * side) - up * 0.60F, radius = 0.20F;
+					at = h - r * (0.22F * side) - up * hipDrop, radius = 0.25F;
 					break;
 			}
 			forward = f;
@@ -770,7 +843,7 @@ namespace spades {
 			return true;
 		}
 
-		int VRHolsterAt(const VRFrameState& fs, int hand, int hover) {
+		int VRHolsterAt(const VRFrameState& fs, int hand, int hover, const VRHolsterFrame* frame) {
 			const VRControllerState& c = fs.hands[hand];
 			if (!fs.head.valid || !c.grip.valid)
 				return VRHolsterNone;
@@ -779,7 +852,7 @@ namespace spades {
 			for (int i = 0; i < 4; i++) {
 				Vector3 at, forward, right;
 				float radius;
-				if (!VRHolsterPlace(fs, hand, i, at, radius, forward, right))
+				if (!VRHolsterPlace(fs, hand, i, at, radius, forward, right, frame))
 					return VRHolsterNone; // looking straight up or down: no heading
 				float d = (c.grip.position - at).GetLength();
 				radius *= i == hover ? 1.25F : 1.0F;

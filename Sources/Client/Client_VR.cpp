@@ -100,6 +100,9 @@ DEFINE_SPADES_SETTING(vr_swingSpeed, "2.5");
 DEFINE_SPADES_SETTING(vr_spadeContact, "1");
 // Tools on the body: squeeze the gun hand's grip over a shoulder or at a hip.
 DEFINE_SPADES_SETTING(vr_holsters, "1");
+// 1: the holsters turn with every turn of the head, as before 0.4.0. 0: they face
+// the body's way, which lets the head look aside (VRHolsterFrame).
+DEFINE_SPADES_SETTING(vr_holsterFollow, "0");
 // The game's frame rate on the wrist.
 DEFINE_SPADES_SETTING(vr_showFps, "1");
 // Dead or following someone: the view holds still and moves in blinks.
@@ -120,7 +123,9 @@ DEFINE_SPADES_SETTING(vr_toolButtons, "0");
 // Sprint while the walking stick is held in, instead of a click toggling it.
 DEFINE_SPADES_SETTING(vr_sprintHold, "0");
 // A magnifying scope on the rifle, seen when an eye looks down its iron sights.
-DEFINE_SPADES_SETTING(vr_scope, "1");
+// Off by default since 0.4.0: testers aimed better with the open sights; the
+// Escape menu's Weapon page turns it on.
+DEFINE_SPADES_SETTING(vr_scope, "0");
 // Held tools do not go through blocks: they stop at them, and slide back.
 // Off by default for now (was vr_solidTools, on; renamed so the new default
 // reaches configs that saved the old one): aiming round cover, the gun
@@ -270,7 +275,8 @@ namespace spades {
 				Vector3 at, forward, right;
 				float radius;
 				vrRig.holsterValid[i] =
-				  VRHolsterPlace(fs, VRToolHand(), i, at, radius, forward, right);
+				  VRHolsterPlace(fs, VRToolHand(), i, at, radius, forward, right,
+				                 &vrRig.holsterFrame);
 				if (!vrRig.holsterValid[i])
 					continue;
 				vrRig.holsterPos[i] = origin + VRToWorld(at - fs.head.position);
@@ -1756,8 +1762,12 @@ namespace spades {
 			// no holster ever counted there (a tester's report).
 			const bool reach = (p.IsToolSpade() || p.IsToolBlock()) &&
 			                   p.GetToolDirection().z > 0.5F && VRToolHasReach(p);
+			// The holsters face the body's way, not the eyes' (VRHolsterFrame)
+			VRHolsterFrameUpdate(vrRig.holsterFrame, fs, dt, vrRig.standingHeight,
+			                     (int)vr_holsterFollow != 0);
+			const bool mayHolster = (int)vr_holsters && !vrRig.twoHanded && !reach;
 			if ((int)vr_holsters && VRGripMayHolster(vrRig.grip, vrRig.twoHanded, reach)) {
-				slot = VRHolsterAt(fs, toolHand, vrRig.holsterHover);
+				slot = VRHolsterAt(fs, toolHand, vrRig.holsterHover, &vrRig.holsterFrame);
 				if (slot >= 0 && p.GetTool() == holstered[slot])
 					slot = VRHolsterNone;
 			}
@@ -1766,13 +1776,14 @@ namespace spades {
 					VRPulse(toolHand, 0.25F, 0.02F);
 				vrRig.holsterHover = slot;
 			}
-			const int take = VRGripUpdate(vrRig.grip, T.squeeze > 0.7F, slot);
+			// A squeeze a moment early or late still takes (kVRGripGrace)
+			const int take = VRGripUpdate(vrRig.grip, T.squeeze > 0.7F, slot, dt, mayHolster);
 			if (take >= 0 && p.IsToolSelectable(holstered[take])) {
 				SetSelectedTool(holstered[take]);
 				MarkTrainingVRStep(training::VRStepHolster);
 				VRPulse(toolHand, 0.6F, 0.06F);
 			}
-			VRSetKey(cg_keyAltAttack, vrRig.grip.action && !p.IsToolWeapon());
+			VRSetKey(cg_keyAltAttack, VRGripActionArmed(vrRig.grip) && !p.IsToolWeapon());
 
 			VRSetKey(cg_keyJump, T.buttonPrimary);
 			VRSetKey(cg_keyReloadWeapon, UpdateVRReload(p, fs));

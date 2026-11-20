@@ -48,6 +48,7 @@ namespace spades {
 			void OnDisconnect(gui::ui::UIElement& sender);
 			void OnResetHeight(gui::ui::UIElement& sender);
 			void OnControls(gui::ui::UIElement& sender);
+			void OnWeapon(gui::ui::UIElement& sender);
 
 		public:
 			ClientMenu(ClientUI* ui);

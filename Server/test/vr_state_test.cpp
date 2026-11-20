@@ -131,7 +131,7 @@ int main() {
 		CHECK(at(VRHandLeft, h + MakeVector3(0.22F, -0.60F, 0.0F)) == VRHolsterGrenades);
 		// Hysteresis: 1.1 radii out is outside a slot, unless the hand was in it.
 		const Vector3 gunSlot = h + MakeVector3(0.20F, -0.10F, 0.15F);
-		const Vector3 justOut = gunSlot + MakeVector3(0.0F, 0.18F * 1.1F, 0.0F);
+		const Vector3 justOut = gunSlot + MakeVector3(0.0F, 0.22F * 1.1F, 0.0F);
 		CHECK(at(VRHandRight, justOut) == VRHolsterNone);
 		CHECK(at(VRHandRight, justOut, VRHolsterGun) == VRHolsterGun);
 		// Turned 90 degrees to the right (now looking down +X, right is +Z): the
@@ -510,6 +510,88 @@ int main() {
 		CHECK(VRGripUpdate(h, true, VRHolsterSpade) == VRHolsterNone); // not again while held
 		CHECK(VRGripUpdate(h, false, VRHolsterNone) == VRHolsterNone && !h.fromHolster);
 		// No holster with the gun in both hands, nor while a block is in reach.
+		// The grace: a squeeze a moment late (after the hand left a slot) or
+		// early (before it reached one) still takes; a longer miss does not
+		{
+			const float dt = 1.0F / 72.0F;
+			VRGripState late;
+			VRGripUpdate(late, false, VRHolsterBlocks, dt);
+			for (int i = 0; i < 7; i++) // ~0.1 s out of the slot
+				VRGripUpdate(late, false, VRHolsterNone, dt);
+			CHECK(VRGripUpdate(late, true, VRHolsterNone, dt) == VRHolsterBlocks);
+			VRGripState tooLate;
+			VRGripUpdate(tooLate, false, VRHolsterBlocks, dt);
+			for (int i = 0; i < 30; i++) // ~0.4 s
+				VRGripUpdate(tooLate, false, VRHolsterNone, dt);
+			CHECK(VRGripUpdate(tooLate, true, VRHolsterNone, dt) == VRHolsterNone);
+			CHECK(tooLate.action && !VRGripActionArmed(tooLate));
+
+			VRGripState early;
+			CHECK(VRGripUpdate(early, true, VRHolsterNone, dt) == VRHolsterNone);
+			CHECK(VRGripMayHolster(early, false, false)); // still looking
+			for (int i = 0; i < 5; i++)
+				VRGripUpdate(early, true, VRHolsterNone, dt);
+			CHECK(VRGripUpdate(early, true, VRHolsterGrenades, dt) == VRHolsterGrenades);
+			CHECK(!early.action && early.fromHolster);
+
+			VRGripState tooEarly;
+			VRGripUpdate(tooEarly, true, VRHolsterNone, dt);
+			for (int i = 0; i < 30; i++)
+				VRGripUpdate(tooEarly, true, VRHolsterNone, dt);
+			CHECK(VRGripActionArmed(tooEarly)); // the dig or line it was meant as
+			CHECK(!VRGripMayHolster(tooEarly, false, false));
+			CHECK(VRGripUpdate(tooEarly, true, VRHolsterGrenades, dt) == VRHolsterNone);
+
+			// No holster may count (a block in reach): the action at once
+			VRGripState reachG;
+			VRGripUpdate(reachG, true, VRHolsterNone, dt, false);
+			CHECK(VRGripActionArmed(reachG));
+		}
+
+		// The body's heading: a glance aside leaves the holsters where they
+		// are; a turn of the whole body brings them round; the hips are a
+		// share of the eye height
+		{
+			VRFrameState bs;
+			bs.head.valid = true;
+			bs.head.position = MakeVector3(0, 1.6F, 0);
+			VRHolsterFrame hf;
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.6F, false);
+			CHECK(hf.valid && hf.forward.z < -0.99F);
+			CHECK(std::fabs(hf.hipDrop - 0.6F) < 1.0E-4F);
+			// 25 degrees to the side for a second: no change
+			bs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), 0.436F);
+			for (int i = 0; i < 72; i++)
+				VRHolsterFrameUpdate(hf, bs, 1.0F / 72.0F, 1.6F, false);
+			CHECK(hf.forward.z < -0.99F);
+			// 90 degrees for a second: followed to the edge of the dead zone
+			bs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), 1.5708F);
+			for (int i = 0; i < 72; i++)
+				VRHolsterFrameUpdate(hf, bs, 1.0F / 72.0F, 1.6F, false);
+			Vector3 hh = bs.head.Axis(2) * -1.0F;
+			hh.y = 0.0F;
+			hh = hh.Normalize();
+			const float gap = std::acos(std::min(1.0F, Vector3::Dot(hf.forward, hh)));
+			CHECK(gap < kVRHolsterDeadZone + 0.05F && gap > kVRHolsterDeadZone - 0.05F);
+			// Following the head: the head's heading at once
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.6F, true);
+			CHECK(Vector3::Dot(hf.forward, hh) > 0.999F);
+			// A tall player's hips are lower, within reason
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.9F, false);
+			CHECK(hf.hipDrop > 0.7F && hf.hipDrop < 0.72F);
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 3.0F, false);
+			CHECK(hf.hipDrop <= 0.8F);
+			// The slots face the frame's way, not the head's
+			bs.hands[VRHandRight].grip.valid = true;
+			Vector3 at, f, r;
+			float radius;
+			VRHolsterFrame fixed;
+			fixed.valid = true;
+			fixed.forward = MakeVector3(0, 0, -1);
+			CHECK(VRHolsterPlace(bs, VRHandRight, VRHolsterBlocks, at, radius, f, r, &fixed));
+			CHECK(f.z < -0.99F && r.x > 0.99F && radius >= 0.25F);
+		}
+
 		VRGripState idle;
 		CHECK(VRGripMayHolster(idle, false, false));
 		CHECK(!VRGripMayHolster(idle, true, false));

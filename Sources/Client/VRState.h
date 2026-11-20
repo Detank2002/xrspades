@@ -533,13 +533,35 @@ namespace spades {
 		 * grenades at the other. Placed from the eyes, turned with the head but
 		 * level. `hover` (the holster the hand was at last frame) gets a little
 		 * more room to leave than to enter, so its edge does not flicker. */
-		int VRHolsterAt(const VRFrameState& fs, int hand, int hover);
+		int VRHolsterAt(const VRFrameState& fs, int hand, int hover,
+		                const struct VRHolsterFrame* frame = nullptr);
 		/** Where holster `slot` (VRHolster) is for `hand`, in tracking space, as
 		 * VRHolsterAt places it: its centre, its grab radius, and the body's level
 		 * forward and right there. False without a head, or looking straight up
 		 * or down. */
 		bool VRHolsterPlace(const VRFrameState& fs, int hand, int slot, Vector3& at,
-		                    float& radius, Vector3& forward, Vector3& right);
+		                    float& radius, Vector3& forward, Vector3& right,
+		                    const struct VRHolsterFrame* frame = nullptr);
+
+		/** Where the holsters face and how far down the hips are, kept between
+		 * frames (VRHolsterFrameUpdate). Testers missed the holsters often: the
+		 * slots turned with every glance of the head, so a hand reaching for a
+		 * hip while the eyes looked aside found the slot had swung away, and the
+		 * hips were the same 60 cm under the eyes for every height. Here the
+		 * slots face the body's way, a heading that lets the head look up to
+		 * kVRHolsterDeadZone either way and then follows it round, and the hips
+		 * are a share of the standing eye height. Without a frame (or with
+		 * vr_holsterFollow 1) the slots follow the head as before. */
+		struct VRHolsterFrame {
+			bool valid = false;
+			Vector3 forward = MakeVector3(0, 0, -1); // level, tracking space
+			float hipDrop = 0.6F;                    // metres under the eyes
+		};
+		constexpr float kVRHolsterDeadZone = 0.61F; // 35 degrees, in radians
+		/** One frame: `eyeHeight` the standing eye height over the floor (m),
+		 * `followHead` the slots turned with the head as they were. */
+		void VRHolsterFrameUpdate(VRHolsterFrame& f, const VRFrameState& fs, float dt,
+		                          float eyeHeight, bool followHead);
 
 		/** The shoulder stock, between frames (VRStockUpdate). */
 		struct VRStockState {
@@ -562,6 +584,16 @@ namespace spades {
 		/** The gun hand's grip, between frames (VRGripUpdate). */
 		struct VRGripState {
 			bool prev = false;
+			/** The holster the hand was last at, and for how long it has not
+			 * been at one (s): a grip begun just after the hand left a slot
+			 * still takes from it. */
+			int recentSlot = -1;
+			float sinceSlot = 1.0E9F;
+			/** A grip begun outside every slot: how long ago (s), and whether
+			 * it has become the tool's action yet. Until then a slot the hand
+			 * reaches takes from it (a squeeze a moment early). */
+			float actionTime = 0.0F;
+			bool armed = false;
 			/** Held since it took a tool from a holster. */
 			bool fromHolster = false;
 			/** Held since it began as the tool's second action (dig, a line). */
@@ -575,13 +607,23 @@ namespace spades {
 		 * there; a grip that began as the tool's action stays that until let go,
 		 * wherever the hand goes (a hand hanging at the hip while a wall was
 		 * drawn took blocks, and the line stopped). */
-		int VRGripUpdate(VRGripState& s, bool grip, int slot);
+		int VRGripUpdate(VRGripState& s, bool grip, int slot, float dt = 0.0F,
+		                 bool mayHolster = true);
+		/** How early or late a grip may be and still take from a slot (s).
+		 * VRGripUpdate with no `dt` gives none: a grip counts only where it
+		 * begins, as before. */
+		constexpr float kVRGripGrace = 0.2F;
+		/** Whether a grip held as the tool's action is past its grace: the
+		 * action's keys go down only then. */
+		inline bool VRGripActionArmed(const VRGripState& s) { return s.action && s.armed; }
 
 		/** Whether a holster may count now: not while a grip is held (it began
 		 * elsewhere), not with the gun in both hands, not while the spade or
 		 * blocks have a block in reach (`toolHasReach`: the grip is theirs). */
 		inline bool VRGripMayHolster(const VRGripState& s, bool twoHanded, bool toolHasReach) {
-			return !s.action && !s.fromHolster && !twoHanded && !toolHasReach;
+			// A grip begun a moment before reaching a slot may still take from
+			// it, until its grace is over
+			return (!s.action || !s.armed) && !s.fromHolster && !twoHanded && !toolHasReach;
 		}
 
 		/** Tracking axes to the game's axes before the body yaw is applied:
