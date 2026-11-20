@@ -48,8 +48,12 @@ DEFINE_SPADES_SETTING(s_openalDevice, "");
 // HRTF (ALC_SOFT_HRTF), read when the audio device opens: 1 on, 0 off, -1 on in a
 // headset (worn with headphones) and OpenAL Soft's own choice otherwise. For
 // everyone, not a VR setting: hearing better where a sound comes from must be
-// open to a monitor player in headphones too (VR.md, "Fair play").
-DEFINE_SPADES_SETTING(s_hrtf, "-1");
+// open to a monitor player in headphones too (VR.md, "Fair play"). On by
+// default since 0.4.0: it costs the audio thread about 4% of one core (a busy
+// demo, Ryzen 5800X) and nothing of the frame. Speakers want AUTO or OFF.
+DEFINE_SPADES_SETTING(s_hrtf, "1");
+// Set once a config from before that has been moved from AUTO to ON
+DEFINE_SPADES_SETTING(s_hrtfDefaulted, "0");
 SPADES_SETTING(vr_enable);
 
 #ifndef ALC_HRTF_SOFT
@@ -560,6 +564,11 @@ namespace spades {
 
 				// HRTF is asked for when the context is made, or left to OpenAL Soft.
 				const bool hasHrtf = al::qalcIsExtensionPresent(alDevice, "ALC_SOFT_HRTF");
+				if (!(bool)s_hrtfDefaulted) {
+					s_hrtfDefaulted = 1;
+					if ((int)s_hrtf == -1)
+						s_hrtf = 1;
+				}
 				const int hrtf = (int)s_hrtf;
 				const bool wantHrtf = hrtf > 0 || (hrtf < 0 && (bool)vr_enable);
 				ALCint attrs[3] = {0, 0, 0};
