@@ -101,6 +101,12 @@ DEFINE_SPADES_SETTING(core_profile, "");
 DEFINE_SPADES_SETTING(cl_zsColorCorrectionOff, "0");
 // Set once a headset's particles have been made the headset levels' (0.3.6).
 DEFINE_SPADES_SETTING(cl_zsHeadsetParticles, "0");
+// Set once 0.4.0's new defaults reached a config still on the old ones: mouse
+// acceleration off and muzzle flashes on (a player who chose otherwise keeps it
+// from then on).
+DEFINE_SPADES_SETTING(cl_zsDefaults040, "0");
+SPADES_SETTING(cg_mouseAccel);
+SPADES_SETTING(cg_muzzleFire);
 SPADES_SETTING(r_colorCorrection);
 
 #ifdef WIN32
@@ -1197,6 +1203,12 @@ int main(int argc, char** argv) {
 		if (!static_cast<bool>(cl_zsColorCorrectionOff)) {
 			r_colorCorrection = 0;
 			cl_zsColorCorrectionOff = 1;
+		}
+		if (!static_cast<bool>(cl_zsDefaults040)) {
+			cg_mouseAccel = 0;
+			if ((int)cg_muzzleFire == 0)
+				cg_muzzleFire = 1;
+			cl_zsDefaults040 = 1;
 		}
 
 		// Apply --override-cvar values in memory. The previous value of each

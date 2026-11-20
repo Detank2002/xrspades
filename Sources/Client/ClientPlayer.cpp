@@ -91,7 +91,8 @@ DEFINE_SPADES_SETTING(cg_hideBody, "0");
 DEFINE_SPADES_SETTING(cg_hideArms, "0");
 DEFINE_SPADES_SETTING(cg_debugToolSkinAnchors, "0");
 DEFINE_SPADES_SETTING(cg_trueAimDownSight, "1");
-DEFINE_SPADES_SETTING(cg_muzzleFire, "0");
+// On by default since 0.4.0: a shot with no flash looked broken
+DEFINE_SPADES_SETTING(cg_muzzleFire, "1");
 
 SPADES_SETTING(cg_orientationSmoothing);
 

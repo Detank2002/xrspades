@@ -50,7 +50,9 @@
 DEFINE_SPADES_SETTING(cg_corpseClearOnRespawn, "0");
 DEFINE_SPADES_SETTING(cg_centerMessage, "2");
 DEFINE_SPADES_SETTING(cg_autoScreenshot, "0");
-DEFINE_SPADES_SETTING(cg_demoAutoRecord, "0");
+// On by default since 0.4.0, the newest few kept (cg_demoMaxFiles): a moment
+// worth keeping or reporting is there afterwards
+DEFINE_SPADES_SETTING(cg_demoAutoRecord, "1");
 DEFINE_SPADES_SETTING(cg_demoMaxFiles, "10");
 DEFINE_SPADES_SETTING(cg_demoAutoPrune, "1");
 SPADES_SETTING(cg_damageIndicators);

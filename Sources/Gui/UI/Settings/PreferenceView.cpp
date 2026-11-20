@@ -24,11 +24,17 @@
 #include "PreferenceView.h"
 #include <Client/Fonts.h>
 #include <Client/IRenderer.h>
+#include <Client/VRState.h>
+#include <Core/Settings.h>
+#include <Gui/UI/Widgets/Button.h>
 #include <Core/Strings.h>
 #include <Gui/UI/Framework/UIManager.h>
 #include <Gui/UI/Widgets/DrawUtils.h>
 #include <Gui/UI/Widgets/Label.h>
 #include <Gui/UI/Widgets/ListView.h>
+
+// Settings shows every row (1) or the common ones for this screen (0, Simple)
+DEFINE_SPADES_SETTING(cl_settingsAdvanced, "0");
 
 namespace spades {
 	namespace gui {
@@ -77,9 +83,8 @@ namespace spades {
 
 			tabWidth = PreferenceMetrics::tabWidth;
 			tabRowHeight = 30.0F;
-			// The search box above the tabs
-			const float searchHeight = 28.0F;
-			tabTop = contentsTop + 2.0F + searchHeight + 6.0F;
+			// The search box and the Simple / Advanced switch above the tabs
+			tabTop = contentsTop + 2.0F + searchHeight + 4.0F + 26.0F + 6.0F;
 			tabLeft = contentsLeft + PreferenceMetrics::tabInset;
 			tabRight = tabLeft + tabWidth;
 
@@ -110,6 +115,24 @@ namespace spades {
 				searchField = f.GetPointerOrNull();
 				AddChild(searchField);
 			}
+			{
+				const float y = contentsTop + 2.0F + searchHeight + 4.0F;
+				const float half = (tabWidth - 2.0F) * 0.5F;
+				Handle<ui::Button> s = Handle<ui::Button>::New(manager);
+				s->caption = _Tr("Preferences", "Simple");
+				s->toggle = true;
+				s->SetBounds(AABB2(tabLeft, y, half, 26.0F));
+				s->activated = [this](UIElement&) { SetAdvanced(false); };
+				AddChild(s.GetPointerOrNull());
+				simpleButton = s.GetPointerOrNull();
+				Handle<ui::Button> a = Handle<ui::Button>::New(manager);
+				a->caption = _Tr("Preferences", "Advanced");
+				a->toggle = true;
+				a->SetBounds(AABB2(tabLeft + half + 2.0F, y, half, 26.0F));
+				a->activated = [this](UIElement&) { SetAdvanced(true); };
+				AddChild(a.GetPointerOrNull());
+				advancedButton = a.GetPointerOrNull();
+			}
 
 			Handle<HeadingNavIndex> gameNav = Handle<HeadingNavIndex>::New();
 			Handle<HeadingNavIndex> hudNav = Handle<HeadingNavIndex>::New();
@@ -117,11 +140,13 @@ namespace spades {
 			Handle<HeadingNavIndex> controlsNav = Handle<HeadingNavIndex>::New();
 			Handle<HeadingNavIndex> vrNav = Handle<HeadingNavIndex>::New();
 			Handle<HeadingNavIndex> miscNav = Handle<HeadingNavIndex>::New();
+			Handle<HeadingNavIndex> audioNav = Handle<HeadingNavIndex>::New();
+			Handle<HeadingNavIndex> advancedNav = Handle<HeadingNavIndex>::New();
 
 			AddTab(Handle<GameOptionsPanel>::New(manager, options, fontManager,
 			                                     gameNav.GetPointerOrNull())
 			           .GetPointerOrNull(),
-			       _Tr("Preferences", "Game Options"), gameNav.GetPointerOrNull());
+			       _Tr("Preferences", "Gameplay"), gameNav.GetPointerOrNull());
 
 			Handle<InterfaceOptions> interfacePanel = Handle<InterfaceOptions>::New(
 			    manager, options, fontManager, hudNav.GetPointerOrNull());
@@ -133,6 +158,10 @@ namespace spades {
 			                                         rendererNav.GetPointerOrNull())
 			           .GetPointerOrNull(),
 			       _Tr("Preferences", "Graphics"), rendererNav.GetPointerOrNull());
+			AddTab(Handle<AudioOptionsPanel>::New(manager, options, fontManager,
+			                                      audioNav.GetPointerOrNull())
+			           .GetPointerOrNull(),
+			       _Tr("Preferences", "Audio"), audioNav.GetPointerOrNull());
 			AddTab(Handle<ControlOptionsPanel>::New(manager, options, fontManager,
 			                                        controlsNav.GetPointerOrNull())
 			           .GetPointerOrNull(),
@@ -144,7 +173,11 @@ namespace spades {
 			AddTab(Handle<MiscOptionsPanel>::New(manager, options, fontManager,
 			                                     miscNav.GetPointerOrNull())
 			           .GetPointerOrNull(),
-			       _Tr("Preferences", "Misc"), miscNav.GetPointerOrNull());
+			       _Tr("Preferences", "Demos"), miscNav.GetPointerOrNull());
+			AddTab(Handle<AdvancedOptionsPanel>::New(manager, options, fontManager,
+			                                         advancedNav.GetPointerOrNull())
+			           .GetPointerOrNull(),
+			       _Tr("Preferences", "Advanced"), advancedNav.GetPointerOrNull());
 
 			float backButtonTop = tabTop + static_cast<float>(tabs.size()) * tabRowHeight + 5.0F;
 
@@ -155,6 +188,7 @@ namespace spades {
 				button->SetBounds(AABB2(tabLeft, backButtonTop, tabWidth, tabRowHeight));
 				button->activated = [this](UIElement& s) { OnClosePressed(s); };
 				AddChild(button.GetPointerOrNull());
+				backButton = button.GetPointerOrNull();
 			}
 
 			// build navigation containers in the sidebar
@@ -216,10 +250,17 @@ namespace spades {
 			}
 
 			RestorePersistedState();
-			UpdateTabs();
+			SetAdvanced((bool)cl_settingsAdvanced);
 		}
 
-		void PreferenceView::ApplySearch() {
+		void PreferenceView::SetAdvanced(bool advanced) {
+			cl_settingsAdvanced = advanced ? 1 : 0;
+			simpleButton->toggled = !advanced;
+			advancedButton->toggled = advanced;
+			ApplySearch(true);
+		}
+
+		void PreferenceView::ApplySearch(bool force) {
 			std::string q = searchField ? searchField->GetText() : std::string();
 			// Trimmed, lower case
 			while (!q.empty() && q.back() == ' ')
@@ -228,9 +269,24 @@ namespace spades {
 				q.erase(q.begin());
 			for (char& c : q)
 				c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-			if (q == searchQuery)
+			if (q == searchQuery && !force)
 				return;
 			searchQuery = q;
+			// Simple mode: the common rows, and only this screen's kind (a
+			// headset's or a monitor's). A search looks through every tier.
+			const bool advanced = (bool)cl_settingsAdvanced;
+			const bool inHeadset = client::GetVRSystem() != nullptr;
+			auto allowed = [&](HeadingNavIndex* nav, std::size_t r) {
+				if (advanced)
+					return true;
+				const int plat = r < nav->rowPlatform.size() ? nav->rowPlatform[r] : PlatformBoth;
+				if (plat == PlatformVR && !inHeadset)
+					return false;
+				if (plat == PlatformFlat && inHeadset)
+					return false;
+				const bool adv = r < nav->rowAdvanced.size() && nav->rowAdvanced[r];
+				return !adv || !q.empty();
+			};
 
 			int firstMatch = -1;
 			bool selectedHasMatches = false;
@@ -245,9 +301,7 @@ namespace spades {
 					continue;
 				std::vector<Handle<UIElement>> shown;
 				int matches = 0;
-				if (q.empty()) {
-					shown = nav->rows;
-				} else {
+				{
 					// A matching row, with its section's heading over it once; a
 					// heading that matches brings its whole section
 					int heading = -1;
@@ -256,10 +310,13 @@ namespace spades {
 						if (nav->rowHeading[r]) {
 							heading = static_cast<int>(r);
 							headingShown = false;
-							sectionMatches = nav->rowText[r].find(q) != std::string::npos;
+							sectionMatches = !q.empty() && nav->rowText[r].find(q) != std::string::npos;
 							continue;
 						}
-						if (!sectionMatches && nav->rowText[r].find(q) == std::string::npos)
+						if (!allowed(nav, r))
+							continue;
+						if (!q.empty() && !sectionMatches &&
+						    nav->rowText[r].find(q) == std::string::npos)
 							continue;
 						if (heading >= 0 && !headingShown) {
 							shown.push_back(nav->rows[heading]);
@@ -275,14 +332,27 @@ namespace spades {
 				nav->list->ScrollToTop();
 				button->caption = q.empty() ? tabCaptions[i]
 				                            : tabCaptions[i] + " (" + std::to_string(matches) + ")";
-				button->enable = q.empty() || matches > 0;
+				button->enable = matches > 0;
+				// A tab with nothing to show in Simple mode (VR on a monitor, the
+				// Advanced tab) is not shown at all
+				button->visible = matches > 0 || !q.empty();
 				if (matches > 0 && firstMatch < 0)
 					firstMatch = static_cast<int>(i);
 				if (static_cast<int>(i) == selectedTabIndex && matches > 0)
 					selectedHasMatches = true;
 			}
-			if (!q.empty() && !selectedHasMatches && firstMatch >= 0)
+			if (!selectedHasMatches && firstMatch >= 0)
 				selectedTabIndex = firstMatch;
+			// The visible tabs one under another, the Back button after them
+			float y = tabTop;
+			for (auto& tab : tabs) {
+				if (!tab->tabButton->visible)
+					continue;
+				tab->tabButton->SetBounds(AABB2(tabLeft, y, tabWidth, tabRowHeight));
+				y += tabRowHeight;
+			}
+			if (backButton)
+				backButton->SetBounds(AABB2(tabLeft, y + 5.0F, tabWidth, tabRowHeight));
 			UpdateTabs();
 		}
 
@@ -366,7 +436,8 @@ namespace spades {
 				tabs[i]->view->visible = selected;
 				// The section buttons jump to rows a search has filtered away
 				if (tabs[i]->navPanel != nullptr)
-					tabs[i]->navPanel->visible = selected && searchQuery.empty();
+					tabs[i]->navPanel->visible =
+					  selected && searchQuery.empty() && (bool)cl_settingsAdvanced;
 			}
 
 			// switching tabs must not keep the previous tab's help text

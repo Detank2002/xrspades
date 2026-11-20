@@ -89,6 +89,8 @@ namespace spades {
 			Handle<UIElement> elem = Handle<UIElement>::New(&parent->GetManager());
 			elem->size = MakeVector2(fieldWidth, 32.0F);
 			items.push_back(elem);
+			itemAdvanced.push_back(tierAdvanced);
+			itemPlatform.push_back(platform);
 			return elem.GetPointerOrNull();
 		}
 
@@ -442,6 +444,8 @@ namespace spades {
 				headingNav->list = list.GetPointerOrNull();
 				headingNav->rows = items;
 				headingNav->rowText.assign(items.size(), std::string());
+				headingNav->rowAdvanced = itemAdvanced;
+				headingNav->rowPlatform = itemPlatform;
 				headingNav->rowHeading.assign(items.size(), false);
 				for (const HeadingNavEntry& h : headings)
 					if (h.row >= 0 && h.row < static_cast<int>(items.size()))

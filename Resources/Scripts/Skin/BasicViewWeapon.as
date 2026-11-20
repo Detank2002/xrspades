@@ -530,13 +530,14 @@ namespace spades {
 
 			TargetParam param;
 			int targetType = cg_target.IntValue;
-			// unknown scope types behave like the highest supported one
-			int scopeType = Clamp(cg_pngScope.IntValue, 0, 3);
+			// unknown scope types behave like the highest supported one; 4: the
+			// crosshair's own look while aiming too, instead of a reticle of its own
+			int scopeType = Clamp(cg_pngScope.IntValue, 0, 4);
 
 			Vector4 color = Vector4(1, 1, 1, 1);
 
 			// draw scope
-			if (AimDownSightStateSmooth > 0.99F) {
+			if (AimDownSightStateSmooth > 0.99F and scopeType != 4) {
 				if (scopeType > 0) {
 					IntVector3 col;
 					col.x = cg_scopeColorR.IntValue;

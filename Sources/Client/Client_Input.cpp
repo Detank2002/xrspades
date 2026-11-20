@@ -51,7 +51,9 @@ using namespace std;
 DEFINE_SPADES_SETTING(cg_mouseSensitivity, "1");
 DEFINE_SPADES_SETTING(cg_zoomedMouseSensScale, "1");
 DEFINE_SPADES_SETTING(cg_mouseSensScale, "0");
-DEFINE_SPADES_SETTING(cg_mouseAccel, "1");
+// Off by default since 0.4.0, as shooters ship it: aim stays the same for
+// the same hand movement however fast
+DEFINE_SPADES_SETTING(cg_mouseAccel, "0");
 DEFINE_SPADES_SETTING(cg_mouseExpPower, "1");
 DEFINE_SPADES_SETTING(cg_invertMouseY, "0");
 

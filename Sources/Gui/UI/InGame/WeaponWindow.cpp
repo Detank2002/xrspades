@@ -76,7 +76,7 @@ namespace spades {
 						l.AddSliderField(_Tr("Preferences", "Aim Smoothing"), "vr_aimSmooth", 0, 1,
 						                 0.1F, smooth);
 					} else {
-						l.AddSliderField(_Tr("Preferences", "Scope Type"), "cg_pngScope", 0, 3, 1,
+						l.AddSliderField(_Tr("Preferences", "Scope Type"), "cg_pngScope", 0, 4, 1,
 						                 gui::ScopeTypeFormatter());
 						l.AddHeading(_Tr("Client", "Aiming"));
 						l.AddToggleField(_Tr("Preferences", "Full Aim Down Sight"),
