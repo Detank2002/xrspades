@@ -3704,10 +3704,17 @@ namespace spades {
 				}
 				i = j;
 			}
-			toEyes();
+			// Each eye's picture goes on from where the chain left it: a layer of
+			// the two-layer image is blitted out as it is (with the headset's
+			// settings, no filter runs, and that is the resolved scene), rather
+			// than first copied into an image of its own (two full-size copies a
+			// frame, for nothing).
 			for (int e = 0; e < 2; e++) {
 				SetMultiviewEye(e);
-				RecordVREyeOutput(cmd, eyeCur[e]);
+				if (perEye)
+					RecordVREyeOutput(cmd, eyeCur[e]);
+				else
+					RecordVREyeOutput(cmd, layered, static_cast<uint32_t>(e));
 			}
 		}
 
