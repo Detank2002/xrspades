@@ -19,6 +19,11 @@ one change, in a player's words.
 - Improved: in VR, the spade is solid and hits where its tip strikes a block, with a flick instead of a full swing
 - Improved: in VR, reloading by hand takes the magazine anywhere under the front of the gun, without twisting your wrist
 - New: in VR, change what every controller button does, on a picture of your controllers (Controls, Change buttons), and swap the sticks
+- Improved: the button-changing screen shows each button in its own colour, by its real name, and lights it up as you point at its choice
+- New: in VR, your grenades and blocks hang on your hips where you grab them, fewer as you use them up
+- New: in VR, feel blocks break and set under your hand, every hit you land, and grenades going off near you; the shotgun kicks harder
+- Improved: 3D sound in headphones is on by default (Options, Audio to change it)
+- Improved: the faster Vulkan renderer is the default; a PC that can't run it starts with OpenGL
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
