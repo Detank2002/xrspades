@@ -69,7 +69,13 @@ DEFINE_SPADES_SETTING(r_renderer, "gl");
 #else
 DEFINE_SPADES_SETTING(r_renderer, "vulkan");
 #endif
+// The Vulkan renderer is the default wherever this build has it; the setup
+// window's probe turns it off on a PC without a GPU that can run it.
+#ifdef USE_VULKAN
+DEFINE_SPADES_SETTING(r_vulkan, "1");
+#else
 DEFINE_SPADES_SETTING(r_vulkan, "0");
+#endif
 DEFINE_SPADES_SETTING(s_audioDriver, "openal");
 DEFINE_SPADES_SETTING(cl_fps, "0");
 // Play in a headset through OpenXR. Needs the Vulkan renderer; `--vr` sets both.
@@ -901,7 +907,25 @@ namespace spades {
 				{
 					Handle<client::IRenderer> renderer;
 					Handle<Disposable> windowReference;
-					std::tie(renderer, windowReference) = CreateRenderer(window, rtype);
+					try {
+						std::tie(renderer, windowReference) = CreateRenderer(window, rtype);
+					} catch (const std::exception& ex) {
+#if defined(USE_OPENGL) && !defined(__ANDROID__)
+						// Vulkan is the default, and this PC could not start it: the
+						// next start is with OpenGL rather than this error every time
+						if (rtype == RendererType::Vulkan && !(bool)vr_enable) {
+							SPLog("Vulkan renderer failed to start (%s); switched to OpenGL "
+							      "for the next start",
+							      ex.what());
+							r_vulkan = 0;
+							r_renderer = "gl";
+							SPRaise("The Vulkan renderer could not start on this PC: %s\n\n"
+							        "ZeroSpades will use OpenGL from the next start.",
+							        ex.what());
+						}
+#endif
+						throw;
+					}
 
 					Handle<client::IAudioDevice> audio(CreateAudioDevice(), false);
 
