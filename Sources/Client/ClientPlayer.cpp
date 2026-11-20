@@ -2014,54 +2014,107 @@ namespace spades {
 		}
 
 		void ClientPlayer::AddVRHolsterItems() {
-			// What the hips carry, where a hand takes it (VRHolsterPlace): the
-			// grenades left on the other hip, standing in a row along the belt,
-			// and on the gun hand's hip a row of blocks in the colour picked,
-			// fewer as they run out. The one a hand is at stands out a little.
+			// A belt round the waist through both hip holsters (VRHolsterPlace),
+			// with what it carries where a hand takes it: on the other hip a loop
+			// for each grenade, filled while you have it and empty once thrown, so
+			// the count is seen going down; on the gun hand's hip a row of blocks
+			// in the colour picked, fewer as they run out. The one a hand is at
+			// stands out a little. Only in your own view.
 			Player& p = player;
 			const auto& rig = client.vrRig;
 			if (!(int)vr_holsters || !(int)vr_holsterItems || !p.IsAlive() ||
-			    p.IsSpectator() || client.vrTable.active)
+			    p.IsSpectator() || client.vrTable.active ||
+			    !rig.holsterValid[VRHolsterBlocks] || !rig.holsterValid[VRHolsterGrenades])
 				return;
 			IRenderer& renderer = client.GetRenderer();
 			const float s = rig.scale; // blocks per metre
-			const Vector3 f = rig.holsterForward, r = rig.holsterRight;
-			// Model axes: x forward, y to the side, z down (right-handed: a
-			// mirrored matrix turns a model inside out)
+			const Vector3 f = rig.holsterForward;
+			// Model axes: x along, y across, z down (right-handed: a mirrored
+			// matrix turns a model inside out)
 			const Vector3 down = MakeVector3(0, 0, 1);
-			const Vector3 side = Vector3::Cross(down, f);
-
+			auto frameAlong = [&](const Vector3& along, const Vector3& size, const Vector3& at) {
+				const Vector3 x = along.Normalize();
+				const Vector3 y = Vector3::Cross(down, x);
+				return Matrix4::FromAxis(x * size.x, y * size.y, down * size.z, at);
+			};
 			auto pop = [&](int slot) { return rig.holsterHover == slot ? 1.15F : 1.0F; };
 
-			if (rig.holsterValid[VRHolsterGrenades]) {
-				int n = p.GetNumGrenades();
+			// The belt: an ellipse through both hips, a little deeper than wide
+			// is narrow, its centre between them
+			const Vector3 blocksAt = rig.holsterPos[VRHolsterBlocks];
+			const Vector3 grenadesAt = rig.holsterPos[VRHolsterGrenades];
+			const Vector3 centre = (blocksAt + grenadesAt) * 0.5F;
+			const Vector3 toBlocks = (blocksAt - centre);
+			const float halfWidth = toBlocks.GetLength();
+			if (halfWidth < 1.0E-4F)
+				return;
+			const Vector3 side = toBlocks / halfWidth; // towards the blocks' hip
+			const float halfDepth = 0.13F * s;
+			if (!beltModel) {
+				auto m = Handle<VoxelModel>::New(1, 1, 1);
+				m->SetSolid(0, 0, 0, 0x1E2633); // dark leather (the map's colour order)
+				beltModel = renderer.CreateModel(*m);
+				auto l = Handle<VoxelModel>::New(1, 1, 1);
+				l->SetSolid(0, 0, 0, 0x141A22);
+				loopModel = renderer.CreateModel(*l);
+			}
+			auto onBelt = [&](float a) {
+				return centre + side * (halfWidth * std::cos(a)) + f * (halfDepth * std::sin(a));
+			};
+			ModelRenderParam strap;
+			const int segments = 28;
+			for (int i = 0; i < segments; i++) {
+				const float a0 = 6.2831853F * i / segments, a1 = 6.2831853F * (i + 1) / segments;
+				const Vector3 p0 = onBelt(a0), p1 = onBelt(a1);
+				const float len = (p1 - p0).GetLength();
+				strap.matrix = frameAlong(p1 - p0, MakeVector3(len * 1.08F, 0.012F * s, 0.045F * s),
+				                          (p0 + p1) * 0.5F);
+				renderer.RenderModel(*beltModel, strap);
+			}
+			// The buckle, at the front
+			strap.matrix = frameAlong(side, MakeVector3(0.06F * s, 0.02F * s, 0.05F * s),
+			                          onBelt(1.5707963F) + f * (0.01F * s));
+			renderer.RenderModel(*loopModel, strap);
+
+			// Grenades: a loop per grenade carried when full (three), along the
+			// belt at the hip, the grenade hanging from it, just outside
+			{
+				int have = p.GetNumGrenades();
 				// The one in the hand is not on the hip
-				if (p.GetTool() == Player::ToolGrenade && n > 0)
-					n--;
-				n = std::min(n, 4);
+				if (p.GetTool() == Player::ToolGrenade && have > 0)
+					have--;
+				const int loops = std::max(3, std::min(have, 6));
 				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
 				// 9 voxels tall: 11 cm
 				const float voxel = 0.11F / 9.0F * s * pop(VRHolsterGrenades);
+				const Vector3 out = -side * (0.025F * s); // the grenades' hip is the other side
 				ModelRenderParam param;
-				for (int i = 0; i < n; i++) {
-					const Vector3 at = rig.holsterPos[VRHolsterGrenades] +
-					                   f * ((i - (n - 1) * 0.5F) * 0.065F * s);
-					param.matrix = Matrix4::FromAxis(f * voxel, side * voxel, down * voxel, at);
-					renderer.RenderModel(*model, param);
+				for (int i = 0; i < loops; i++) {
+					const Vector3 at =
+					  grenadesAt + out + f * ((i - (loops - 1) * 0.5F) * 0.065F * s);
+					// The loop on the belt
+					strap.matrix = frameAlong(f, MakeVector3(0.03F * s, 0.03F * s, 0.05F * s), at);
+					renderer.RenderModel(*loopModel, strap);
+					if (i < have) {
+						param.matrix = frameAlong(f, MakeVector3(voxel, voxel, voxel),
+						                          at + down * (0.035F * s));
+						renderer.RenderModel(*model, param);
+					}
 				}
 			}
-			if (rig.holsterValid[VRHolsterBlocks] && p.GetNumBlocks() > 0) {
-				// Three for a full load, down to one
+			// Blocks: up to three in a row on the belt at the other hip
+			if (p.GetNumBlocks() > 0) {
 				const int n = std::min(3, (p.GetNumBlocks() + 16) / 17);
 				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Block/Block.kv6");
 				// 10 voxels across: 6 cm
 				const float voxel = 0.06F / 10.0F * s * pop(VRHolsterBlocks);
+				const Vector3 out = side * (0.035F * s);
 				ModelRenderParam param;
 				param.customColor = ConvertColorRGB(p.GetBlockColor());
 				for (int i = 0; i < n; i++) {
-					const Vector3 at = rig.holsterPos[VRHolsterBlocks] +
-					                   f * ((i - (n - 1) * 0.5F) * 0.065F * s);
-					param.matrix = Matrix4::FromAxis(f * voxel, side * voxel, down * voxel, at);
+					const Vector3 at = blocksAt + out + f * ((i - (n - 1) * 0.5F) * 0.065F * s) +
+					                   down * (0.03F * s);
+					param.matrix = frameAlong(f, MakeVector3(voxel, voxel, voxel), at);
 					renderer.RenderModel(*model, param);
 				}
 			}
