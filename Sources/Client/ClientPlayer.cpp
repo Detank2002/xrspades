@@ -2087,17 +2087,18 @@ namespace spades {
 				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
 				// 9 voxels tall: 11 cm
 				const float voxel = 0.11F / 9.0F * s * pop(VRHolsterGrenades);
-				const Vector3 out = -side * (0.025F * s); // the grenades' hip is the other side
+				const Vector3 out = -side * (0.04F * s); // the grenades' hip is the other side
 				ModelRenderParam param;
 				for (int i = 0; i < loops; i++) {
-					const Vector3 at =
-					  grenadesAt + out + f * ((i - (loops - 1) * 0.5F) * 0.065F * s);
-					// The loop on the belt
-					strap.matrix = frameAlong(f, MakeVector3(0.03F * s, 0.03F * s, 0.05F * s), at);
+					const Vector3 along = f * ((i - (loops - 1) * 0.5F) * 0.065F * s);
+					// The loop: a thin strap over the belt, a little proud of it
+					strap.matrix = frameAlong(f, MakeVector3(0.018F * s, 0.008F * s, 0.055F * s),
+					                          grenadesAt - side * (0.012F * s) + along);
 					renderer.RenderModel(*loopModel, strap);
+					// The grenade hangs from it, outside the belt
 					if (i < have) {
 						param.matrix = frameAlong(f, MakeVector3(voxel, voxel, voxel),
-						                          at + down * (0.035F * s));
+						                          grenadesAt + out + along + down * (0.03F * s));
 						renderer.RenderModel(*model, param);
 					}
 				}
