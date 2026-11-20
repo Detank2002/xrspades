@@ -265,6 +265,19 @@ namespace spades {
 				vrRig.handVelocity[h] =
 				  c.velocityValid ? VRToWorld(c.linearVelocity) : MakeVector3(0, 0, 0);
 			}
+			// The holsters, where the tool hand takes from them
+			for (int i = 0; i < 4; i++) {
+				Vector3 at, forward, right;
+				float radius;
+				vrRig.holsterValid[i] =
+				  VRHolsterPlace(fs, VRToolHand(), i, at, radius, forward, right);
+				if (!vrRig.holsterValid[i])
+					continue;
+				vrRig.holsterPos[i] = origin + VRToWorld(at - fs.head.position);
+				vrRig.holsterForward = VRToWorld(forward).Normalize();
+				vrRig.holsterRight = VRToWorld(right).Normalize();
+			}
+
 			// Again when the scene is built (ApplyVRToSceneDefinition), so the gun
 			// drawn is the gun aimed. The filter's state moves once a frame
 			// (UpdateVRAimAssist); here its result is only put back.

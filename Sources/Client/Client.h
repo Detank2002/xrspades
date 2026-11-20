@@ -855,6 +855,12 @@ namespace spades {
 				// Holsters: the one the gun hand is at (VRHolster), and whether its
 				// grip is held since it took a tool from one.
 				int holsterHover = -1;
+				// Each holster in the world, for the tool hand, to draw what is
+				// carried there where it is grabbed (VRHolsterPlace): its
+				// centre and the body's level forward and right there
+				bool holsterValid[4] = {false, false, false, false};
+				Vector3 holsterPos[4];
+				Vector3 holsterForward, holsterRight;
 				VRGripState grip;
 				bool wasReloading = false;
 				// Guns fire from the eye at what the gun points at (VRGunAimPoint);
@@ -1334,6 +1340,9 @@ namespace spades {
 			void PlayerCreatedBlock(Player&);
 			void PlayBlockDestroySound(Vector3);
 			void PlayerDestroyedBlockWithWeaponOrTool(IntVector3);
+			/** The local player's spade took a block out (a strike or a dig): the
+			 * crumble in the hand, in a headset. */
+			void LocalPlayerBrokeBlock();
 			void PlayerDiggedBlock(IntVector3);
 			void GrenadeDestroyedBlock(IntVector3);
 			void PlayerLeaving(Player&);

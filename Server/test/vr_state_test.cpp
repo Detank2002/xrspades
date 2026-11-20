@@ -139,6 +139,29 @@ int main() {
 		hs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), -1.5707963F);
 		CHECK(at(VRHandRight, h + MakeVector3(-0.15F, -0.10F, 0.20F)) == VRHolsterGun);
 		CHECK(at(VRHandRight, h + MakeVector3(0.20F, -0.10F, 0.15F)) == VRHolsterNone);
+		// What is drawn on the body sits where it is grabbed: each slot's centre
+		// is that slot, for either hand, turned or not.
+		for (int turn = 0; turn < 2; turn++) {
+			hs.head.orientation =
+			  VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), turn ? 0.7F : 0.0F);
+			for (int hand = 0; hand < 2; hand++)
+				for (int slot = 0; slot < 4; slot++) {
+					Vector3 p, f, r;
+					float radius = 0.0F;
+					CHECK(VRHolsterPlace(hs, hand, slot, p, radius, f, r));
+					CHECK(radius > 0.1F);
+					CHECK(std::fabs(f.y) < 1.0E-5F && std::fabs(Vector3::Dot(f, r)) < 1.0E-5F);
+					CHECK(at(hand, p) == slot);
+				}
+		}
+		hs.head.orientation = VRQuat();
+		{
+			// The forward is level and the way the head looks
+			Vector3 p, f, r;
+			float radius;
+			CHECK(VRHolsterPlace(hs, VRHandRight, VRHolsterBlocks, p, radius, f, r));
+			CHECK(f.z < -0.99F && r.x > 0.99F);
+		}
 		// Looking straight down gives no heading, and no holsters.
 		hs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(1, 0, 0), -1.5707963F);
 		CHECK(at(VRHandRight, h + MakeVector3(0.20F, -0.10F, 0.15F)) == VRHolsterNone);
@@ -385,6 +408,21 @@ int main() {
 		CHECK(VRHapticEnvelope(VRHapticShape::Kick, 2.0F, 0.001F, e, 4000) == 2);
 		CHECK(e[0] == 1.0F); // amplitude clamped
 		CHECK(VRHapticEnvelope(VRHapticShape::Flat, 1.0F, 100.0F, e, 4000) == 4000);
+		// A thump swells to its peak, then dies away
+		n = VRHapticEnvelope(VRHapticShape::Thump, 1.0F, 0.2F, e, 4000);
+		CHECK(n == 100);
+		CHECK(e[0] == 0.0F && e[n - 1] < 0.15F);
+		float peak = 0.0F;
+		int peakAt = 0;
+		for (int i = 0; i < n; i++)
+			if (e[i] > peak)
+				peak = e[i], peakAt = i;
+		CHECK(peak > 0.95F && peakAt > 5 && peakAt < 25);
+		// A crumble is grainy (strong and weak by turns) and dies away
+		n = VRHapticEnvelope(VRHapticShape::Crumble, 1.0F, 0.12F, e, 4000);
+		CHECK(n == 60);
+		CHECK(e[0] == 1.0F && e[6] < e[5] * 0.5F && e[12] > e[11]);
+		CHECK(e[n - 1] < 0.3F);
 	}
 
 	// An input trace line reads back as the frame it was written from, and a

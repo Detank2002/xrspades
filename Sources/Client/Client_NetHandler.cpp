@@ -322,6 +322,13 @@ namespace spades {
 				Handle<IAudioChunk> c = audioDevice->RegisterSound("Sounds/Weapons/Block/Build.opus");
 				audioDevice->Play(c.GetPointerOrNull(), p.GetEye() + p.GetFront(), AudioParam());
 			}
+			// A knock as the block sets in place
+			if (p.IsLocalPlayer())
+				VRPulse(VRToolHand(), 0.35F, 0.04F, VRHapticShape::Kick);
+		}
+
+		void Client::LocalPlayerBrokeBlock() {
+			VRPulse(VRToolHand(), 0.8F, 0.12F, VRHapticShape::Crumble);
 		}
 
 		void Client::PlayBlockDestroySound(spades::Vector3 pos) {

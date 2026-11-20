@@ -76,6 +76,9 @@ DEFINE_SPADES_SETTING(vr_laser, "1");
 static constexpr float kVRLaserAhead = 0.72F, kVRLaserUp = -0.14F;
 // Your own torso and legs when you look down.
 DEFINE_SPADES_SETTING(vr_showBody, "1");
+// The grenades and blocks carried on the hips, drawn where a hand takes them
+DEFINE_SPADES_SETTING(vr_holsterItems, "1");
+SPADES_SETTING(vr_holsters);
 SPADES_SETTING(vr_scope);
 // For tests: the rifle's scope held up to the eye, straight ahead of the head,
 // with no hands (a PC test headset has none), so its view is drawn every frame.
@@ -2010,6 +2013,60 @@ namespace spades {
 			}
 		}
 
+		void ClientPlayer::AddVRHolsterItems() {
+			// What the hips carry, where a hand takes it (VRHolsterPlace): the
+			// grenades left on the other hip, standing in a row along the belt,
+			// and on the gun hand's hip a row of blocks in the colour picked,
+			// fewer as they run out. The one a hand is at stands out a little.
+			Player& p = player;
+			const auto& rig = client.vrRig;
+			if (!(int)vr_holsters || !(int)vr_holsterItems || !p.IsAlive() ||
+			    p.IsSpectator() || client.vrTable.active)
+				return;
+			IRenderer& renderer = client.GetRenderer();
+			const float s = rig.scale; // blocks per metre
+			const Vector3 f = rig.holsterForward, r = rig.holsterRight;
+			// Model axes: x forward, y to the side, z down (right-handed: a
+			// mirrored matrix turns a model inside out)
+			const Vector3 down = MakeVector3(0, 0, 1);
+			const Vector3 side = Vector3::Cross(down, f);
+
+			auto pop = [&](int slot) { return rig.holsterHover == slot ? 1.15F : 1.0F; };
+
+			if (rig.holsterValid[VRHolsterGrenades]) {
+				int n = p.GetNumGrenades();
+				// The one in the hand is not on the hip
+				if (p.GetTool() == Player::ToolGrenade && n > 0)
+					n--;
+				n = std::min(n, 4);
+				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
+				// 9 voxels tall: 11 cm
+				const float voxel = 0.11F / 9.0F * s * pop(VRHolsterGrenades);
+				ModelRenderParam param;
+				for (int i = 0; i < n; i++) {
+					const Vector3 at = rig.holsterPos[VRHolsterGrenades] +
+					                   f * ((i - (n - 1) * 0.5F) * 0.065F * s);
+					param.matrix = Matrix4::FromAxis(f * voxel, side * voxel, down * voxel, at);
+					renderer.RenderModel(*model, param);
+				}
+			}
+			if (rig.holsterValid[VRHolsterBlocks] && p.GetNumBlocks() > 0) {
+				// Three for a full load, down to one
+				const int n = std::min(3, (p.GetNumBlocks() + 16) / 17);
+				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Block/Block.kv6");
+				// 10 voxels across: 6 cm
+				const float voxel = 0.06F / 10.0F * s * pop(VRHolsterBlocks);
+				ModelRenderParam param;
+				param.customColor = ConvertColorRGB(p.GetBlockColor());
+				for (int i = 0; i < n; i++) {
+					const Vector3 at = rig.holsterPos[VRHolsterBlocks] +
+					                   f * ((i - (n - 1) * 0.5F) * 0.065F * s);
+					param.matrix = Matrix4::FromAxis(f * voxel, side * voxel, down * voxel, at);
+					renderer.RenderModel(*model, param);
+				}
+			}
+		}
+
 		void ClientPlayer::AddToSceneVRHands() {
 			Player& p = player;
 			IRenderer& renderer = client.GetRenderer();
@@ -2253,6 +2310,8 @@ namespace spades {
 			// above the eyes (the head's axis 2 points down), along the facing the
 			// server has, which in a headset is the head's.
 			AddFlashlightToScene(client.vrRig.camera - client.vrRig.headAxes[2] * 0.08F, true);
+
+			AddVRHolsterItems();
 
 			ModelRenderParam param;
 			param.customColor = ConvertColorRGB(p.GetColor());

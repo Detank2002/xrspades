@@ -175,6 +175,8 @@ namespace spades {
 			Flat,      // the same all through
 			Kick,      // full at once, dying away: a shot
 			DoubleTap, // two short knocks: a magazine seating
+			Thump,     // a quick swell, then dying away: a shotgun, a blast
+			Crumble,   // grainy and dying away: a block giving way
 		};
 		/** The shape's amplitudes, evenly spread over its time, into `out` (at
 		 * most `maxSamples`; 500 a second, at least 2). Returns how many. */
@@ -532,6 +534,12 @@ namespace spades {
 		 * level. `hover` (the holster the hand was at last frame) gets a little
 		 * more room to leave than to enter, so its edge does not flicker. */
 		int VRHolsterAt(const VRFrameState& fs, int hand, int hover);
+		/** Where holster `slot` (VRHolster) is for `hand`, in tracking space, as
+		 * VRHolsterAt places it: its centre, its grab radius, and the body's level
+		 * forward and right there. False without a head, or looking straight up
+		 * or down. */
+		bool VRHolsterPlace(const VRFrameState& fs, int hand, int slot, Vector3& at,
+		                    float& radius, Vector3& forward, Vector3& right);
 
 		/** The shoulder stock, between frames (VRStockUpdate). */
 		struct VRStockState {

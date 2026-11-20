@@ -145,6 +145,8 @@ namespace spades {
 			// come out of the gun actually being held.
 			bool IsVRHandsView();
 			void AddToSceneVRHands();
+			/** The grenades and blocks carried on the hips, drawn at the holsters. */
+			void AddVRHolsterItems();
 			/** Where the held gun's sights are, from its skin (IVRWeaponSkin):
 			 * `valid` false for a skin that does not say. */
 			struct VRGunSights {

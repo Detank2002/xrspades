@@ -988,15 +988,19 @@ namespace spades {
 				if (p.IsLocalPlayer()) {
 					// A shot's kick, by how hard the gun kicks; braced in two
 					// hands the off hand feels it too.
+					// The shotgun's a heavier shove than a crack: a thump.
 					float amp = 0.7F, len = 0.05F;
+					VRHapticShape shape = VRHapticShape::Kick;
 					switch (p.GetWeaponType()) {
-						case SHOTGUN_WEAPON: amp = 1.0F, len = 0.09F; break;
+						case SHOTGUN_WEAPON:
+							amp = 1.0F, len = 0.12F, shape = VRHapticShape::Thump;
+							break;
 						case SMG_WEAPON: amp = 0.5F, len = 0.035F; break;
 						default: amp = 0.85F, len = 0.07F; break;
 					}
-					VRPulse(VRToolHand(), amp, len, VRHapticShape::Kick);
+					VRPulse(VRToolHand(), amp, len, shape);
 					if (vrRig.twoHanded)
-						VRPulse(1 - VRToolHand(), amp * 0.5F, len, VRHapticShape::Kick);
+						VRPulse(1 - VRToolHand(), amp * 0.5F, len, shape);
 				}
 			} else {
 				// register sound
@@ -1620,6 +1624,10 @@ namespace spades {
 			const bool byLocalPlayer = by.IsLocalPlayer();
 			const bool isMeleeHit = type == HitTypeMelee;
 
+			// A tick in the hand for a hit landed (the kill has its own, harder)
+			if (byLocalPlayer && !hurtPlayer.IsLocalPlayer())
+				VRPulse(VRToolHand(), isMeleeHit ? 0.6F : 0.3F, isMeleeHit ? 0.05F : 0.025F);
+
 			// spatter blood
 			if ((int)cg_blood >= 2) {
 				Vector3 dir = by.GetEye() - hitPos;
@@ -1984,6 +1992,20 @@ namespace spades {
 				}
 			} else {
 				GrenadeExplosion(origin);
+
+				// A blast near the player is felt in both hands, harder the nearer
+				// (the damage, if any, has its own rumble)
+				if (IsVRActive() && world) {
+					stmp::optional<Player&> lp = world->GetLocalPlayer();
+					if (lp && lp->IsAlive()) {
+						const float d = (origin - lp->GetEye()).GetLength();
+						if (d < 16.0F) {
+							const float k = 1.0F - d / 16.0F;
+							VRPulse(-1, 0.25F + 0.75F * k * k, 0.15F + 0.2F * k,
+							        VRHapticShape::Thump);
+						}
+					}
+				}
 
 				if (!IsMuted()) {
 					Handle<IAudioChunk> c, cs;

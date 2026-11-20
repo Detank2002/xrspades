@@ -685,6 +685,14 @@ namespace spades {
 					case VRHapticShape::Kick: v = std::exp(-3.0F * t); break;
 					// On for the first and last 30%, nothing between.
 					case VRHapticShape::DoubleTap: v = (t < 0.3F || t > 0.7F) ? 1.0F : 0.0F; break;
+					// Up over the first 15%, then down to about 12%.
+					case VRHapticShape::Thump:
+						v = t < 0.15F ? t / 0.15F : std::exp(-2.5F * (t - 0.15F) / 0.85F);
+						break;
+					// Grains of 12 ms, strong and weak by turns, dying away.
+					case VRHapticShape::Crumble:
+						v = std::exp(-2.0F * t) * (((i / 6) % 2) == 0 ? 1.0F : 0.35F);
+						break;
 				}
 				out[i] = a * v;
 			}
@@ -728,37 +736,53 @@ namespace spades {
 			return take;
 		}
 
-		int VRHolsterAt(const VRFrameState& fs, int hand, int hover) {
-			const VRControllerState& c = fs.hands[hand];
-			if (!fs.head.valid || !c.grip.valid)
-				return VRHolsterNone;
+		bool VRHolsterPlace(const VRFrameState& fs, int hand, int slot, Vector3& at,
+		                    float& radius, Vector3& forward, Vector3& right) {
+			if (!fs.head.valid || slot < 0 || slot > 3)
+				return false;
 			// Tracking space: +X right, +Y up, -Z forward.
 			Vector3 f = fs.head.Axis(2) * -1.0F;
 			f.y = 0.0F;
 			if (f.GetLength() < 0.1F)
-				return VRHolsterNone; // looking straight up or down: no heading
+				return false; // looking straight up or down: no heading
 			f = f.Normalize();
-			const Vector3 right = MakeVector3(-f.z, 0.0F, f.x);
+			const Vector3 r = MakeVector3(-f.z, 0.0F, f.x);
 			const Vector3 up = MakeVector3(0.0F, 1.0F, 0.0F);
 			const Vector3 h = fs.head.position;
 			const float side = hand == VRHandRight ? 1.0F : -1.0F; // the hand's own side
-
 			// Metres from the eyes. Seated, the hips are beside the seat.
-			struct Slot {
-				Vector3 at;
-				float radius;
-			};
-			const Slot slots[4] = {
-			  {h + right * (0.20F * side) - f * 0.15F - up * 0.10F, 0.18F}, // gun: own shoulder
-			  {h - right * (0.20F * side) - f * 0.15F - up * 0.10F, 0.18F}, // spade: other shoulder
-			  {h + right * (0.22F * side) - up * 0.60F, 0.20F},             // blocks: own hip
-			  {h - right * (0.22F * side) - up * 0.60F, 0.20F},             // grenades: other hip
-			};
+			switch (slot) {
+				case VRHolsterGun: // own shoulder
+					at = h + r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.18F;
+					break;
+				case VRHolsterSpade: // other shoulder
+					at = h - r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.18F;
+					break;
+				case VRHolsterBlocks: // own hip
+					at = h + r * (0.22F * side) - up * 0.60F, radius = 0.20F;
+					break;
+				default: // grenades: other hip
+					at = h - r * (0.22F * side) - up * 0.60F, radius = 0.20F;
+					break;
+			}
+			forward = f;
+			right = r;
+			return true;
+		}
+
+		int VRHolsterAt(const VRFrameState& fs, int hand, int hover) {
+			const VRControllerState& c = fs.hands[hand];
+			if (!fs.head.valid || !c.grip.valid)
+				return VRHolsterNone;
 			int best = VRHolsterNone;
 			float bestDistance = 1.0E9F;
 			for (int i = 0; i < 4; i++) {
-				float d = (c.grip.position - slots[i].at).GetLength();
-				float radius = slots[i].radius * (i == hover ? 1.25F : 1.0F);
+				Vector3 at, forward, right;
+				float radius;
+				if (!VRHolsterPlace(fs, hand, i, at, radius, forward, right))
+					return VRHolsterNone; // looking straight up or down: no heading
+				float d = (c.grip.position - at).GetLength();
+				radius *= i == hover ? 1.25F : 1.0F;
 				if (d < radius && d < bestDistance) {
 					best = i;
 					bestDistance = d;

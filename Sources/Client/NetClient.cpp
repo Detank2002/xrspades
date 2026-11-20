@@ -1440,11 +1440,15 @@ namespace spades {
 						if (p && p->IsToolSpade())
 							p->GotBlock();
 						client->PlayerDestroyedBlockWithWeaponOrTool(pos);
+						if (p && p->IsLocalPlayer())
+							client->LocalPlayerBrokeBlock();
 					} else if (action == BlockActionDig) {
 						for (int z = -1; z <= 1; z++)
 							cells.push_back(MakeIntVector3(pos.x, pos.y, pos.z + z));
 						GetWorld()->DestroyBlock(cells, p && p->IsEditing());
 						client->PlayerDiggedBlock(pos);
+						if (p && p->IsLocalPlayer())
+							client->LocalPlayerBrokeBlock();
 					} else if (action == BlockActionGrenade) {
 						for (int x = -1; x <= 1; x++)
 						for (int y = -1; y <= 1; y++)
