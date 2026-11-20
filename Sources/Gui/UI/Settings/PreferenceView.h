@@ -94,6 +94,11 @@ namespace spades {
 			int selectedTabIndex = 0;
 
 			ui::TextViewer* helpView = nullptr; // weak; owned as a child
+			ui::Field* searchField = nullptr;   // weak; owned as a child
+			std::string searchQuery;            // lower case; empty: no search
+			std::vector<std::string> tabCaptions;
+			/** Shows only the rows matching the search box in every tab. */
+			void ApplySearch();
 			float helpTop = 0.0F;               // help box Y for tabs without nav buttons
 
 			ui::ListView* GetTabList(int idx);

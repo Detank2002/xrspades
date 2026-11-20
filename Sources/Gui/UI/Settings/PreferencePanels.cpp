@@ -468,6 +468,13 @@ namespace spades {
 			const std::string restart = _Tr("Preferences", " (restart)");
 
 			l.AddHeading(_Tr("Preferences", "Movement and Comfort"));
+			// The first-time setup (VRSetupScreen), shown again at the main menu
+			l.AddButtonField(_Tr("Preferences", "First-Time VR Setup"), _Tr("Preferences", "Show Again"),
+			                 [](ui::UIElement&) {
+				                 Settings::ItemHandle("vr_setupDone", nullptr) = 0;
+			                 });
+			l.AddHelp(_Tr("Preferences", "Shows the first-time choices (hand, standing or seated, "
+			                             "turning, vignette) again at the main menu."));
 			l.AddSliderField(_Tr("Preferences", "Turning"), "vr_snapTurn", 0, 90, 15,
 			                 zeroMeans(_Tr("Preferences", "Smooth"), 0, "\xc2\xb0 snap"));
 			l.AddSliderField(_Tr("Preferences", "Smooth Turn Speed"), "vr_smoothTurnSpeed", 60, 360,

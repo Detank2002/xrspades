@@ -59,6 +59,13 @@ namespace spades {
 			std::vector<HeadingNavEntry> entries;
 			ui::ListView* list = nullptr; // weak
 
+			/** Every row of the tab, and what a search matches it by (its labels
+			 * and help, lower case), and whether it is a heading: for the
+			 * Options search (PreferenceView). */
+			std::vector<Handle<ui::UIElement>> rows;
+			std::vector<std::string> rowText;
+			std::vector<bool> rowHeading;
+
 			/** Set by PreferenceView; called with the hovered row's help, or "" on leave. */
 			std::function<void(const std::string&)> helpHandler;
 

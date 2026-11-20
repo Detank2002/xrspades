@@ -46,6 +46,7 @@
 #include <Gui/UI/Widgets/Label.h>
 #include <Gui/UI/Widgets/MessageBox.h>
 #include <Gui/UI/Widgets/TextPromptScreen.h>
+#include "VRSetupScreen.h"
 
 DEFINE_SPADES_SETTING(cg_protocolVersion, "3");
 DEFINE_SPADES_SETTING(cg_lastQuickConnectHost, "127.0.0.1");
@@ -634,7 +635,7 @@ namespace spades {
 					std::function<void()> action;
 				};
 				std::vector<Entry> entries;
-				entries.push_back({_Tr("MainScreen", "Training"), [this] { ShowTraining(); }});
+				entries.push_back({_Tr("MainScreen", "Singleplayer"), [this] { ShowTraining(); }});
 				entries.push_back({_Tr("MainScreen", "Multiplayer"), [this] { ShowTab(0); }});
 				entries.push_back({_Tr("MainScreen", "Demos"), [this] { ShowTab(1); }});
 				if (!helper->IsTryingMod())
@@ -1562,13 +1563,26 @@ namespace spades {
 				debugAimStarted = true;
 				StartAimScenario((int)cg_debugStartAim);
 			}
+			// The first time in a headset: the comfort choices, over the menu
+			if (!vrSetupChecked) {
+				vrSetupChecked = true;
+				if (VRSetupScreen::IsDue()) {
+					Handle<VRSetupScreen> s = Handle<VRSetupScreen>::New(&GetManager());
+					s->done = [this]() {
+						vrSetup->visible = false;
+						vrSetup->enable = false;
+					};
+					vrSetup = s.GetPointerOrNull();
+					AddChild(vrSetup);
+				}
+			}
 			// Whichever page is up: the course started from the home screen is
 			// waited for and joined from here.
 			PollTraining();
 			if (trainingButton) {
 				trainingButton->caption = trainingStarting
 				                            ? _Tr("MainScreen", "Starting the course...")
-				                            : _Tr("MainScreen", "Training");
+				                            : _Tr("MainScreen", "Singleplayer");
 			}
 			if (trainingStarting && tutorialButton)
 				tutorialButton->caption = _Tr("MainScreen", "Starting...");

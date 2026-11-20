@@ -77,7 +77,9 @@ namespace spades {
 
 			tabWidth = PreferenceMetrics::tabWidth;
 			tabRowHeight = 30.0F;
-			tabTop = contentsTop + 2.0F;
+			// The search box above the tabs
+			const float searchHeight = 28.0F;
+			tabTop = contentsTop + 2.0F + searchHeight + 6.0F;
 			tabLeft = contentsLeft + PreferenceMetrics::tabInset;
 			tabRight = tabLeft + tabWidth;
 
@@ -98,6 +100,15 @@ namespace spades {
 				label->backgroundColor = MakeVector4(0.0F, 0.0F, 0.0F, 0.9F);
 				label->SetBounds(AABB2(0.0F, panelTop + 1.0F, size.x, (panelBottom - panelTop) - 1.0F));
 				AddChild(label.GetPointerOrNull());
+			}
+
+			{
+				Handle<ui::Field> f = Handle<ui::Field>::New(manager);
+				f->placeholder = _Tr("Preferences", "Search settings");
+				f->SetBounds(AABB2(tabLeft, contentsTop + 2.0F, tabWidth, searchHeight));
+				f->changed = [this](UIElement&) { ApplySearch(); };
+				searchField = f.GetPointerOrNull();
+				AddChild(searchField);
 			}
 
 			Handle<HeadingNavIndex> gameNav = Handle<HeadingNavIndex>::New();
@@ -208,6 +219,73 @@ namespace spades {
 			UpdateTabs();
 		}
 
+		void PreferenceView::ApplySearch() {
+			std::string q = searchField ? searchField->GetText() : std::string();
+			// Trimmed, lower case
+			while (!q.empty() && q.back() == ' ')
+				q.pop_back();
+			while (!q.empty() && q.front() == ' ')
+				q.erase(q.begin());
+			for (char& c : q)
+				c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+			if (q == searchQuery)
+				return;
+			searchQuery = q;
+
+			int firstMatch = -1;
+			bool selectedHasMatches = false;
+			for (size_t i = 0; i < tabs.size(); i++) {
+				HeadingNavIndex* nav = tabs[i]->headingNav.GetPointerOrNull();
+				PreferenceTabButton* button = tabs[i]->tabButton;
+				if (i >= tabCaptions.size())
+					tabCaptions.resize(i + 1);
+				if (tabCaptions[i].empty())
+					tabCaptions[i] = button->caption;
+				if (!nav || !nav->list || nav->rows.empty())
+					continue;
+				std::vector<Handle<UIElement>> shown;
+				int matches = 0;
+				if (q.empty()) {
+					shown = nav->rows;
+				} else {
+					// A matching row, with its section's heading over it once; a
+					// heading that matches brings its whole section
+					int heading = -1;
+					bool headingShown = false, sectionMatches = false;
+					for (size_t r = 0; r < nav->rows.size(); r++) {
+						if (nav->rowHeading[r]) {
+							heading = static_cast<int>(r);
+							headingShown = false;
+							sectionMatches = nav->rowText[r].find(q) != std::string::npos;
+							continue;
+						}
+						if (!sectionMatches && nav->rowText[r].find(q) == std::string::npos)
+							continue;
+						if (heading >= 0 && !headingShown) {
+							shown.push_back(nav->rows[heading]);
+							headingShown = true;
+						}
+						shown.push_back(nav->rows[r]);
+						matches++;
+					}
+				}
+				Handle<StandardPreferenceLayouterModel> model =
+				  Handle<StandardPreferenceLayouterModel>::New(shown);
+				nav->list->SetModel(model.GetPointerOrNull());
+				nav->list->ScrollToTop();
+				button->caption = q.empty() ? tabCaptions[i]
+				                            : tabCaptions[i] + " (" + std::to_string(matches) + ")";
+				button->enable = q.empty() || matches > 0;
+				if (matches > 0 && firstMatch < 0)
+					firstMatch = static_cast<int>(i);
+				if (static_cast<int>(i) == selectedTabIndex && matches > 0)
+					selectedHasMatches = true;
+			}
+			if (!q.empty() && !selectedHasMatches && firstMatch >= 0)
+				selectedTabIndex = firstMatch;
+			UpdateTabs();
+		}
+
 		ListView* PreferenceView::GetTabList(int idx) {
 			if (idx < 0 || idx >= static_cast<int>(tabs.size()))
 				return nullptr;
@@ -286,8 +364,9 @@ namespace spades {
 				bool selected = selectedTabIndex == static_cast<int>(i);
 				tabs[i]->tabButton->toggled = selected;
 				tabs[i]->view->visible = selected;
+				// The section buttons jump to rows a search has filtered away
 				if (tabs[i]->navPanel != nullptr)
-					tabs[i]->navPanel->visible = selected;
+					tabs[i]->navPanel->visible = selected && searchQuery.empty();
 			}
 
 			// switching tabs must not keep the previous tab's help text

@@ -27,6 +27,7 @@
 #include <Client/SceneDefinition.h>
 #include <Client/VRState.h>
 #include <Core/Debug.h>
+#include <Core/FileManager.h>
 #include <Core/MemoryStream.h>
 #include <Training/MapGen.h>
 #include <Training/VoxelMap.h>
@@ -126,15 +127,42 @@ namespace spades {
 			if (!fs.running || !fs.shouldRender || !fs.head.valid)
 				return;
 
-			// The map: generated once, off the frame (a headset must not stall),
-			// and loaded when it is ready. Until then, the void.
+			// The map: one of the real maps the flat menu flies round (Maps/Menu),
+			// a different one each launch, read here and decoded off the frame
+			// (a headset must not stall); a generated one if none is there. Until
+			// it is ready, the void.
 			if (!vrMenuMapStarted) {
 				vrMenuMapStarted = true;
-				vrMenuMapLoad = std::async(std::launch::async, []() -> client::GameMap* {
+				static const char* const kMenuMaps[] = {"Maps/Menu/Normandie.vxl",
+				                                        "Maps/Menu/GhostTown.vxl",
+				                                        "Maps/Menu/Quarantine.vxl",
+				                                        "Maps/Menu/MashesswoodIsland.vxl"};
+				const int n = sizeof(kMenuMaps) / sizeof(kMenuMaps[0]);
+				std::string bytes;
+				const int first = static_cast<int>(std::chrono::steady_clock::now()
+				                                     .time_since_epoch()
+				                                     .count() %
+				                                   n);
+				for (int k = 0; k < n && bytes.empty(); k++) {
+					const char* path = kMenuMaps[(first + k) % n];
+					if (!FileManager::FileExists(path))
+						continue;
+					try {
+						bytes = FileManager::ReadAllBytes(path);
+						SPLog("[VR] Menu scene: %s", path);
+					} catch (const std::exception& ex) {
+						SPLog("[VR] Menu scene: %s: %s", path, ex.what());
+					}
+				}
+				vrMenuMapLoad = std::async(std::launch::async, [bytes]() -> client::GameMap* {
+					if (!bytes.empty()) {
+						MemoryStream stream(bytes.data(), bytes.size());
+						return client::GameMap::Load(&stream);
+					}
 					host::VoxelMap m;
 					host::generate_map(m, 0x5EED);
-					const std::vector<uint8_t> bytes = m.save_vxl();
-					MemoryStream stream(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+					const std::vector<uint8_t> gen = m.save_vxl();
+					MemoryStream stream(reinterpret_cast<const char*>(gen.data()), gen.size());
 					return client::GameMap::Load(&stream);
 				});
 			}
@@ -144,7 +172,7 @@ namespace spades {
 					return;
 				try {
 					vrMenuMap = Handle<client::GameMap>(vrMenuMapLoad.get(), false);
-					SPLog("[VR] Menu scene: standing on a generated map");
+					SPLog("[VR] Menu scene: the map is ready");
 				} catch (const std::exception& ex) {
 					SPLog("[VR] Menu scene: the map did not load: %s", ex.what());
 					return;
@@ -159,16 +187,18 @@ namespace spades {
 				vrMenuMapSet = true;
 			}
 
-			// Standing 4 blocks over the ground (a little over a player's eye) at the blue end, looking down the
-			// map. The head's own movement moves the view, as it would anywhere
+			// Standing at a player's eye height over the ground, at the middle of
+			// the map: in among its buildings, as in a game. The head's own
+			// movement moves the view, as it would anywhere
 			// (a view that ignores the head is what makes people sick); turning is
 			// all the head's. Tracking -Z is the game's +X (VRTrackingToGameAxes).
 			const float scale = std::max(0.5F, std::min((float)vr_worldScale, 4.0F));
 			if (!vrMenuAnchored) {
 				vrMenuAnchored = true;
 				vrMenuAnchor = fs.head.position;
-				const int x = 96, y = 256;
-				vrMenuEye = MakeVector3((float)x, (float)y, (float)vrMenuMap->GetTop(x, y) - 4.0F);
+				const int x = vrMenuMap->Width() / 2, y = vrMenuMap->Height() / 2;
+				vrMenuEye = MakeVector3((float)x + 0.5F, (float)y + 0.5F,
+				                        (float)vrMenuMap->GetTop(x, y) - 2.5F);
 			}
 			auto toWorld = [&](const Vector3& v) { return client::VRTrackingToGameAxes(v) * scale; };
 			const Vector3 origin = vrMenuEye + toWorld(fs.head.position - vrMenuAnchor);

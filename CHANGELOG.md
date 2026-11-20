@@ -24,6 +24,10 @@ one change, in a player's words.
 - New: in VR, feel blocks break and set under your hand, every hit you land, and grenades going off near you; the shotgun kicks harder
 - Improved: 3D sound in headphones is on by default (Options, Audio to change it)
 - Improved: the faster Vulkan renderer is the default; a PC that can't run it starts with OpenGL
+- New: search in Settings: type a word and every tab shows only what matches
+- New: in VR, a first-time setup for your hand, standing or seated, turning and the comfort vignette
+- Improved: in VR, the main menu stands you in one of the real maps the flat menu flies round
+- Improved: the main menu says Singleplayer again
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

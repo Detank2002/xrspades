@@ -437,6 +437,32 @@ namespace spades {
 				headingNav->entries = headings;
 				headingNav->list = list.GetPointerOrNull();
 			}
+			// What the Options search finds each row by: its captions and help
+			if (headingNav) {
+				headingNav->list = list.GetPointerOrNull();
+				headingNav->rows = items;
+				headingNav->rowText.assign(items.size(), std::string());
+				headingNav->rowHeading.assign(items.size(), false);
+				for (const HeadingNavEntry& h : headings)
+					if (h.row >= 0 && h.row < static_cast<int>(items.size()))
+						headingNav->rowHeading[h.row] = true;
+				std::function<void(UIElement*, std::string&)> gather = [&](UIElement* e,
+				                                                           std::string& out) {
+					if (Label* l = dynamic_cast<Label*>(e))
+						out += l->text + " ";
+					for (const Handle<UIElement>& c : e->GetChildren())
+						gather(c.GetPointerOrNull(), out);
+				};
+				for (size_t i = 0; i < items.size(); i++) {
+					std::string t;
+					gather(items[i].GetPointerOrNull(), t);
+					if (i < rowHelp.size())
+						t += rowHelp[i];
+					for (char& c : t)
+						c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+					headingNav->rowText[i] = t;
+				}
+			}
 
 			// Hook every row, including those without help, so that entering a row
 			// without help clears the previous row's text.
