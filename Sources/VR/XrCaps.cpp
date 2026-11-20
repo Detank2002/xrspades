@@ -52,6 +52,11 @@ namespace spades {
 			  "XR_FB_touch_controller_pro",
 			  "XR_META_touch_controller_plus",
 			  "XR_FB_touch_controller_proximity",
+			  "XR_VALVE_frame_controller_interaction",
+			  "XR_BD_controller_interaction",
+			  "XR_HTC_vive_focus3_controller_interaction",
+			  "XR_HTC_vive_cosmos_controller_interaction",
+			  "XR_EXT_hp_mixed_reality_controller",
 			  "XR_KHR_android_create_instance",
 			};
 

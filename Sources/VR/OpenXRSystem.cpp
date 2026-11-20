@@ -606,6 +606,80 @@ namespace spades {
 			         {hapticAction, "/user/hand/left/output/haptic"},
 			         {hapticAction, "/user/hand/right/output/haptic"}});
 
+			// Touch Plus (Quest 3, 3S) and Touch Pro (Quest Pro), where the runtime
+			// names them: the same buttons as Touch, and the picture of the
+			// controllers in hand (no ring) can then be told from a Quest 2's.
+			// `squeeze`: the grip's input there (a value, or only a click)
+			auto touchLike = [&](const char* profile, const char* squeeze = "value") {
+				const std::string sl = std::string("/user/hand/left/input/squeeze/") + squeeze;
+				const std::string sr = std::string("/user/hand/right/input/squeeze/") + squeeze;
+				suggest(profile,
+				        {{gripPoseAction, "/user/hand/left/input/grip/pose"},
+				         {gripPoseAction, "/user/hand/right/input/grip/pose"},
+				         {aimPoseAction, "/user/hand/left/input/aim/pose"},
+				         {aimPoseAction, "/user/hand/right/input/aim/pose"},
+				         {triggerAction, "/user/hand/left/input/trigger/value"},
+				         {triggerAction, "/user/hand/right/input/trigger/value"},
+				         {squeezeAction, sl.c_str()},
+				         {squeezeAction, sr.c_str()},
+				         {thumbstickAction, "/user/hand/left/input/thumbstick"},
+				         {thumbstickAction, "/user/hand/right/input/thumbstick"},
+				         {thumbstickClickAction, "/user/hand/left/input/thumbstick/click"},
+				         {thumbstickClickAction, "/user/hand/right/input/thumbstick/click"},
+				         {primaryAction, "/user/hand/left/input/x/click"},
+				         {primaryAction, "/user/hand/right/input/a/click"},
+				         {secondaryAction, "/user/hand/left/input/y/click"},
+				         {secondaryAction, "/user/hand/right/input/b/click"},
+				         {menuAction, "/user/hand/left/input/menu/click"},
+				         {hapticAction, "/user/hand/left/output/haptic"},
+				         {hapticAction, "/user/hand/right/output/haptic"}});
+			};
+			if (caps[XrCap::TouchControllerPlus])
+				touchLike("/interaction_profiles/meta/touch_controller_plus");
+			if (caps[XrCap::TouchControllerPro])
+				touchLike("/interaction_profiles/facebook/touch_controller_pro");
+			// The others laid out as Touch is: X and Y on the left with a menu
+			// button, A and B on the right, a stick each
+			if (caps[XrCap::PicoController]) {
+				touchLike("/interaction_profiles/bytedance/pico4_controller");
+				touchLike("/interaction_profiles/bytedance/pico_neo3_controller");
+			}
+			if (caps[XrCap::Focus3Controller])
+				touchLike("/interaction_profiles/htc/vive_focus3_controller");
+			if (caps[XrCap::CosmosController])
+				touchLike("/interaction_profiles/htc/vive_cosmos_controller", "click");
+			if (caps[XrCap::HpController])
+				touchLike("/interaction_profiles/hp/mixed_reality_controller");
+
+			// Steam Frame: a D-pad on the left and A, B, X, Y on the right, as
+			// SteamVR maps Touch onto it (the lower button A / D-pad down, the
+			// upper ones B, X, Y / D-pad up, left, right), and View for the menu.
+			if (caps[XrCap::FrameController])
+				suggest("/interaction_profiles/valve/frame_controller_valve",
+				        {{gripPoseAction, "/user/hand/left/input/grip/pose"},
+				         {gripPoseAction, "/user/hand/right/input/grip/pose"},
+				         {aimPoseAction, "/user/hand/left/input/aim/pose"},
+				         {aimPoseAction, "/user/hand/right/input/aim/pose"},
+				         {triggerAction, "/user/hand/left/input/trigger/value"},
+				         {triggerAction, "/user/hand/right/input/trigger/value"},
+				         {squeezeAction, "/user/hand/left/input/squeeze/value"},
+				         {squeezeAction, "/user/hand/right/input/squeeze/value"},
+				         {thumbstickAction, "/user/hand/left/input/thumbstick"},
+				         {thumbstickAction, "/user/hand/right/input/thumbstick"},
+				         {thumbstickClickAction, "/user/hand/left/input/thumbstick/click"},
+				         {thumbstickClickAction, "/user/hand/right/input/thumbstick/click"},
+				         {primaryAction, "/user/hand/left/input/dpad_down/click"},
+				         {primaryAction, "/user/hand/right/input/a/click"},
+				         {secondaryAction, "/user/hand/left/input/dpad_up/click"},
+				         {secondaryAction, "/user/hand/left/input/dpad_left/click"},
+				         {secondaryAction, "/user/hand/left/input/dpad_right/click"},
+				         {secondaryAction, "/user/hand/right/input/b/click"},
+				         {secondaryAction, "/user/hand/right/input/x/click"},
+				         {secondaryAction, "/user/hand/right/input/y/click"},
+				         {menuAction, "/user/hand/left/input/view/click"},
+				         {hapticAction, "/user/hand/left/output/haptic"},
+				         {hapticAction, "/user/hand/right/output/haptic"}});
+
 			// Index. Its system button is reserved, so there is no menu binding;
 			// holding both B buttons opens the menu instead (see the client).
 			suggest("/interaction_profiles/valve/index_controller",

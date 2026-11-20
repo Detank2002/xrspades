@@ -51,6 +51,7 @@ namespace spades {
 			Handle<IImage> image;
 			bool tried = false;
 			AABB2 imageRect;
+			AABB2 contents; // on the dialog band (DialogChrome)
 			Vector2 pictureSize{1600.0F, 900.0F};
 
 			struct Control {

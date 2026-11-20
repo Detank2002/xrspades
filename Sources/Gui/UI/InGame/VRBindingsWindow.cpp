@@ -37,6 +37,7 @@
 #include <Core/Strings.h>
 #include <Gui/UI/Framework/UIManager.h>
 #include <Gui/UI/Widgets/Button.h>
+#include <Gui/UI/Widgets/DialogChrome.h>
 #include <Gui/UI/Widgets/DrawUtils.h>
 #include <Gui/UI/Widgets/DropDownList.h>
 
@@ -45,6 +46,7 @@ SPADES_SETTING(vr_swapSticks);
 
 namespace spades {
 	namespace client {
+		using gui::DialogChrome;
 		using gui::ui::Button;
 		using gui::ui::SetColorNP;
 		using gui::ui::UIElement;
@@ -118,21 +120,30 @@ namespace spades {
 			// The controllers in use (the Body slide has no buttons)
 			family = VRControlsSlideForControllers();
 
+			// The game's dialog look (DialogChrome): the view dimmed, a dark band
+			// across the screen with a hairline at each edge, the title at its
+			// top left and the buttons in a row along its bottom
 			const float sw = manager->screenWidth, sh = manager->screenHeight;
-			const float buttonH = 30.0F, margin = 10.0F;
-			float iw = sw - margin * 2.0F;
+			const float buttonH = DialogChrome::kButtonHeight, margin = 10.0F;
+			const float titleH = 40.0F;
+			// Placed as DialogChrome::Attach would, but the dim and the band are
+			// drawn here (Render) under the picture, not as children over it
+			contents = AABB2(20.0F, 30.0F, sw - 40.0F, sh - 60.0F);
+			float iw = contents.GetWidth();
 			float ih = iw * 9.0F / 16.0F;
-			if (ih > sh - buttonH - margin * 3.0F) {
-				ih = sh - buttonH - margin * 3.0F;
+			const float room = contents.GetHeight() - titleH - buttonH - margin;
+			if (ih > room) {
+				ih = room;
 				iw = ih * 16.0F / 9.0F;
 			}
-			imageRect = AABB2((sw - iw) * 0.5F, margin, iw, ih);
+			imageRect = AABB2(contents.GetMinX() + (contents.GetWidth() - iw) * 0.5F,
+			                  contents.GetMinY() + titleH, iw, ih);
 
 			Load();
 
 			// A drop-down per button, in a column beside its hand, in the order
 			// the buttons stand on the controller
-			const float colW = std::min(300.0F, iw * 0.26F), rowH = 30.0F;
+			const float colW = std::min(300.0F, contents.GetWidth() * 0.24F), rowH = 30.0F;
 			for (int side = 0; side < 2; side++) {
 				std::vector<std::size_t> mine;
 				for (std::size_t i = 0; i < controls.size(); i++) {
@@ -143,8 +154,7 @@ namespace spades {
 				std::sort(mine.begin(), mine.end(), [&](std::size_t a, std::size_t b) {
 					return controls[a].point.y < controls[b].point.y;
 				});
-				const float x = side == 0 ? imageRect.GetMinX() + margin
-				                          : imageRect.GetMaxX() - margin - colW;
+				const float x = side == 0 ? contents.GetMinX() : contents.GetMaxX() - colW;
 				const float total = static_cast<float>(mine.size()) * (rowH + 26.0F);
 				float y = imageRect.GetMinY() + (imageRect.GetHeight() - total) * 0.45F;
 				for (std::size_t i : mine) {
@@ -164,8 +174,8 @@ namespace spades {
 				}
 			}
 
-			const float by = imageRect.GetMaxY() + margin;
-			const float bx = imageRect.GetMinX();
+			const float by = contents.GetMaxY() - buttonH;
+			const float bx = contents.GetMinX();
 			{
 				Handle<Button> b = Handle<Button>::New(manager);
 				b->SetBounds(AABB2(bx, by, 220.0F, buttonH));
@@ -179,7 +189,7 @@ namespace spades {
 			{
 				Handle<Button> b = Handle<Button>::New(manager);
 				b->caption = _Tr("Client", "Reset to default");
-				b->SetBounds(AABB2(bx + 230.0F, by, 180.0F, buttonH));
+				b->SetBounds(DialogChrome::ButtonSlot(contents, 1));
 				b->activated = [this](UIElement&) {
 					bindings = VRDefaultBindings();
 					vr_swapSticks = 0;
@@ -192,7 +202,7 @@ namespace spades {
 				Handle<Button> b = Handle<Button>::New(manager);
 				b->caption = _Tr("Client", "Back");
 				b->hotKeyText = _Tr("Client", "[Esc]");
-				b->SetBounds(AABB2(imageRect.GetMaxX() - 150.0F, by, 150.0F, buttonH));
+				b->SetBounds(DialogChrome::ButtonSlot(contents, 0));
 				b->activated = [this](UIElement&) { this->ui->EnterVRControlsWindow(); };
 				AddChild(b.GetPointerOrNull());
 			}
@@ -308,10 +318,15 @@ namespace spades {
 			const Vector2 pos = GetScreenPosition();
 			const AABB2 b = GetBounds();
 
-			// Under the drop-downs: the dimmed backdrop, the controllers, and a
-			// line from each drop-down to its button
-			SetColorNP(r, MakeVector4(0.0F, 0.0F, 0.0F, 0.85F));
+			// The view dimmed and the dark band, as every dialog of the game has
+			// them (DialogChrome), then the controllers, and a line from each
+			// drop-down to its button; the buttons last, over all of it
+			SetColorNP(r, MakeVector4(0.0F, 0.0F, 0.0F, 0.7F));
 			r.DrawImage(nullptr, AABB2(pos.x, pos.y, b.GetWidth(), b.GetHeight()));
+			SetColorNP(r, MakeVector4(0.0F, 0.0F, 0.0F, 0.75F));
+			r.DrawImage(nullptr, AABB2(pos.x, pos.y + contents.GetMinY() - 13.0F, b.GetWidth(),
+			                           contents.GetHeight() + 27.0F));
+			DialogChrome::DrawEdges(*this, contents);
 			if (!tried) {
 				tried = true;
 				const std::string path = "Gfx/VR/Controls/Bind-" + family + ".png";
@@ -325,22 +340,35 @@ namespace spades {
 				SetColorNP(r, MakeVector4(1.0F, 1.0F, 1.0F, 1.0F));
 				r.DrawImage(*image, imageRect.Translated(pos));
 			}
-			const std::string title = _Tr("Client", "Change buttons");
-			font.Draw(title, pos + imageRect.min + MakeVector2(16.0F, 12.0F), 1.5F,
-			          MakeVector4(1.0F, 1.0F, 1.0F, 1.0F));
+			const Vector4 white = MakeVector4(1.0F, 1.0F, 1.0F, 1.0F);
+			const Vector4 shadow = MakeVector4(0.0F, 0.0F, 0.0F, 0.5F);
+			IFont& heading = ui->GetFontManager().GetHeadingFont();
+			heading.DrawShadow(_Tr("Client", "Change buttons"), pos + contents.min, 1.0F, white,
+			                   shadow);
+			// Each hand under its controller
+			const float sx = imageRect.GetWidth() / pictureSize.x;
+			for (int h = 0; h < 2; h++) {
+				const std::string s = h == 0 ? _Tr("Client", "Left hand") : _Tr("Client", "Right hand");
+				const Vector2 sz = font.Measure(s);
+				const Vector2 at = pos + MakeVector2(imageRect.GetMinX() + (h == 0 ? 630.0F : 970.0F) * sx -
+				                                       sz.x * 0.5F,
+				                                     imageRect.GetMinY() + 790.0F * sx);
+				font.DrawShadow(s, at, 1.0F, MakeVector4(1.0F, 1.0F, 1.0F, 0.6F), shadow);
+			}
 			for (std::size_t ci = 0; ci < controls.size(); ci++) {
 				const Control& c = controls[ci];
 				// In its marker's colour; while one drop-down is pointed at, the
 				// others step back and its button is ringed
 				const bool focus = hovered == static_cast<int>(ci);
 				const bool dim = hovered >= 0 && !focus;
-				Vector4 lineCol = c.colour;
-				if (dim)
-					lineCol.w = 0.3F;
+				// White, as the rest of the game's text: brighter for the one
+				// pointed at, fainter for the others meanwhile
+				const Vector4 lineCol = MakeVector4(1.0F, 1.0F, 1.0F, focus ? 0.9F : dim ? 0.15F : 0.35F);
 				// The button's name over its drop-down
-				font.Draw(_Tr("Client", c.caption.c_str()),
-				          pos + c.rect.min + MakeVector2(2.0F, -20.0F), 1.0F,
-				          dim ? MakeVector4(c.colour.x, c.colour.y, c.colour.z, 0.5F) : c.colour);
+				font.DrawShadow(_Tr("Client", c.caption.c_str()),
+				                pos + c.rect.min + MakeVector2(2.0F, -20.0F), 1.0F,
+				                MakeVector4(1.0F, 1.0F, 1.0F, focus ? 1.0F : dim ? 0.4F : 0.7F),
+				                shadow);
 				const Vector2 to = pos + PicturePoint(c.point);
 				const bool leftCol = c.rect.GetMinX() < imageRect.GetMinX() + imageRect.GetWidth() * 0.5F;
 				const Vector2 from = pos + MakeVector2(leftCol ? c.rect.GetMaxX() : c.rect.GetMinX(),

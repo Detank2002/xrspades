@@ -44,7 +44,9 @@ namespace spades {
 		using gui::ui::UIManager;
 
 		namespace {
-			const char* const kSlides[] = {"Quest2", "Quest3", "Index", "Vive", "WMR", "Body"};
+			const char* const kSlides[] = {"Quest2", "Quest3", "Index",  "Frame",  "Vive",
+			                               "Cosmos", "Focus3", "Pico",   "PSVR2",  "Reverb",
+			                               "WMR",    "Body"};
 			std::string SlidePath(const std::string& name) {
 				return "Gfx/VR/Controls/" + name + ".png";
 			}
@@ -56,8 +58,22 @@ namespace spades {
 				profile = vr->GetControllerProfile();
 				headset = vr->GetHeadsetName();
 			}
+			if (profile.find("valve/frame_controller") != std::string::npos)
+				return "Frame";
 			if (profile.find("valve/index") != std::string::npos)
 				return "Index";
+			if (profile.find("bytedance/") != std::string::npos)
+				return "Pico";
+			if (profile.find("vive_focus3") != std::string::npos)
+				return "Focus3";
+			if (profile.find("vive_cosmos") != std::string::npos)
+				return "Cosmos";
+			if (profile.find("hp/mixed_reality") != std::string::npos)
+				return "Reverb";
+			// Touch Plus (Quest 3, 3S) and Touch Pro have no ring
+			if (profile.find("touch_controller_plus") != std::string::npos ||
+			    profile.find("touch_controller_pro") != std::string::npos)
+				return "Quest3";
 			if (profile.find("htc/vive") != std::string::npos)
 				return "Vive";
 			if (profile.find("microsoft/motion") != std::string::npos)
@@ -67,8 +83,22 @@ namespace spades {
 			// "Oculus Quest2").
 			std::string h = ToLowerCase(headset);
 			h.erase(std::remove(h.begin(), h.end(), ' '), h.end());
-			if (h.find("quest3") != std::string::npos)
+			if (h.find("quest3") != std::string::npos || h.find("questpro") != std::string::npos)
 				return "Quest3";
+			// Headsets whose controllers come through as another kind (SteamVR
+			// maps Touch bindings over them): told by the headset's name
+			if (h.find("frame") != std::string::npos && h.find("steam") != std::string::npos)
+				return "Frame";
+			if (h.find("playstation") != std::string::npos || h.find("psvr") != std::string::npos)
+				return "PSVR2";
+			if (h.find("pico") != std::string::npos)
+				return "Pico";
+			if (h.find("reverb") != std::string::npos)
+				return "Reverb";
+			if (h.find("focus3") != std::string::npos || h.find("xrelite") != std::string::npos)
+				return "Focus3";
+			if (h.find("cosmos") != std::string::npos)
+				return "Cosmos";
 			return "Quest2";
 		}
 
