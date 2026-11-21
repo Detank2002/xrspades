@@ -1182,12 +1182,9 @@ namespace spades {
 
 			// Sized against the screen height, like the chevron, and kept inside a
 			// margin so a ping just off the edge still tells you which way to look.
-			// (In an eye, well inside its picture: the edges of an eye's image are
-			// past what that eye's lens shows.)
+			// (In an eye, held by direction from the head instead: see below.)
 			float sz = Clamp(sh * 0.014F, 10.0F, 26.0F);
 			float margin = sz * 2.0F;
-			if (vrEyeOverlayPass)
-				margin = std::max(margin, std::min(sw, sh) * 0.22F);
 
 			// What is left of a marker the player is facing: enough to keep the callout
 			// on screen without hiding what it points at. Down the sights it thins
@@ -1217,7 +1214,35 @@ namespace spades {
 
 				Vector2 scrPos;
 				bool onScreen = false;
-				if (forward > 0.0F && Project(ping.position, scrPos)) {
+				if (vrEyeOverlayPass) {
+					// In a headset, each eye pinned it to its own picture's edge,
+					// and the two edges are not in the same place: the eyes saw two
+					// markers they could not fuse, and mostly one (testers). Here
+					// the marker is held by direction from the head instead: within
+					// 30 degrees of where you look it is where the ping is; further
+					// off, on that 30 degree ring, 4m out, the same point in both
+					// eyes. The ring is well inside what the lenses show.
+					const Vector3 headAt = vrRig.camera;
+					const Vector3 fwd = vrRig.headAxes[0];
+					Vector3 to = ping.position - headAt;
+					const float len = to.GetLength();
+					Vector3 dir = len > 1.0E-3F ? to * (1.0F / len) : fwd;
+					const float c = Vector3::Dot(dir, fwd);
+					const float ring = 30.0F * 0.0174532925F;
+					Vector3 at = ping.position;
+					if (c < std::cos(ring)) {
+						Vector3 side = dir - fwd * c;
+						if (side.GetLength() < 1.0E-3F)
+							side = vrRig.headAxes[2]; // straight behind: below
+						side = side.Normalize();
+						at = headAt + (fwd * std::cos(ring) + side * std::sin(ring)) *
+						                (4.0F * vrRig.scale);
+					} else {
+						onScreen = true;
+					}
+					if (!Project(at, scrPos))
+						continue;
+				} else if (forward > 0.0F && Project(ping.position, scrPos)) {
 					onScreen = scrPos.x >= margin && scrPos.x <= sw - margin &&
 							   scrPos.y >= margin && scrPos.y <= sh - margin;
 				} else {
@@ -1232,8 +1257,10 @@ namespace spades {
 					scrPos = MakeVector2(sw * 0.5F, sh * 0.5F) + dir * (sh * 0.5F);
 				}
 
-				scrPos.x = Clamp(scrPos.x, margin, sw - margin);
-				scrPos.y = Clamp(scrPos.y, margin, sh - margin);
+				if (!vrEyeOverlayPass) {
+					scrPos.x = Clamp(scrPos.x, margin, sw - margin);
+					scrPos.y = Clamp(scrPos.y, margin, sh - margin);
+				}
 
 				// A marker stands between the player and the thing it points at — often
 				// the marked enemy it was placed on — so it gets out of the way as the
@@ -1243,7 +1270,12 @@ namespace spades {
 				// still legible, the copies on any other surface the ping asked for are
 				// untouched, and it is back in full the moment the aim moves off.
 				if (onScreen) {
-					float dist = (scrPos - MakeVector2(sw, sh) * 0.5F).GetLength();
+					// Where you look: the middle of the screen, or in an eye where
+					// the head's forward lands in it (not its picture's middle)
+					Vector2 aimAt = MakeVector2(sw, sh) * 0.5F;
+					if (vrEyeOverlayPass)
+						Project(vrRig.camera + vrRig.headAxes[0] * (10.0F * vrRig.scale), aimAt);
+					float dist = (scrPos - aimAt).GetLength();
 					alpha *= Mix(facedAlpha, 1.0F,
 								 SmoothStep(Clamp((dist - sz * 0.5F) / sz, 0.0F, 1.0F)));
 					if (alpha <= 0.0F)
