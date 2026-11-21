@@ -235,9 +235,6 @@ namespace spades {
 			// The front panel (PlaceHudPanel): asked to follow the head this frame,
 			// and where it stands in the room otherwise.
 			bool hudFollowAsked = false;
-			bool hudStanding = false;
-			client::VRPose hudStandPose;
-			float hudAwayTime = 0.0F;
 			// Playing, the panel trails the head (PlaceHudPanel): its direction
 			// from the head, and whether it is catching up.
 			Vector3 hudTrailDir{0.0F, 0.0F, -1.0F};

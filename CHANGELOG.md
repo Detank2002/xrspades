@@ -42,6 +42,7 @@ one change, in a player's words.
 - Changed: the spade stays a spade when you hit with it, instead of turning into a pickaxe
 - Improved: in VR, tips and in-game popups float in front of you and catch up when you look away, instead of being stuck to your face; the training tips are smaller
 - Fixed: in VR, the menu behind the first-time setup no longer takes clicks
+- New: in VR, walk and turn around the main menu's map with the sticks; the menu floats along with you
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

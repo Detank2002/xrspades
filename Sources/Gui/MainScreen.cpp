@@ -48,6 +48,9 @@ DEFINE_SPADES_SETTING(cg_playerName, "Deuce");
 // In a headset, the menus stand on a generated map instead of in a void.
 DEFINE_SPADES_SETTING(vr_menuScene, "1");
 SPADES_SETTING(vr_worldScale);
+SPADES_SETTING(vr_snapTurn);
+SPADES_SETTING(vr_smoothTurnSpeed);
+SPADES_SETTING(vr_leftHanded);
 
 namespace spades {
 	namespace gui {
@@ -189,9 +192,10 @@ namespace spades {
 
 			// Standing at a player's eye height over the ground, at the middle of
 			// the map: in among its buildings, as in a game. The head's own
-			// movement moves the view, as it would anywhere
-			// (a view that ignores the head is what makes people sick); turning is
-			// all the head's. Tracking -Z is the game's +X (VRTrackingToGameAxes).
+			// movement moves the view, as it would anywhere (a view that ignores
+			// the head is what makes people sick). The off hand's stick walks and
+			// the other turns, as in a game; the menu panel stays with you.
+			// Tracking -Z is the game's +X (VRTrackingToGameAxes).
 			const float scale = std::max(0.5F, std::min((float)vr_worldScale, 4.0F));
 			if (!vrMenuAnchored) {
 				vrMenuAnchored = true;
@@ -199,8 +203,16 @@ namespace spades {
 				const int x = vrMenuMap->Width() / 2, y = vrMenuMap->Height() / 2;
 				vrMenuEye = MakeVector3((float)x + 0.5F, (float)y + 0.5F,
 				                        (float)vrMenuMap->GetTop(x, y) - 2.5F);
+				vrMenuYaw = 0.0F;
+				vrMenuLastTime = 0.0;
 			}
-			auto toWorld = [&](const Vector3& v) { return client::VRTrackingToGameAxes(v) * scale; };
+			MoveInVRMenu(fs, scale);
+			const float cy = std::cos(vrMenuYaw), sy = std::sin(vrMenuYaw);
+			auto axes = [&](const Vector3& t) {
+				const Vector3 v = client::VRTrackingToGameAxes(t);
+				return MakeVector3(v.x * cy - v.y * sy, v.x * sy + v.y * cy, v.z);
+			};
+			auto toWorld = [&](const Vector3& v) { return axes(v) * scale; };
 			const Vector3 origin = vrMenuEye + toWorld(fs.head.position - vrMenuAnchor);
 
 			client::SceneDefinition def;
@@ -208,8 +220,8 @@ namespace spades {
 			def.zNear = 0.05F;
 			def.zFar = 160.0F;
 			def.viewOrigin = origin;
-			const Vector3 fwd = client::VRTrackingToGameAxes(-fs.head.Axis(2)).Normalize();
-			const Vector3 up = client::VRTrackingToGameAxes(fs.head.Axis(1)).Normalize();
+			const Vector3 fwd = axes(-fs.head.Axis(2)).Normalize();
+			const Vector3 up = axes(fs.head.Axis(1)).Normalize();
 			def.viewAxis[2] = fwd;
 			def.viewAxis[1] = -up;
 			def.viewAxis[0] = Vector3::Cross(def.viewAxis[1], def.viewAxis[2]).Normalize();
@@ -219,9 +231,9 @@ namespace spades {
 				auto& e = def.vrEyes[i];
 				const client::VRPose& eye = fs.eyes[i];
 				e.origin = origin + toWorld(eye.position - fs.head.position);
-				e.axis[0] = client::VRTrackingToGameAxes(eye.Axis(0)).Normalize();
-				e.axis[1] = client::VRTrackingToGameAxes(eye.Axis(1)).Normalize();
-				e.axis[2] = client::VRTrackingToGameAxes(-eye.Axis(2)).Normalize();
+				e.axis[0] = axes(eye.Axis(0)).Normalize();
+				e.axis[1] = axes(eye.Axis(1)).Normalize();
+				e.axis[2] = axes(-eye.Axis(2)).Normalize();
 				e.fovX = 2.0F * std::atan(fs.eyeTanX[i]);
 				e.fovY = 2.0F * std::atan(fs.eyeTanY[i]);
 				e.asymmetric = fs.eyeAsymmetric;
@@ -236,6 +248,111 @@ namespace spades {
 			def.globalBlur = 0.0F;
 			renderer->StartScene(def);
 			renderer->EndScene();
+		}
+
+		void MainScreen::MoveInVRMenu(const client::VRFrameState& fs, float scale) {
+			const double now = std::chrono::duration<double>(
+			                     std::chrono::steady_clock::now().time_since_epoch())
+			                     .count();
+			const float dt = vrMenuLastTime > 0.0
+			                   ? std::min(0.1F, static_cast<float>(now - vrMenuLastTime))
+			                   : 0.0F;
+			vrMenuLastTime = now;
+			if (dt <= 0.0F || !vrMenuMap || !fs.head.valid)
+				return;
+			const int toolHand = (int)vr_leftHanded ? 0 : 1, offHand = 1 - toolHand;
+			// A hand pointing at the panel: its stick scrolls (VRMenuPointer)
+			auto onPanel = [&](int hand) {
+				Vector2 uv;
+				float distance;
+				const float aspect =
+				  renderer->ScreenHeight() / std::max(1.0F, renderer->ScreenWidth());
+				return fs.hands[hand].active &&
+				       client::VRRayHitsHudPanel(fs, hand, aspect, uv, distance);
+			};
+			auto rotate = [&](const Vector3& v) {
+				const float c = std::cos(vrMenuYaw), s = std::sin(vrMenuYaw);
+				return MakeVector3(v.x * c - v.y * s, v.x * s + v.y * c, v.z);
+			};
+			auto headOffset = [&]() {
+				return rotate(client::VRTrackingToGameAxes(fs.head.position - vrMenuAnchor) *
+				              scale);
+			};
+
+			// Turning, about the head: snapped (vr_snapTurn degrees) or smooth.
+			const float tx = fs.hands[toolHand].thumbstick.x;
+			float dyaw = 0.0F;
+			const float snap = (float)vr_snapTurn;
+			if (snap > 0.0F) {
+				if (!vrMenuTurnLatched && std::fabs(tx) > 0.7F) {
+					vrMenuTurnLatched = true;
+					dyaw = (tx > 0.0F ? 1.0F : -1.0F) * snap * 0.0174532925F;
+				} else if (std::fabs(tx) < 0.3F) {
+					vrMenuTurnLatched = false;
+				}
+			} else if (std::fabs(tx) > 0.2F) {
+				dyaw = tx * (float)vr_smoothTurnSpeed * 0.0174532925F * dt;
+			}
+			if (dyaw != 0.0F) {
+				const Vector3 before = vrMenuEye + headOffset();
+				vrMenuYaw += dyaw;
+				vrMenuEye = before - headOffset();
+			}
+
+			// Walking, along the ground where the head faces, at a player's pace.
+			// Walls stop it; one block up is a step.
+			const client::GameMap& map = *vrMenuMap;
+			auto solid = [&](float x, float y, float z) {
+				const int ix = (int)std::floor(x), iy = (int)std::floor(y),
+				          iz = (int)std::floor(z);
+				if (ix < 0 || iy < 0 || ix >= map.Width() || iy >= map.Height())
+					return true; // the map's edge
+				if (iz < 0)
+					return false;
+				if (iz >= map.Depth())
+					return true;
+				return map.IsSolid(ix, iy, iz);
+			};
+			const Vector3 head = vrMenuEye + headOffset();
+			Vector2 stick = fs.hands[offHand].thumbstick;
+			if (onPanel(offHand))
+				stick = MakeVector2(0.0F, 0.0F);
+			const float len = stick.GetLength();
+			Vector3 move = MakeVector3(0.0F, 0.0F, 0.0F);
+			if (len > 0.2F) {
+				Vector3 f = rotate(client::VRTrackingToGameAxes(fs.head.Axis(2) * -1.0F));
+				f.z = 0.0F;
+				if (f.GetLength() > 1.0E-3F) {
+					f = f.Normalize();
+					const Vector3 r = MakeVector3(-f.y, f.x, 0.0F);
+					const float speed = 4.0F * std::min(1.0F, (len - 0.2F) / 0.8F) / len;
+					move = (f * stick.y + r * stick.x) * (speed * dt);
+				}
+			}
+			// A column is open if nothing is at the head or the body: the feet
+			// are 2.5 under the eye, and the lowest block of that is a step.
+			auto open = [&](float x, float y) {
+				for (float dz = -0.4F; dz < 1.6F; dz += 0.5F)
+					if (solid(x, y, head.z + dz))
+						return false;
+				return true;
+			};
+			Vector3 eye = vrMenuEye;
+			if (move.x != 0.0F && open(head.x + move.x + (move.x > 0.0F ? 0.3F : -0.3F), head.y))
+				eye.x += move.x;
+			const float hx = head.x + (eye.x - vrMenuEye.x);
+			if (move.y != 0.0F && open(hx, head.y + move.y + (move.y > 0.0F ? 0.3F : -0.3F)))
+				eye.y += move.y;
+			// The ground under the body: stepped up onto or fallen down to, eased
+			const Vector3 at = eye + headOffset();
+			for (int z = std::max(0, (int)std::floor(at.z + 1.6F)); z < map.Depth(); z++) {
+				if (solid(at.x, at.y, (float)z)) {
+					const float want = (float)z - 2.5F - (at.z - eye.z);
+					eye.z += (want - eye.z) * (1.0F - std::exp(-dt * 10.0F));
+					break;
+				}
+			}
+			vrMenuEye = eye;
 		}
 
 		bool MainScreen::NeedsAbsoluteMouseCoordinate() {
