@@ -3556,6 +3556,7 @@ namespace spades {
 			// vignette and the comfort camera's blink. A second pass on the eye
 			// canvas adds to the first.
 			if (IsVRFrameActive()) {
+				UpdateVRTipAnchor();
 				DrawInEachVREye([&]() { DrawVRTutorial(); });
 				// The headset's alone: the window's preview is taken before it
 				DrawInEachVREye(

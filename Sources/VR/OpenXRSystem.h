@@ -238,6 +238,11 @@ namespace spades {
 			bool hudStanding = false;
 			client::VRPose hudStandPose;
 			float hudAwayTime = 0.0F;
+			// Playing, the panel trails the head (PlaceHudPanel): its direction
+			// from the head, and whether it is catching up.
+			Vector3 hudTrailDir{0.0F, 0.0F, -1.0F};
+			bool hudTrailValid = false;
+			bool hudTrailMoving = false;
 			void PlaceHudPanel();
 			std::FILE* traceOut = nullptr;
 			std::vector<std::string> traceIn;

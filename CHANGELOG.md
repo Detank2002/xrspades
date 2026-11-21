@@ -38,6 +38,10 @@ one change, in a player's words.
 - Improved: in VR, spectating and demos start on the table view (Settings, VR to turn it off)
 - Improved: in VR, the Cross sight is now a ring reticle that tilts with the gun, and the sight's frame hides only the part of it behind it
 - Improved: in VR, Quest headsets have a little more headroom for keeping a steady frame rate
+- Fixed: in VR, striking a block with the spade digs it again
+- Changed: the spade stays a spade when you hit with it, instead of turning into a pickaxe
+- Improved: in VR, tips and in-game popups float in front of you and catch up when you look away, instead of being stuck to your face; the training tips are smaller
+- Fixed: in VR, the menu behind the first-time setup no longer takes clicks
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

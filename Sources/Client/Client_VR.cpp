@@ -768,11 +768,40 @@ namespace spades {
 			SPLog("[VR] The server does not run vr_presence: told the player");
 		}
 
+		void Client::UpdateVRTipAnchor() {
+			// The box floats in the world 1.6m out, a little below the view, and
+			// trails it: it stays put while you look round it, and once more than
+			// 20 degrees off it eases back (testers: glued to the face it was too
+			// big and in the way). It moves with you as you walk.
+			const SceneDefinition& d = lastSceneDef; // the head's
+			const float dt = vrTipValid ? Clamp(time - vrTipTime, 0.0F, 0.1F) : 0.0F;
+			vrTipTime = time;
+			const float down = 15.0F * 0.0174532925F;
+			const Vector3 target =
+			  (d.viewAxis[2] * std::cos(down) - d.viewAxis[1] * std::sin(down)).Normalize();
+			if (!vrTipValid) {
+				vrTipDir = target;
+				vrTipValid = true;
+				vrTipMoving = false;
+			}
+			const float off = std::acos(Clamp(Vector3::Dot(vrTipDir, target), -1.0F, 1.0F));
+			if (off > 20.0F * 0.0174532925F)
+				vrTipMoving = true;
+			if (vrTipMoving) {
+				const Vector3 next = vrTipDir + (target - vrTipDir) * (1.0F - std::exp(-dt * 4.0F));
+				if (next.GetLength() > 1.0E-3F)
+					vrTipDir = next.Normalize();
+				if (off < 2.0F * 0.0174532925F)
+					vrTipMoving = false;
+			}
+			vrTipAt = d.viewOrigin + vrTipDir * (1.6F * vrRig.scale);
+		}
+
 		void Client::DrawVRTutorial() {
-			// Called per eye: a box 2m ahead and a little below where you look,
-			// projected for this eye, so it has its own depth and is not pinned to
-			// infinity. The no-vr_presence notice for its ten seconds, otherwise
-			// the training course's tip for where you are; nothing elsewhere.
+			// Called per eye: the box where UpdateVRTipAnchor put it, projected for
+			// this eye, so it has its own depth and is not pinned to infinity. The
+			// no-vr_presence notice for its ten seconds, otherwise the training
+			// course's tip for where you are; nothing elsewhere.
 			std::string title, tip;
 			Vector4 accent = MakeVector4(1, 0.85F, 0.3F, 1);
 			if (time < vrPresenceNoticeUntil) {
@@ -788,10 +817,21 @@ namespace spades {
 			const SceneDefinition& d = lastSceneDef;
 			const float s = vrRig.scale;
 			Vector2 c, e;
-			const Vector3 at = d.viewOrigin + d.viewAxis[2] * (2.0F * s) - d.viewAxis[1] * (0.45F * s);
-			if (!Project(at, c) || !Project(at + d.viewAxis[0] * (0.7F * s), e))
+			if (!vrTipValid)
 				return;
-			// 1.4m wide at 2m, whatever the eye's resolution.
+			const Vector3 at = vrTipAt;
+			// Level, square to the way it lies from you
+			Vector3 side = Vector3::Cross(vrTipDir, MakeVector3(0.0F, 0.0F, -1.0F));
+			if (side.GetLength() < 1.0E-3F)
+				side = d.viewAxis[0];
+			side = side.Normalize();
+			if (Vector3::Dot(side, d.viewAxis[0]) < 0.0F)
+				side = side * -1.0F;
+			if (Vector3::Dot(at - d.viewOrigin, d.viewAxis[2]) <= 0.0F)
+				return; // behind you
+			if (!Project(at, c) || !Project(at + side * (0.3F * s), e))
+				return;
+			// 0.6m wide at 1.6m (about 21 degrees), whatever the eye's resolution.
 			const float halfW = (e - c).GetLength();
 			if (halfW < 40.0F)
 				return;
@@ -1324,7 +1364,13 @@ namespace spades {
 				} else {
 					UpdateVRTwoHandedGrip(p, fs);
 					UpdateVRAimAssist(p, dt);
-					ApplyVRToolCollision(); // again, for the aim just settled
+					// Again, for the aim just settled. It starts from the hand the
+					// first pass already stopped, so it finds nothing in the way: the
+					// tool is still against the block (it cleared this, and the spade
+					// never struck, testers: swinging did nothing).
+					const bool stopped = vrRig.toolBlocked;
+					ApplyVRToolCollision();
+					vrRig.toolBlocked = vrRig.toolBlocked || stopped;
 				}
 				// A light knock as the tool meets a wall.
 				if (vrRig.toolBlocked && !wasBlocked)

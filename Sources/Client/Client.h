@@ -1067,6 +1067,14 @@ namespace spades {
 			/** The in-eye tip box (the training course's tips, the no-vr_presence
 			 * notice), drawn in the eye being drawn. */
 			void DrawVRTutorial();
+			/** Where the tip box floats (DrawVRTutorial): trailing the view, once
+			 * a frame, before the eyes draw it. */
+			void UpdateVRTipAnchor();
+			Vector3 vrTipDir{1.0F, 0.0F, 0.0F}; // from the head, world space
+			Vector3 vrTipAt{0.0F, 0.0F, 0.0F};
+			bool vrTipValid = false;
+			bool vrTipMoving = false;
+			float vrTipTime = 0.0F;
 			/** Until when (Client::time) the no-vr_presence notice shows in a headset. */
 			float vrPresenceNoticeUntil = -1.0F;
 			/** When to decide whether to show it (the server's extensions have had

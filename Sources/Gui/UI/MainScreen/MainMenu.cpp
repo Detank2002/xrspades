@@ -1568,12 +1568,18 @@ namespace spades {
 				vrSetupChecked = true;
 				if (VRSetupScreen::IsDue()) {
 					Handle<VRSetupScreen> s = Handle<VRSetupScreen>::New(&GetManager());
+					// Over the menu, which takes no clicks meanwhile (the pointer
+					// reached the buttons behind it, testers), as other dialogs
+					// stand over theirs.
 					s->done = [this]() {
+						// Hidden, not removed: this runs inside its own button
+						enable = true;
 						vrSetup->visible = false;
 						vrSetup->enable = false;
 					};
 					vrSetup = s.GetPointerOrNull();
-					AddChild(vrSetup);
+					enable = false;
+					GetParent()->AddChild(vrSetup);
 				}
 			}
 			// Whichever page is up: the course started from the home screen is

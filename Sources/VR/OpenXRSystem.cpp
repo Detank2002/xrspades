@@ -1139,8 +1139,11 @@ namespace spades {
 			// for more than a second, or left more than twice its distance
 			// behind, it is put down in front again. In a game the panel carries
 			// overlays drawn through it onto the world (names, markers), which
-			// only line up while it is before the eyes, so there the client asks
-			// for that each frame (SetHudFollowsHead) and gets it.
+			// only lined up while it was before the eyes, so there the client asks
+			// for that each frame (SetHudFollowsHead). Those are drawn into each
+			// eye now, so a game's panel trails the head instead of being glued to
+			// it (testers: the popups were huge and in the face): it stays put while
+			// the head looks round a little, then eases back in front, upright.
 			const client::VRPose& head = frameState.head;
 			const bool follow = hudFollowAsked || !head.valid;
 			hudFollowAsked = false;
@@ -1160,6 +1163,13 @@ namespace spades {
 				hudAwayTime = 0.0F;
 			};
 			if (follow) {
+				if (!hudTrailValid) {
+					// From where the standing panel was, so it does not jump
+					Vector3 from = hudStanding ? hudStandPose.position - head.position : ahead;
+					hudTrailDir = from.GetLength() > 1.0E-3F ? from.Normalize() : ahead;
+					hudTrailValid = true;
+					hudTrailMoving = false;
+				}
 				hudStanding = false;
 			} else if (!hudStanding) {
 				put();
@@ -1178,6 +1188,36 @@ namespace spades {
 				}
 				if (lost)
 					put();
+			}
+			if (!follow)
+				hudTrailValid = false;
+			if (follow && head.valid) {
+				// Off by more than 12 degrees, it starts to catch up, easing in
+				// (about a fifth of a second), and stops once in front again.
+				const float c = Clamp(Vector3::Dot(hudTrailDir, ahead), -1.0F, 1.0F);
+				const float off = std::acos(c);
+				const float deg = 0.0174532925F;
+				if (off > 12.0F * deg)
+					hudTrailMoving = true;
+				if (hudTrailMoving) {
+					const float k = 1.0F - std::exp(-std::max(0.0F, frameState.displayPeriod) * 5.0F);
+					const Vector3 next = hudTrailDir + (ahead - hudTrailDir) * k;
+					if (next.GetLength() > 1.0E-3F)
+						hudTrailDir = next.Normalize();
+					if (off < 1.5F * deg)
+						hudTrailMoving = false;
+				}
+				// Upright, facing the head: turned about +Y, then tipped about +X.
+				const Vector3 f = hudTrailDir;
+				const float yaw = std::atan2(-f.x, -f.z);
+				const float pitch = std::asin(Clamp(f.y, -1.0F, 1.0F));
+				frameState.hudAnchored = true;
+				frameState.hudPanel.position = head.position + f * d;
+				frameState.hudPanel.orientation =
+				  client::VRQuat::FromAxisAngle(MakeVector3(0.0F, 1.0F, 0.0F), yaw) *
+				  client::VRQuat::FromAxisAngle(MakeVector3(1.0F, 0.0F, 0.0F), pitch);
+				frameState.hudPanel.valid = true;
+				return;
 			}
 			frameState.hudAnchored = hudStanding;
 			if (hudStanding) {

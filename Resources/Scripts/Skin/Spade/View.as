@@ -27,7 +27,6 @@ namespace spades {
 		float ActionProgress { set { actionProgress = value; } }
 
 		private Model@ spadeModel;
-		private Model@ pickaxeModel;
 		private Model@ model;
 
 		// The keyframed action poses are fed through springs (the rifle does the
@@ -44,7 +43,6 @@ namespace spades {
 			super(r, dev);
 
 			@spadeModel = renderer.RegisterModel("Models/Weapons/Spade/Spade.kv6");
-			@pickaxeModel = renderer.RegisterModel("Models/Weapons/Spade/Pickaxe.kv6");
 			@model = @spadeModel;
 		}
 
@@ -55,7 +53,7 @@ namespace spades {
 
 			bool bashing = actionType == spades::SpadeActionType::Bash;
 			if (bashing) {
-				@model = @pickaxeModel;
+				@model = @spadeModel; // the spade for a hit too
 				bashTarget = SmoothStep(1.0F - actionProgress);
 
 				// The hit happens when the cooldown restarts: either the action just
