@@ -284,6 +284,17 @@ namespace spades {
 			const uint64_t key = ImpactMarksImpl::Key(block, normal);
 			auto it = impl->carved.find(key);
 			if (it == impl->carved.end()) {
+				// One carved face a block: each face's slab reaches into the block
+				// and a hair past its edges, so two on neighbouring faces covered
+				// each other's rims, in different shades (testers). Another face
+				// of a carved block takes the flat mark.
+				static const int kNormals[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+				                                   {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+				for (const auto& o : kNormals) {
+					const IntVector3 other = IntVector3::Make(o[0], o[1], o[2]);
+					if (impl->carved.count(ImpactMarksImpl::Key(block, other)))
+						return false;
+				}
 				if (!r.SetMapFaceHidden(block, normal, true))
 					return false;
 				// The oldest goes when there are too many

@@ -51,6 +51,7 @@ one change, in a player's words.
 - Fixed: on Quest, graphics too heavy for the headset no longer leave you stuck: if the game cannot start or runs far too slowly, it goes back to the Performance level and tells you
 - Changed: on Quest, the graphics are set with Headset Quality in the VR tab; the PC's Low to Ultra are not offered there
 - Fixed: bullet holes near a block's edge no longer flicker dark (most visible in VR)
+- Fixed: bullet holes on two sides of the same block no longer cover each other's edges
 - Fixed: in VR, shots land where the sights and the laser point again, at any range
 - Improved: in VR, your height is reset by itself when you put the headset back on
 - Changed: a headshot bursts the head only now and then (one in twenty)
