@@ -895,6 +895,43 @@ namespace spades {
 			return !p || p->IsSpectator() || !p->IsAlive();
 		}
 
+		void Client::AddVRTableHandsToScene() {
+			// The forearms and hands as in play (ClientPlayer::AddVRBody's, forearm
+			// only), but at the table's scale, so the hands holding the map are
+			// seen holding it. vrRig's hands are in the table's world already.
+			if (!vrTable.active || !vrRig.active || !IsVRFrameActive())
+				return;
+			const float play = Clamp((float)vr_worldScale, 0.5F, 4.0F);
+			const float k = vrRig.scale / play; // play-sized blocks to the table's
+			Handle<IModel> arm = renderer->RegisterModel("Models/Player/Arm.kv6");
+			ModelRenderParam param;
+			param.customColor = MakeVector3(0.55F, 0.55F, 0.55F);
+			if (world)
+				if (auto p = world->GetLocalPlayer())
+					if (!p->IsSpectator())
+						param.customColor = ConvertColorRGB(p->GetColor());
+			const float thick = 0.05F * k, foreLen = 0.55F * k;
+			for (int h = 0; h < 2; h++) {
+				if (!vrRig.handValid[h])
+					continue;
+				const Vector3* ax = vrRig.handAxes[h];
+				const Vector3 wrist = vrRig.handPos[h] - ax[0] * (0.08F * k);
+				const Vector3 back = (ax[0] * -0.9F + ax[2] * 0.35F).Normalize();
+				const Vector3 elbow = wrist + back * foreLen;
+				Vector3 a2 = (wrist - elbow).Normalize();
+				Vector3 a1 = Vector3::Cross(a2, MakeVector3(0, 0, 1));
+				if (a1.GetLength() < 1.0E-3F)
+					a1 = Vector3::Cross(a2, MakeVector3(1, 0, 0));
+				a1 = a1.Normalize();
+				const Vector3 a0 = Vector3::Cross(a1, a2).Normalize();
+				Matrix4 m = Matrix4::FromAxis(a0, a1, a2, elbow) * Matrix4::Scale(thick, thick, thick);
+				if (h == VRHandLeft)
+					m = m * Matrix4::Translate(0, -1, 0) * Matrix4::Scale(1, -1, 1);
+				param.matrix = m;
+				renderer->RenderModel(*arm, param);
+			}
+		}
+
 		void Client::SetVRTable(bool on) {
 			IVRSystem* vr = GetVRSystem();
 			if (on && (!vr || !VRTableAllowed()))
@@ -1486,9 +1523,17 @@ namespace spades {
 				{
 					auto lp = world ? world->GetLocalPlayer() : stmp::optional<Player&>();
 					const bool spectating = IsDemoMode() || !lp || lp->IsSpectator();
-					if (spectating && !vrTable.wasSpectating && (int)vr_tableWhenSpectating)
-						SetVRTable(true);
-					vrTable.wasSpectating = spectating;
+					// Until the table can open (on joining, the map is not there
+					// yet), the change is kept for the next frame: used up on that
+					// first frame, spectating never brought the table (testers).
+					if (spectating && !vrTable.wasSpectating && (int)vr_tableWhenSpectating) {
+						if (VRTableAllowed()) {
+							SetVRTable(true);
+							vrTable.wasSpectating = true;
+						}
+					} else {
+						vrTable.wasSpectating = spectating;
+					}
 				}
 
 				if (menu) {

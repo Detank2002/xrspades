@@ -986,6 +986,9 @@ namespace spades {
 			/** Not in your own body: spectating, dead, or a demo. */
 			bool VRTableAllowed();
 			void SetVRTable(bool on);
+			/** Your hands, drawn at the table's scale while it is up: no player
+			 * draws them there (a spectator has no body). */
+			void AddVRTableHandsToScene();
 			void UpdateVRTable(const VRFrameState&, float dt);
 			/** Synthetic keys the controllers are holding down, by key name. */
 			std::unordered_map<std::string, bool> vrHeldKeys;

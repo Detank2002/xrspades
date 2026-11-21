@@ -44,6 +44,8 @@ one change, in a player's words.
 - Fixed: in VR, the menu behind the first-time setup no longer takes clicks
 - New: in VR, walk and turn around the main menu's map with the sticks; the menu floats along with you
 - Fixed: in VR, a team ping off to the side shows in both eyes, at the edge of where you look
+- Fixed: in VR, joining as a spectator opens the table view, as it should by default
+- New: in VR, your hands are shown in the table view
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
