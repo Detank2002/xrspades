@@ -53,6 +53,10 @@ one change, in a player's words.
 - Fixed: bullet holes near a block's edge no longer flicker dark (most visible in VR)
 - Fixed: in VR, shots land where the sights and the laser point again, at any range
 - Improved: in VR, your height is reset by itself when you put the headset back on
+- Changed: a headshot bursts the head only now and then (one in twenty)
+- Changed: in VR, the belt is stepped like the rest of the game's voxels
+- Fixed: in VR, the reflex sight's Cross is cut off by the sight's frame where the frame really is
+- Fixed: in VR, aiming with the stock while looking steeply down no longer swings the gun as you nod
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

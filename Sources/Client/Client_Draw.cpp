@@ -2856,8 +2856,13 @@ namespace spades {
 				side = vrRig.reflexRight;
 			side = side.Normalize();
 			Vector2 windowCentre, windowEdge;
-			if (!Project(vrRig.reflexCenter, windowCentre) ||
-			    !Project(vrRig.reflexCenter + side * vrRig.reflexRadius, windowEdge))
+			// The skins' window centre sits half a voxel over the opening's (set
+			// so the old dot, shown or hidden whole, reached its edges); clipped
+			// to it, the reticle went too soon at the bottom and too late at the
+			// top (testers). Half a voxel is a tenth of the 5-voxel radius.
+			const Vector3 windowAt = vrRig.reflexCenter - vrRig.reflexUp * (0.1F * vrRig.reflexRadius);
+			if (!Project(windowAt, windowCentre) ||
+			    !Project(windowAt + side * vrRig.reflexRadius, windowEdge))
 				return;
 			const float windowR = (windowEdge - windowCentre).GetLength();
 			if (windowR < 1.0F)

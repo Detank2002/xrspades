@@ -2063,14 +2063,29 @@ namespace spades {
 				return centre + side * (halfWidth * std::cos(a)) + f * (halfDepth * std::sin(a));
 			};
 			ModelRenderParam strap;
-			const int segments = 28;
-			for (int i = 0; i < segments; i++) {
-				const float a0 = 6.2831853F * i / segments, a1 = 6.2831853F * (i + 1) / segments;
-				const Vector3 p0 = onBelt(a0), p1 = onBelt(a1);
-				const float len = (p1 - p0).GetLength();
-				strap.matrix = frameAlong(p1 - p0, MakeVector3(len * 1.08F, 0.012F * s, 0.045F * s),
-				                          (p0 + p1) * 0.5F);
-				renderer.RenderModel(*beltModel, strap);
+			// Stepped, as voxels are (testers: a smooth oval did not fit the
+			// game's look): the ellipse drawn on a grid of 2.5 cm cells across
+			// the body, each cell on its edge a block of belt.
+			{
+				const float cell = 0.025F * s;
+				const int nx = static_cast<int>(std::ceil(halfWidth / cell)) + 1;
+				const int ny = static_cast<int>(std::ceil(halfDepth / cell)) + 1;
+				auto inside = [&](int i, int j) {
+					const float x = i * cell / halfWidth, y = j * cell / halfDepth;
+					return x * x + y * y <= 1.0F;
+				};
+				for (int i = -nx; i <= nx; i++)
+					for (int j = -ny; j <= ny; j++) {
+						if (!inside(i, j))
+							continue;
+						if (inside(i + 1, j) && inside(i - 1, j) && inside(i, j + 1) &&
+						    inside(i, j - 1))
+							continue; // within the belt, not on it
+						const Vector3 at = centre + side * (i * cell) + f * (j * cell);
+						strap.matrix =
+						  frameAlong(side, MakeVector3(cell, cell, 0.045F * s), at);
+						renderer.RenderModel(*beltModel, strap);
+					}
 			}
 			// The buckle, at the front
 			strap.matrix = frameAlong(side, MakeVector3(0.06F * s, 0.02F * s, 0.05F * s),

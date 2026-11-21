@@ -1557,8 +1557,9 @@ namespace spades {
 				default: break;
 			}
 
-			// headshot gore: burst the skull into flying chunks
-			if (kt == KillTypeHeadshot && cg_headshotGore) {
+			// headshot gore: burst the skull into flying chunks, on one headshot
+			// in twenty (testers: every time, its sound put them off the game)
+			if (kt == KillTypeHeadshot && cg_headshotGore && SampleRandomFloat() < 0.05F) {
 				Vector3 dir;
 				if (killerId != victimId) {
 					dir = (victim.GetPosition() - killer.GetPosition()).Normalize();

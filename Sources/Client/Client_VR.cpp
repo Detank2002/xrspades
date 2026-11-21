@@ -391,16 +391,27 @@ namespace spades {
 		}
 
 		Vector3 Client::VRShoulderPoint() const {
-			// Where a stock sits: below the eyes on the gun hand's side, a little
-			// back, in a frame that turns with the head but stays level, so
-			// nodding does not swing the gun.
-			Vector3 fwd = vrRig.headAxes[0];
+			// Where a stock sits: below the neck on the gun hand's side, in a
+			// frame that turns with the head but stays level. From the neck, not
+			// the eyes: looking steeply down (shooting off a height) the eyes go
+			// some 10 cm forward and down as the head tips, and a shoulder hung
+			// from them went too, swinging the gun's line by about as many
+			// degrees (testers: unplayable firing down). The neck is where the
+			// head turns about, so it stays put. The level heading comes from
+			// the face's, or, looking far up or down, where it has little, from
+			// the top of the head, which then points the way the body faces.
+			const Vector3 eyeFwd = vrRig.headAxes[0];
+			const Vector3 headDown = vrRig.headAxes[2];
+			const float s = vrRig.scale;
+			Vector3 fwd = eyeFwd - headDown * (eyeFwd.z > 0.0F ? 1.0F : -1.0F);
 			fwd.z = 0.0F;
 			fwd = fwd.GetLength() > 0.01F ? fwd.Normalize() : MakeVector3(1, 0, 0);
 			const Vector3 right = MakeVector3(-fwd.y, fwd.x, 0.0F);
 			const float side = VRToolHand() == VRHandRight ? 1.0F : -1.0F;
-			const float s = vrRig.scale;
-			return vrRig.camera + MakeVector3(0.0F, 0.0F, 0.20F * s) + right * (0.13F * side * s) -
+			// The neck: 10 cm under the eyes and 8 cm back, in the head's frame
+			const Vector3 neck = vrRig.camera + headDown * (0.10F * s) - eyeFwd * (0.08F * s);
+			// Level, that is the old point (20 cm under the eyes, 4 cm back)
+			return neck + MakeVector3(0.0F, 0.0F, 0.10F * s) + right * (0.13F * side * s) +
 			       fwd * (0.04F * s);
 		}
 

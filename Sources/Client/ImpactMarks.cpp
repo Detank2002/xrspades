@@ -315,7 +315,12 @@ namespace spades {
 				const Vector3 v = Vector3::Cross(-n, u);
 				const float s = 1.0F / kCarve, side = s * 1.01F;
 				Vector3 face = MakeVector3(block) + 0.5F + n * 0.5F;
-				c.matrix = Matrix4::FromAxis(u * side, v * side, -n * s, face) *
+				// Its front a hair behind the face's plane: a hair wider than the
+				// block, it overlaps the next blocks' faces in that plane at its
+				// edges, and level with them it fought them for the strip.
+				// Behind, they always win it; its own face is hidden, so nothing
+				// covers the slab.
+				c.matrix = Matrix4::FromAxis(u * side, v * side, -n * s, face - n * 0.004F) *
 				           Matrix4::Translate(-kCarve * 0.5F, -kCarve * 0.5F, 0.0F);
 				// The box: from inside the slab's floor to the block's far side,
 				// a hair inside the block all round (never seen but through a
