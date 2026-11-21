@@ -949,6 +949,12 @@ namespace spades {
 				bool recenterHoldFired = false;
 				// The menu's Reset Height (RequestVRHeightReset), for the next frame.
 				bool heightResetRequested = false;
+				// The headset taken off and put back on (UpdateVR): when the game
+				// last had focus (steady clock, seconds), whether it lost it since,
+				// and when the height is to be reset once it is back on.
+				double lastFocusedAt = 0.0;
+				bool lostFocus = false;
+				double putOnResetAt = 0.0;
 				bool prevTrigger[2] = {false, false};
 				bool triggerHeld[2] = {false, false};
 				float lastToolUseTime = -100.0F;

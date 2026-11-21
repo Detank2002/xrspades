@@ -34,6 +34,7 @@
 // a hand held low would otherwise slow and pin the player. See VR.md.
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "Client.h"
@@ -1229,6 +1230,37 @@ namespace spades {
 
 			const VRFrameState& fs = vr->GetFrameState();
 			vrRig.active = true;
+
+			// The headset taken off and put back on: set down on a table, the
+			// tracked height goes with it, and back on the head the body was
+			// out by that much (testers: shots far over the sights, running at
+			// full speed crouched, until the height was reset by hand). So the
+			// height is reset as holding both sticks in does, a second and a
+			// half after it is back on, once the head has settled. Off is the
+			// game losing focus for over three seconds (or not running for
+			// twenty: a headset may stop the app outright; a map loading stalls
+			// for less).
+			{
+				const double now = std::chrono::duration<double>(
+				                     std::chrono::steady_clock::now().time_since_epoch())
+				                     .count();
+				if (!fs.focused) {
+					vrRig.lostFocus = true;
+				} else {
+					const double away = vrRig.lastFocusedAt > 0.0 ? now - vrRig.lastFocusedAt : 0.0;
+					if (vrRig.calibrated && ((vrRig.lostFocus && away > 3.0) || away > 20.0)) {
+						vrRig.putOnResetAt = now + 1.5;
+						SPLog("[VR] The headset is back on after %.0f s: the height is reset "
+						      "shortly", away);
+					}
+					vrRig.lostFocus = false;
+					vrRig.lastFocusedAt = now;
+					if (vrRig.putOnResetAt > 0.0 && now >= vrRig.putOnResetAt) {
+						vrRig.putOnResetAt = 0.0;
+						vrRig.heightResetRequested = true;
+					}
+				}
+			}
 			vr->SetHeldMap((int)vr_heldMap && (int)vr_wristHud && largeMapView &&
 			               largeMapView->IsZoomed());
 			if (dt > 0.0F)

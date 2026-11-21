@@ -52,6 +52,7 @@ one change, in a player's words.
 - Changed: on Quest, the graphics are set with Headset Quality in the VR tab; the PC's Low to Ultra are not offered there
 - Fixed: bullet holes near a block's edge no longer flicker dark (most visible in VR)
 - Fixed: in VR, shots land where the sights and the laser point again, at any range
+- Improved: in VR, your height is reset by itself when you put the headset back on
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
