@@ -2048,6 +2048,10 @@ namespace spades {
 				vrRig.bodyYaw = bodyYaw;
 				vrRig.scale = bodyScale;
 				def.wholeMap = true;
+				// No water: its sheet is 128 blocks round the eye, so on the table
+				// it covered a patch under you, and went past the map's edges
+				// (testers). The sea floor shows instead.
+				def.skipWater = true;
 				def.zNear = 0.5F;
 				def.zFar = 8192.0F;
 			}
