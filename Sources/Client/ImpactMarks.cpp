@@ -154,7 +154,12 @@ namespace spades {
 									wall = true;
 							}
 							uint32_t v = col;
-							if (wall)
+							// The outer ring's sides lie on the block's own side faces
+							// (just in front): darkened, the two fought over which is in
+							// front and a dark square flickered at the block's edge (in a
+							// headset most, testers). It stays the block's colour.
+							const bool ring = x == 0 || y == 0 || x == kCarve - 1 || y == kCarve - 1;
+							if (wall && !ring)
 								v = Darken(col, z == 0 ? 0.78F : 0.55F - 0.1F * static_cast<float>(z));
 							// Never quite black: a black voxel takes the custom colour
 							if ((v & 0xFFFFFF) == 0)
@@ -298,20 +303,24 @@ namespace spades {
 				// block, never narrower: the block behind the slab is hollow (the
 				// map draws no faces inside a wall), so any crack at its rim would
 				// be a slit to see through the wall. Its sides stand that hair
-				// outside the block's own, in front of them.
+				// outside the block's own, in front of them: half a percent of a
+				// block, too little to see and enough that the depth buffer always
+				// tells them apart (0.2% flickered in a headset, whose two eyes'
+				// projection rounds more).
 				const Vector3 n = MakeVector3(normal);
 				const int axis = normal.x != 0 ? 0 : normal.y != 0 ? 1 : 2;
 				// Right-handed (u x v = -n, the model's z): mirrored, the slab's
 				// faces would turn inside out and show its inside
 				const Vector3 u = axis == 0 ? MakeVector3(0, 1, 0) : MakeVector3(1, 0, 0);
 				const Vector3 v = Vector3::Cross(-n, u);
-				const float s = 1.0F / kCarve, side = s * 1.004F;
+				const float s = 1.0F / kCarve, side = s * 1.01F;
 				Vector3 face = MakeVector3(block) + 0.5F + n * 0.5F;
 				c.matrix = Matrix4::FromAxis(u * side, v * side, -n * s, face) *
 				           Matrix4::Translate(-kCarve * 0.5F, -kCarve * 0.5F, 0.0F);
 				// The box: from inside the slab's floor to the block's far side,
-				// a hair inside the block all round (never seen but through a crack)
-				c.backMatrix = Matrix4::FromAxis(u * 0.998F, v * 0.998F, -n * 0.545F,
+				// a hair inside the block all round (never seen but through a
+				// crack), as far inside as the slab is out, for the same reason
+				c.backMatrix = Matrix4::FromAxis(u * 0.99F, v * 0.99F, -n * 0.545F,
 				                                 face - n * 0.45F) *
 				               Matrix4::Translate(-0.5F, -0.5F, 0.0F);
 				c.u = u;
