@@ -1618,7 +1618,17 @@ namespace spades {
 			// where the eye saw over (testers' reports). Up close the dot is the
 			// eye-to-hand offset from the barrel's own line; it is always where
 			// the shot lands. Through the scope, the scope's line.
-			Vector3 from = eye;
+			// The ray that finds the target leaves your real eye (the head the
+			// headset tracks), not the body's eye the game keeps: the two are
+			// apart by the head's lean and by your height against the game's eye
+			// height, often 10 to 30 cm, mostly up and down. From the body's eye
+			// the target was that far off the sights at every range, and the
+			// laser climbed to it the more steeply the closer it was (testers:
+			// shots missing what the sights and the laser were on). Down the
+			// sights the real eye is on their line, so the shot lands on them.
+			// The shot itself still leaves the body's eye, towards that target,
+			// as the server expects.
+			Vector3 from = vrRig.camera;
 			Vector3 dir = vrRig.handAxes[toolHand][0];
 			if (vrRig.scopeAimValid) {
 				from = vrRig.scopeAimOrigin;
