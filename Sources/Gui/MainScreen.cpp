@@ -41,6 +41,9 @@
 #include <Core/Strings.h>
 #include <Gui/TrainingHost.h>
 #include <Gui/UI/MainScreen/MainScreenUI.h>
+#include <Gui/UI/Settings/QualityPresets.h>
+#include <Gui/UI/Widgets/MessageBox.h>
+#include <Gui/UI/Framework/UIManager.h>
 #include <ScriptBindings/ScriptManager.h>
 
 DEFINE_SPADES_SETTING(cg_playerName, "Deuce");
@@ -51,6 +54,8 @@ SPADES_SETTING(vr_worldScale);
 SPADES_SETTING(vr_snapTurn);
 SPADES_SETTING(vr_smoothTurnSpeed);
 SPADES_SETTING(vr_leftHanded);
+SPADES_SETTING(cl_startGuard);
+SPADES_SETTING(cl_startRescued);
 
 namespace spades {
 	namespace gui {
@@ -355,6 +360,58 @@ namespace spades {
 			vrMenuEye = eye;
 		}
 
+		void MainScreen::CheckVRMenuSpeed(float dt) {
+			// On a standalone headset, settings too heavy for it (the PC's Ultra
+			// on a Quest) left it too slow to set them back, or ran it out of
+			// memory before the menu came (testers: trapped). Once a run, nine
+			// seconds into the menu: this start made it (cl_startGuard, which
+			// Main sets as it starts: a start that never clears it puts the next
+			// on the Performance level); and if the menu's scene ran under 40
+			// frames a second, the Performance level is put back now. Either is
+			// said so. Most of it takes effect at the next start.
+#if defined(__ANDROID__)
+			if (vrSpeedChecked || !ui || dt <= 0.0F)
+				return;
+			vrSpeedTime += dt;
+			if (vrSpeedTime < 3.0F)
+				return; // the map settling in
+			vrSpeedFrames++;
+			if (vrSpeedTime < 9.0F)
+				return;
+			vrSpeedChecked = true;
+			cl_startGuard = 0;
+			const float fps = static_cast<float>(vrSpeedFrames) / (vrSpeedTime - 3.0F);
+			const QualityPreset& performance = GetHeadsetQualityPresets().front();
+			SPLog("[VR] Menu speed: %.0f FPS", fps);
+			std::string message;
+			if ((int)cl_startRescued) {
+				cl_startRescued = 0;
+				message = _Tr("MainScreen",
+				              "The game did not start last time, so its graphics are back "
+				              "on Performance (Settings, VR, Headset Quality).");
+			} else if (client::GetVRSystem() && vrMenuMapSet && fps < 40.0F &&
+			           !MatchesQualityPreset(performance)) {
+				ApplyQualityPreset(performance);
+				SPLog("[VR] Too slow at %.0f FPS: back to the headset Performance level", fps);
+				message = _Tr("MainScreen",
+				              "The game was running too slowly on this headset, so its "
+				              "graphics are back on Performance (Settings, VR, Headset "
+				              "Quality). Restart the game for all of it to take effect.");
+			}
+			Settings::GetInstance()->Flush();
+			if (message.empty())
+				return;
+			ui::UIElement& root = ui->GetUIManager().GetRootElement();
+			if (root.GetChildren().empty())
+				return;
+			Handle<AlertScreen> alert = Handle<AlertScreen>::New(
+			  root.GetChildren().front().GetPointerOrNull(), message, 160.0F);
+			alert->Run();
+#else
+			(void)dt;
+#endif
+		}
+
 		bool MainScreen::NeedsAbsoluteMouseCoordinate() {
 			SPADES_MARK_FUNCTION();
 			if (subview)
@@ -516,6 +573,8 @@ namespace spades {
 				SPLog("[VR] Menu scene failed, left off: %s", ex.what());
 				vr_menuScene = 0;
 			}
+
+			CheckVRMenuSpeed(dt);
 
 			// `DoInit` either sets `ui` or throws, so this should not fire. Guard it
 			// anyway, so that an init path which ever leaves `ui` unset stops here

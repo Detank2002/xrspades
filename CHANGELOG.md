@@ -48,6 +48,8 @@ one change, in a player's words.
 - New: in VR, your hands are shown in the table view
 - Fixed: in VR, the table view no longer shows a patch of water under you that moved with you
 - Fixed: in VR, the keyboard comes up under the menu and moves with it, instead of being left wherever you were looking when it opened
+- Fixed: on Quest, graphics too heavy for the headset no longer leave you stuck: if the game cannot start or runs far too slowly, it goes back to the Performance level and tells you
+- Changed: on Quest, the graphics are set with Headset Quality in the VR tab; the PC's Low to Ultra are not offered there
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

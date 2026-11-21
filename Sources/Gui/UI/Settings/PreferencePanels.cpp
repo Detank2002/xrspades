@@ -499,6 +499,14 @@ namespace spades {
 			l.headingNav = nav;
 
 			l.AddHeading(_Tr("Preferences", "General"));
+#if defined(__ANDROID__)
+			// A standalone headset's levels are the VR tab's Headset Quality: the
+			// PC's High and Ultra made a Quest too slow to use, menus and all
+			// (testers).
+			l.AddHelp(_Tr("Preferences",
+				"On this headset, set the graphics with Headset Quality, in the VR "
+				"tab: Performance is what it starts with."));
+#else
 			l.AddQualityPresetField(_Tr("Preferences", "Quality Preset"), GetPCQualityPresets(),
 			                        {_Tr("Preferences", "Low"), _Tr("Preferences", "Medium"),
 			                         _Tr("Preferences", "High"), _Tr("Preferences", "Ultra")},
@@ -508,6 +516,7 @@ namespace spades {
 				"effects together. High is the defaults. Changing one of them by "
 				"hand makes it Custom. Anti-aliasing takes effect at the next start, "
 				"the rest at the next map."));
+#endif
 			l.SetPlatform(PlatformFlat);
 			l.AddToggleField(_Tr("Preferences", "Fullscreen (Next Start)"), "r_fullscreen");
 			l.AddChoiceField(_Tr("Preferences", "Vertical Sync (Next Start)"), "r_vsync",

@@ -71,6 +71,12 @@ namespace spades {
 			// added, the last frame's time, a snap turn held.
 			void MoveInVRMenu(const client::VRFrameState& fs, float scale);
 			float vrMenuYaw = 0.0F;
+			// A standalone headset too slow in the menu (CheckVRMenuSpeed): the
+			// time and frames counted, and whether it was checked this run.
+			void CheckVRMenuSpeed(float dt);
+			float vrSpeedTime = 0.0F;
+			int vrSpeedFrames = 0;
+			bool vrSpeedChecked = false;
 			double vrMenuLastTime = 0.0;
 			bool vrMenuTurnLatched = false;
 			void DrawVRMenuScene();

@@ -91,6 +91,11 @@ DEFINE_SPADES_SETTING(core_executablePath, "");
 // "auto" until a standalone headset's first start has written the headset
 // Performance level into the config (Main.cpp), "applied" after.
 DEFINE_SPADES_SETTING(vr_profile, "auto");
+// A standalone headset's start that did not reach a working menu (1), and a
+// start that was put back on the headset Performance level for it (1, until
+// said so in the menu): MainScreen::CheckVRMenuSpeed.
+DEFINE_SPADES_SETTING(cl_startGuard, "0");
+DEFINE_SPADES_SETTING(cl_startRescued, "0");
 // A file: the whole run sampled into it, a report written there at exit
 // (Core/SamplingProfiler.h). 64-bit Windows only.
 DEFINE_SPADES_SETTING(core_profile, "");
@@ -1234,6 +1239,20 @@ int main(int argc, char** argv) {
 				spades::Settings::GetInstance()->Flush();
 				SPLog("[VR] First start: the headset Performance level");
 			}
+			// The last start never reached a working menu (graphics too heavy
+			// for the headset ran it out of memory, testers: trapped, unable to
+			// set them back): this one starts on the Performance level.
+			if (static_cast<int>(cl_startGuard) != 0) {
+				const auto& performance = spades::gui::GetHeadsetQualityPresets().front();
+				if (!spades::gui::MatchesQualityPreset(performance)) {
+					spades::gui::ApplyQualityPreset(performance);
+					cl_startRescued = 1;
+					SPLog("[VR] The last start did not reach the menu: the headset "
+					      "Performance level");
+				}
+			}
+			cl_startGuard = 1;
+			spades::Settings::GetInstance()->Flush();
 			// The headset levels took over the particles in 0.3.6; a headset set
 			// up before has the PC's (too many, too big, testers): once, the
 			// Balanced level's.
