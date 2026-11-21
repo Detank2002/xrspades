@@ -30,13 +30,14 @@ namespace spades {
 		struct ImpactMarksImpl;
 
 		/**
-		 * A chipped hole where a bullet or the spade hit a block (cg_impactMarks):
-		 * a small voxel model on the block's face, a dark pit in a ragged rim of
-		 * the block's own colour standing proud of it, so the light catches the
-		 * chips. One per hit. Gone when the block is, or changes (rebuilt in
-		 * another colour), and faded away after a while; only the newest few
-		 * hundred are kept. Purely what this client draws: nothing reaches the
-		 * server, and the block itself is untouched.
+		 * Bullet and spade holes in blocks (cg_impactMarks). A block hit is drawn
+		 * as a small voxel model of itself with real pits cut into whichever of
+		 * its faces were hit, its edges and a solid core always left, the map's
+		 * own faces of it left out; a renderer that cannot leave them out gets a
+		 * flat chipped mark on the face instead. Gone when the block is, or
+		 * changes (rebuilt in another colour), and after a while; only the newest
+		 * few hundred are kept. Purely what this client draws: nothing reaches
+		 * the server, and the block itself is untouched.
 		 */
 		class ImpactMarks {
 			std::unique_ptr<ImpactMarksImpl> impl;
@@ -51,7 +52,8 @@ namespace spades {
 			void Add(const Vector3& hitPos, const IntVector3& block, const IntVector3& normal,
 			         bool spade);
 			void Update(float dt);
-			/** Cut into the face itself, where the renderer can leave it out. */
+			/** Cut into the block itself, where the renderer can leave its faces
+			 * out; false where it cannot. */
 			bool AddCarved(const Vector3& hitPos, const IntVector3& block, const IntVector3& normal,
 			               bool spade);
 			void Draw();
