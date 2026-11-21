@@ -60,6 +60,9 @@ DEFINE_SPADES_SETTING(cg_aimWeapon, "0");
 DEFINE_SPADES_SETTING(cg_aimHighlight, "0");
 // For tests: -1, or an aim scenario to start the first time the menu shows.
 DEFINE_SPADES_SETTING(cg_debugStartAim, "-1");
+// For tests: a demo (as the demo list names it, Demos/...) to play the first
+// time the menu shows, as a headset has no command line to give it.
+DEFINE_SPADES_SETTING(cg_debugStartDemo, "");
 
 namespace spades {
 	namespace gui {
@@ -1557,6 +1560,13 @@ namespace spades {
 			if ((int)cg_debugStartTraining && !debugTrainingStarted) {
 				debugTrainingStarted = true;
 				StartTraining();
+			}
+			static bool debugDemoStarted = false;
+			if (!std::string(cg_debugStartDemo).empty() && !debugDemoStarted) {
+				debugDemoStarted = true;
+				const std::string msg = helper->PlayDemo(cg_debugStartDemo);
+				if (!msg.empty())
+					SPLog("cg_debugStartDemo: %s", msg.c_str());
 			}
 			static bool debugAimStarted = false;
 			if ((int)cg_debugStartAim >= 0 && !debugAimStarted) {

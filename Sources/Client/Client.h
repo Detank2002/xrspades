@@ -995,6 +995,14 @@ namespace spades {
 			/** Your hands, drawn at the table's scale while it is up: no player
 			 * draws them there (a spectator has no body). */
 			void AddVRTableHandsToScene();
+			/** The table view's map: a coarse copy (vr_tableDetail blocks to a
+			 * voxel), drawn in place of the map itself (AddVRTableMapToScene). */
+			void AddVRTableMapToScene();
+			Handle<IModel> vrTableModel;
+			std::vector<uint32_t> vrTableCells; // last built: colour, 0 for air
+			int vrTableFactor = 0;
+			float vrTableBuiltAt = -100.0F;
+			GameMap* vrTableBuiltFor = nullptr;
 			void UpdateVRTable(const VRFrameState&, float dt);
 			/** Synthetic keys the controllers are holding down, by key name. */
 			std::unordered_map<std::string, bool> vrHeldKeys;

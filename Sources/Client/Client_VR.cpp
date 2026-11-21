@@ -43,6 +43,7 @@
 #include <Core/Bitmap.h>
 #include <Core/Settings.h>
 #include <Core/Strings.h>
+#include <Core/VoxelModel.h>
 
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
@@ -107,6 +108,10 @@ DEFINE_SPADES_SETTING(vr_holsterFollow, "0");
 // Spectating or watching a demo in a headset starts in the table view (the off
 // hand's stick click still turns it off). Not when merely dead between lives.
 DEFINE_SPADES_SETTING(vr_tableWhenSpectating, "1");
+// The table view's map: how many blocks each way go to one of its voxels (1,
+// 2, 4 or 8). The whole map at full detail was too many triangles for a
+// standalone headset (a Quest 3 at 22 FPS, binning its 28 ms a frame).
+DEFINE_SPADES_SETTING(vr_tableDetail, "4");
 // The game's frame rate on the wrist.
 DEFINE_SPADES_SETTING(vr_showFps, "1");
 // Dead or following someone: the view holds still and moves in blinks.
@@ -942,6 +947,80 @@ namespace spades {
 				param.matrix = m;
 				renderer->RenderModel(*arm, param);
 			}
+		}
+
+		void Client::AddVRTableMapToScene() {
+			// The map seen on the table is a coarse copy of it: a voxel for every
+			// vr_tableDetail blocks each way, solid if any block in it is, in the
+			// colour of the topmost blocks in it. On a 90 cm table a block is
+			// about two pixels, so little is lost, and the triangles to draw go
+			// down by the square of it (the map itself, skipped there, was
+			// 28 ms of a Quest 3's GPU a frame). Built from the map's columns
+			// (64 heights a word), every two seconds; given to the renderer
+			// again only if a block changed it.
+			if (!vrTable.active || !vrRig.active || !IsVRFrameActive() || !map)
+				return;
+			int f = (int)vr_tableDetail;
+			f = f >= 8 ? 8 : f >= 4 ? 4 : f >= 2 ? 2 : 1;
+			GameMap& m = *map;
+			const int w = m.Width() / f, h = m.Height() / f, d = m.Depth() / f;
+			if (w <= 0 || h <= 0 || d <= 0)
+				return;
+			const bool stale = !vrTableModel || f != vrTableFactor ||
+			                   vrTableBuiltFor != map.GetPointerOrNull();
+			if (stale || time - vrTableBuiltAt > 2.0F) {
+				vrTableBuiltAt = time;
+				std::vector<uint32_t> cells(static_cast<size_t>(w) * h * d, 0);
+				const uint64_t window = (f >= 64) ? ~0ULL : ((1ULL << f) - 1ULL);
+				for (int cx = 0; cx < w; cx++)
+					for (int cy = 0; cy < h; cy++)
+						for (int cz = 0; cz < d; cz++) {
+							uint32_t r = 0, g = 0, b = 0, n = 0;
+							for (int dx = 0; dx < f; dx++)
+								for (int dy = 0; dy < f; dy++) {
+									const int x = cx * f + dx, y = cy * f + dy;
+									const uint64_t bits =
+									  (m.GetSolidMapWrapped(x, y) >> (cz * f)) & window;
+									if (!bits)
+										continue;
+									int z = cz * f;
+									for (uint64_t t = bits; !(t & 1ULL); t >>= 1)
+										z++;
+									const uint32_t c = m.GetColor(x, y, z);
+									r += c & 0xFF;
+									g += (c >> 8) & 0xFF;
+									b += (c >> 16) & 0xFF;
+									n++;
+								}
+							if (n == 0)
+								continue;
+							uint32_t c = (r / n) | ((g / n) << 8) | ((b / n) << 16);
+							if (c == 0)
+								c = 0x010101; // black takes the custom colour
+							cells[(static_cast<size_t>(cz) * h + cy) * w + cx] = c;
+						}
+				if (stale || cells != vrTableCells) {
+					auto vm = Handle<VoxelModel>::New(w, h, d);
+					for (int cz = 0; cz < d; cz++)
+						for (int cy = 0; cy < h; cy++)
+							for (int cx = 0; cx < w; cx++) {
+								const uint32_t c = cells[(static_cast<size_t>(cz) * h + cy) * w + cx];
+								if (c)
+									vm->SetSolid(cx, cy, cz, c);
+							}
+					// Voxel (0,0,0) from 0 to 1: scaled by f, on the map's own grid
+					vm->SetOrigin(MakeVector3(0.5F, 0.5F, 0.5F));
+					vrTableModel = renderer->CreateModel(*vm);
+					vrTableCells = std::move(cells);
+					vrTableFactor = f;
+					vrTableBuiltFor = map.GetPointerOrNull();
+				}
+			}
+			if (!vrTableModel)
+				return;
+			ModelRenderParam param;
+			param.matrix = Matrix4::Scale(static_cast<float>(f));
+			renderer->RenderModel(*vrTableModel, param);
 		}
 
 		void Client::SetVRTable(bool on) {
@@ -2105,6 +2184,8 @@ namespace spades {
 				// it covered a patch under you, and went past the map's edges
 				// (testers). The sea floor shows instead.
 				def.skipWater = true;
+				// The map itself is drawn coarse, as a model (AddVRTableMapToScene)
+				def.skipWorld = true;
 				def.zNear = 0.5F;
 				def.zFar = 8192.0F;
 			}

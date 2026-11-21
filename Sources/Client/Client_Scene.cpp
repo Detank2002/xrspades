@@ -744,6 +744,7 @@ namespace spades {
 				}
 
 				AddVRTableHandsToScene();
+				AddVRTableMapToScene();
 
 				// Only the strongest glares are drawn. Each gives up as much strength as
 				// the strongest one left out has, so that the weakest of them fades out

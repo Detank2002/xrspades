@@ -57,6 +57,7 @@ one change, in a player's words.
 - Changed: in VR, the belt is stepped like the rest of the game's voxels
 - Fixed: in VR, the reflex sight's Cross is cut off by the sight's frame where the frame really is
 - Fixed: in VR, aiming with the stock while looking steeply down no longer swings the gun as you nod
+- Fixed: in VR, the table view keeps a smooth frame rate on Quest: the map on it is a simpler, blockier copy
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
