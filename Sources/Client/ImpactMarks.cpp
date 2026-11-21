@@ -327,34 +327,31 @@ namespace spades {
 				// the face, kCarve voxels to the block. A hair wider than the
 				// block, never narrower: the block behind the slab is hollow (the
 				// map draws no faces inside a wall), so any crack at its rim would
-				// be a slit to see through the wall. Its sides stand that hair
-				// outside the block's own, in front of them: half a percent of a
-				// block, too little to see and enough that the depth buffer always
-				// tells them apart (0.2% flickered in a headset, whose two eyes'
-				// projection rounds more).
+				// be a slit to see through the wall. Its sides are the block's own
+				// sides there (HideFaces leaves out every map face of a carved
+				// block), so there is nothing for them to fight.
 				const Vector3 n = MakeVector3(normal);
 				const int axis = normal.x != 0 ? 0 : normal.y != 0 ? 1 : 2;
 				// Right-handed (u x v = -n, the model's z): mirrored, the slab's
 				// faces would turn inside out and show its inside
 				const Vector3 u = axis == 0 ? MakeVector3(0, 1, 0) : MakeVector3(1, 0, 0);
 				const Vector3 v = Vector3::Cross(-n, u);
-				const float s = 1.0F / kCarve, side = s * 1.01F;
+				const float s = 1.0F / kCarve, side = s * 1.002F;
 				Vector3 face = MakeVector3(block) + 0.5F + n * 0.5F;
-				// Its front a hair behind the face's plane: a hair wider than the
-				// block, it overlaps the next blocks' faces in that plane at its
-				// edges, and level with them it fought them for the strip.
-				// Behind, they always win it; its own face is hidden, so nothing
-				// covers the slab.
-				c.matrix = Matrix4::FromAxis(u * side, v * side, -n * s, face - n * 0.004F) *
+				// Its front on the face's plane. (Set 0.4% back, a step was left at
+				// its edges whose walls nothing draws, the next blocks' faces
+				// against a solid block being left out, and the sky showed
+				// through it: testers' white lines.) The overhang that meets the
+				// next blocks' faces in that plane is 0.1% each side, too thin to
+				// see them fight over.
+				c.matrix = Matrix4::FromAxis(u * side, v * side, -n * s, face) *
 				           Matrix4::Translate(-kCarve * 0.5F, -kCarve * 0.5F, 0.0F);
 				// The box: the rest of the block, from a hair inside the slab's
-				// floor to a hair short of its far side (where the next blocks'
-				// faces in that plane win the strip, as at the front), as wide as
-				// the slab: the block's sides and back, all the map's faces of it
-				// being hidden
-				const float slabBack = 0.004F + static_cast<float>(kDepth) / kCarve;
-				c.backMatrix = Matrix4::FromAxis(u * 1.01F, v * 1.01F,
-				                                 -n * (0.996F - (slabBack - 0.01F)),
+				// floor to its far side, as wide as the slab: the block's sides
+				// and back, all the map's faces of it being hidden
+				const float slabBack = static_cast<float>(kDepth) / kCarve;
+				c.backMatrix = Matrix4::FromAxis(u * 1.002F, v * 1.002F,
+				                                 -n * (1.0F - (slabBack - 0.01F)),
 				                                 face - n * (slabBack - 0.01F)) *
 				               Matrix4::Translate(-0.5F, -0.5F, 0.0F);
 				c.u = u;
