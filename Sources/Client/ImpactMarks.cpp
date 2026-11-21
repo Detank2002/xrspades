@@ -125,7 +125,18 @@ namespace spades {
 				       (static_cast<uint64_t>(b.z & 0xFF) << 3) | static_cast<uint64_t>(face);
 			}
 
-			void Restore(Carved& c) { client.GetRenderer().SetMapFaceHidden(c.block, c.normal, false); }
+			// Every face of a carved block is the models' (the slab and the box),
+			// none the map's: where a model's side lay just in front of the map's
+			// own, the two, lit a little differently, swapped places and the
+			// block's edge flickered (testers, in a headset most).
+			static constexpr int kFaces[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+			                                     {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+			void HideFaces(const IntVector3& block, bool hidden) {
+				for (const auto& o : kFaces)
+					client.GetRenderer().SetMapFaceHidden(block, IntVector3::Make(o[0], o[1], o[2]),
+					                                      hidden);
+			}
+			void Restore(Carved& c) { HideFaces(c.block, false); }
 
 			/** The slab's model from what is cut out of it, in the block's colour
 			 * as the map draws it (halved while damaged); the pits' walls and
@@ -173,7 +184,9 @@ namespace spades {
 				c.model = client.GetRenderer().CreateModel(*m);
 				auto b = Handle<VoxelModel>::New(1, 1, 1);
 				b->SetOrigin(MakeVector3(0.5F, 0.5F, 0.5F));
-				uint32_t bc = Darken(col, 0.35F);
+				// The rest of the block, in its colour: its sides and back are the
+				// box's now (HideFaces)
+				uint32_t bc = col;
 				if ((bc & 0xFFFFFF) == 0)
 					bc = 0x010101;
 				b->SetSolid(0, 0, 0, bc);
@@ -297,6 +310,7 @@ namespace spades {
 				}
 				if (!r.SetMapFaceHidden(block, normal, true))
 					return false;
+				impl->HideFaces(block, true);
 				// The oldest goes when there are too many
 				if (impl->carved.size() >= kMaxFaces) {
 					auto oldest = impl->carved.begin();
@@ -333,11 +347,15 @@ namespace spades {
 				// covers the slab.
 				c.matrix = Matrix4::FromAxis(u * side, v * side, -n * s, face - n * 0.004F) *
 				           Matrix4::Translate(-kCarve * 0.5F, -kCarve * 0.5F, 0.0F);
-				// The box: from inside the slab's floor to the block's far side,
-				// a hair inside the block all round (never seen but through a
-				// crack), as far inside as the slab is out, for the same reason
-				c.backMatrix = Matrix4::FromAxis(u * 0.99F, v * 0.99F, -n * 0.545F,
-				                                 face - n * 0.45F) *
+				// The box: the rest of the block, from a hair inside the slab's
+				// floor to a hair short of its far side (where the next blocks'
+				// faces in that plane win the strip, as at the front), as wide as
+				// the slab: the block's sides and back, all the map's faces of it
+				// being hidden
+				const float slabBack = 0.004F + static_cast<float>(kDepth) / kCarve;
+				c.backMatrix = Matrix4::FromAxis(u * 1.01F, v * 1.01F,
+				                                 -n * (0.996F - (slabBack - 0.01F)),
+				                                 face - n * (slabBack - 0.01F)) *
 				               Matrix4::Translate(-0.5F, -0.5F, 0.0F);
 				c.u = u;
 				c.v = v;
