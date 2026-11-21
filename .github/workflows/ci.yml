@@ -18,7 +18,7 @@ on:
 
 jobs:
   guard:
-    name: Guard (no AosBot, no singleplayer)
+    name: Guard (no AosBot)
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -32,7 +32,8 @@ jobs:
             echo "::error::Sources/AosBot exists"
             exit 1
           fi
-          if git grep -niI -E 'aosbot|LocalGamePanel|LocalServer|singleplayer' -- . ':!.github/workflows/ci.yml'; then
+          # ("Singleplayer" is allowed: the training course's button says it.)
+          if git grep -niI -E 'aosbot|LocalGamePanel|LocalServer' -- . ':!.github/workflows/ci.yml'; then
             echo "::error::AosBot or singleplayer code found (above)"
             exit 1
           fi
