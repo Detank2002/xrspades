@@ -111,15 +111,18 @@ namespace spades {
 			// filtered, whose top, where the matches are, now stays in view.
 			keyboardVisible = view.AcceptsTextInput() && screenWidth > 0.0F;
 
-			// On its own panel (vr_keyboardDetached): put in front of you when it
-			// comes up, as you last left it. It is on its own only once the
+			// On its own panel (vr_keyboardDetached): under the menu panel, where
+			// you last left it, and going with the panel as it trails you. (Put
+			// down once where the head was when it came up, it was left behind
+			// by the menu, or lost: on the first start the name box asks for it
+			// as the headset goes on, testers.) It is on its own only once the
 			// runtime has given it the panel (a frame after it was asked for);
 			// until then, and whenever it cannot be, it is on the menu panel.
 			IVRSystem* vr = GetVRSystem();
 			const bool ownWanted =
 			  keyboardVisible && (bool)vr_keyboardDetached && fs.head.valid && vr;
-			if (ownWanted && !keyboardPlaced) {
-				keyboardPose = VRPoseCompose(VRHeadYawFrame(fs.head), keyboardPlace);
+			if (ownWanted && grabHand < 0) {
+				keyboardPose = VRPoseCompose(KeyboardFrame(fs), keyboardPlace);
 				keyboardPlaced = true;
 			} else if (!ownWanted) {
 				keyboardPlaced = false;
@@ -300,6 +303,22 @@ namespace spades {
 			}
 		}
 
+		client::VRPose VRMenuPointer::KeyboardFrame(const client::VRFrameState& fs) {
+			// Where the menu panel is seen from: the panel's own turn, its
+			// distance back towards you. The keyboard is placed in this, so it
+			// goes where the panel goes. Without a panel, the head's.
+			if (fs.hudAnchored && fs.hudPanel.valid) {
+				client::VRPose r;
+				r.valid = true;
+				r.orientation = fs.hudPanel.orientation;
+				r.position = fs.hudPanel.position +
+				             fs.hudPanel.orientation.Rotate(MakeVector3(0.0F, 0.0F, 1.0F)) *
+				               fs.hudDistance;
+				return r;
+			}
+			return client::VRHeadYawFrame(fs.head);
+		}
+
 		void VRMenuPointer::UpdateOwnKeyboard(View& view, const client::VRFrameState& fs,
 		                                      bool triggerDown[2], bool& pointerTaken) {
 			using namespace client;
@@ -333,7 +352,7 @@ namespace spades {
 				if (!down && squeezeHeld[h] && grabHand == h) {
 					grabHand = -1;
 					if (fs.head.valid)
-						keyboardPlace = VRPoseRelative(VRHeadYawFrame(fs.head), keyboardPose);
+						keyboardPlace = VRPoseRelative(KeyboardFrame(fs), keyboardPose);
 					if (vr)
 						vr->Vibrate(h, 0.2F, 0.02F);
 				}

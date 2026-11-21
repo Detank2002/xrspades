@@ -47,6 +47,7 @@ one change, in a player's words.
 - Fixed: in VR, joining as a spectator opens the table view, as it should by default
 - New: in VR, your hands are shown in the table view
 - Fixed: in VR, the table view no longer shows a patch of water under you that moved with you
+- Fixed: in VR, the keyboard comes up under the menu and moves with it, instead of being left wherever you were looking when it opened
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations

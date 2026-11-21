@@ -136,6 +136,7 @@ namespace spades {
 			bool keyboardOwn = false;      // this frame, on its own panel
 			bool keyboardPlaced = false;   // has a pose since it came up
 			client::VRPose keyboardPose;
+			static client::VRPose KeyboardFrame(const client::VRFrameState& fs);
 			client::VRPose keyboardPlace = client::VRDefaultKeyboardPlace();
 			int grabHand = -1;
 			client::VRPose grabRel;
