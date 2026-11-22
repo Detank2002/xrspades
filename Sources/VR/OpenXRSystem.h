@@ -188,6 +188,9 @@ namespace spades {
 			void HandleSessionStateChange(XrSessionState state);
 			/** Asks for the CPU and GPU levels vr_performanceBoost wants, when it changes. */
 			void ApplyPerformanceLevels();
+			/** vr_refreshRate, asked of the headset when it changes
+			 * (XR_FB_display_refresh_rate). */
+			void ApplyRefreshRate();
 			XrPath Path(const char* s);
 			bool Check(XrResult r, const char* what);
 
@@ -205,6 +208,9 @@ namespace spades {
 			bool recenterOnFocus = false;
 			// The levels asked for this session: -1 none yet, 0 sustained low, 1 high
 			int appliedPerformanceBoost = -1;
+			int appliedRefreshRate = -1;
+			PFN_xrEnumerateDisplayRefreshRatesFB pfnEnumerateDisplayRefreshRates = nullptr;
+			PFN_xrRequestDisplayRefreshRateFB pfnRequestDisplayRefreshRate = nullptr;
 
 			XrSpace appSpace = XR_NULL_HANDLE;  // STAGE, or LOCAL without a stage
 			XrSpace viewSpace = XR_NULL_HANDLE; // for the head and the HUD panel

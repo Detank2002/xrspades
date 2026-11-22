@@ -277,9 +277,15 @@ namespace spades {
 			const bool advanced = (bool)cl_settingsAdvanced;
 			const bool inHeadset = client::GetVRSystem() != nullptr;
 			auto allowed = [&](HeadingNavIndex* nav, std::size_t r) {
+				const int plat = r < nav->rowPlatform.size() ? nav->rowPlatform[r] : PlatformBoth;
+#if defined(__ANDROID__)
+				// No monitor on a standalone headset: its rows never show, in
+				// Advanced either (testers set Render Scale there and nothing changed)
+				if (plat == PlatformFlat)
+					return false;
+#endif
 				if (advanced)
 					return true;
-				const int plat = r < nav->rowPlatform.size() ? nav->rowPlatform[r] : PlatformBoth;
 				if (plat == PlatformVR && !inHeadset)
 					return false;
 				if (plat == PlatformFlat && inHeadset)

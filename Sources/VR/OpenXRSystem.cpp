@@ -53,6 +53,9 @@ DEFINE_SPADES_SETTING(vr_disableExtensions, "");
 // (XR_EXT_performance_settings) instead of the runtime's own choice: steadier
 // in busy scenes, for more battery and heat.
 DEFINE_SPADES_SETTING(vr_performanceBoost, "0");
+// The headset's refresh rate, in Hz: 0 leaves it its own (a Quest's 72).
+// Higher is smoother, and leaves less time for each frame.
+DEFINE_SPADES_SETTING(vr_refreshRate, "0");
 // 1: draw each eye with the smallest centred frustum covering the runtime's, as
 // before the renderer took off-centre ones (10-20% more pixels). The control for
 // the asymmetric path, and a way back if a runtime mishandles it.
@@ -318,6 +321,14 @@ namespace spades {
 			    !load("xrPerfSettingsSetPerformanceLevelEXT",
 			          reinterpret_cast<PFN_xrVoidFunction*>(&pfnPerfSettingsSetPerformanceLevel)))
 				pfnPerfSettingsSetPerformanceLevel = nullptr;
+			if (caps[XrCap::DisplayRefreshRate] &&
+			    (!load("xrEnumerateDisplayRefreshRatesFB",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnEnumerateDisplayRefreshRates)) ||
+			     !load("xrRequestDisplayRefreshRateFB",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnRequestDisplayRefreshRate)))) {
+				pfnEnumerateDisplayRefreshRates = nullptr;
+				pfnRequestDisplayRefreshRate = nullptr;
+			}
 #ifdef XR_EXT_hand_tracking
 			if (caps[XrCap::HandTracking] &&
 			    !(load("xrCreateHandTrackerEXT",
@@ -897,6 +908,43 @@ namespace spades {
 			}
 		}
 
+		void OpenXRSystem::ApplyRefreshRate() {
+			// The rate asked for, or the nearest the headset offers under it
+			// (over it if none is under). 0, until asked otherwise, is the
+			// headset's own; asked back to 0, its lowest. The frame's time
+			// (displayPeriod, and so Hold The Frame Rate's budget) follows.
+			if (!pfnRequestDisplayRefreshRate || !pfnEnumerateDisplayRefreshRates ||
+			    session == XR_NULL_HANDLE)
+				return;
+			const int want = std::max(0, (int)vr_refreshRate);
+			if (want == appliedRefreshRate || (appliedRefreshRate < 0 && want == 0)) {
+				appliedRefreshRate = want;
+				return;
+			}
+			uint32_t n = 0;
+			if (XR_FAILED(pfnEnumerateDisplayRefreshRates(session, 0, &n, nullptr)) || n == 0) {
+				appliedRefreshRate = want;
+				return;
+			}
+			std::vector<float> rates(n);
+			if (XR_FAILED(pfnEnumerateDisplayRefreshRates(session, n, &n, rates.data()))) {
+				appliedRefreshRate = want;
+				return;
+			}
+			std::sort(rates.begin(), rates.end());
+			float pick = rates.front();
+			if (want > 0) {
+				for (float r : rates)
+					if (r <= static_cast<float>(want) + 0.5F)
+						pick = r;
+			}
+			const bool ok = Check(pfnRequestDisplayRefreshRate(session, pick),
+			                      "xrRequestDisplayRefreshRateFB");
+			appliedRefreshRate = want;
+			SPLog("[OpenXR] Refresh rate %.0f Hz asked for (wanted %d)%s", pick, want,
+			      ok ? "" : " (refused)");
+		}
+
 		void OpenXRSystem::ApplyPerformanceLevels() {
 			if (!pfnPerfSettingsSetPerformanceLevel)
 				return;
@@ -986,6 +1034,7 @@ namespace spades {
 
 			frameBegun = true;
 			ApplyPerformanceLevels();
+			ApplyRefreshRate();
 			predictedDisplayTime = fs.predictedDisplayTime;
 			if (fs.predictedDisplayPeriod > 0)
 				frameState.displayPeriod = static_cast<float>(fs.predictedDisplayPeriod) * 1.0E-9F;

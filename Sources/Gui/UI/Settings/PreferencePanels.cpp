@@ -525,6 +525,9 @@ namespace spades {
 			                 {0, 1, -1});
 			l.AddSliderField(_Tr("Preferences", "Render Scale"), "r_scale", 0.2F, 1, 0.01F,
 			                 NumberFormatter(0, "%", "", 100));
+			l.AddHelp(_Tr("Preferences",
+				"The monitor's picture only. In a headset the eyes' resolution is set "
+				"in the VR tab, Eye Resolution."));
 			{
 				ConfigSlider* fpsSlider = l.AddSliderField(_Tr("Preferences", "FPS Limit"), "cl_fps",
 				                                           0, 300, 1, FPSFormatter());
@@ -739,6 +742,15 @@ namespace spades {
 				"colour correction; Quality soft particles, for a Quest 3 or a PC. "
 				"On a PC it changes the Graphics tab too. Takes effect at the next "
 				"map (anti-aliasing and both eyes in one pass at the next start)."));
+			l.AddChoiceField(_Tr("Preferences", "Refresh Rate"), "vr_refreshRate",
+			                 {_Tr("Preferences", "Headset's Own"), "72 Hz", "80 Hz", "90 Hz",
+			                  "120 Hz"},
+			                 {0, 72, 80, 90, 120});
+			l.AddHelp(_Tr("Preferences",
+				"How many pictures a second the headset shows. Higher is smoother, and "
+				"leaves less time for each: a Quest 3 holds 90 Hz on Performance; on a "
+				"Quest 2, 72 Hz is the safe choice. A rate the headset does not offer "
+				"takes the nearest below it."));
 			l.Advanced();
 			l.AddToggleField(_Tr("Preferences", "Extra Processing Power"), "vr_performanceBoost");
 			l.AddHelp(_Tr("Preferences",

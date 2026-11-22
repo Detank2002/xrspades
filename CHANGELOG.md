@@ -50,6 +50,8 @@ one change, in a player's words.
 - Fixed: in VR, the keyboard comes up under the menu and moves with it, instead of being left wherever you were looking when it opened
 - Fixed: on Quest, graphics too heavy for the headset no longer leave you stuck: if the game cannot start or runs far too slowly, it goes back to the Performance level and tells you
 - Changed: on Quest, the graphics are set with Headset Quality in the VR tab; the PC's Low to Ultra are not offered there
+- New: in VR, choose the headset's refresh rate (Settings, VR, Refresh Rate): a Quest 3 holds 90 and 120 Hz
+- Changed: on Quest, settings for a monitor (such as Render Scale) are no longer shown; Eye Resolution in the VR tab sets the headset's sharpness
 - Fixed: bullet holes near a block's edge no longer flicker dark (most visible in VR)
 - Improved: bullet and spade holes can be cut into any face of a block, several on one block, its edges always left whole
 - Fixed: blocks with a bullet hole no longer flicker at their edges or show a thin line of sky
