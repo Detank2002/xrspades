@@ -1236,7 +1236,7 @@ namespace spades {
 							side = vrRig.headAxes[2]; // straight behind: below
 						side = side.Normalize();
 						at = headAt + (fwd * std::cos(ring) + side * std::sin(ring)) *
-						                (4.0F * vrRig.scale);
+						                (4.0F * (vrTable.active ? vrTable.pose.scale : vrRig.scale));
 					} else {
 						onScreen = true;
 					}

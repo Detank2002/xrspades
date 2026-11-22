@@ -74,6 +74,10 @@ namespace spades {
 			// A standalone headset too slow in the menu (CheckVRMenuSpeed): the
 			// time and frames counted, and whether it was checked this run.
 			void CheckVRMenuSpeed(float dt);
+			/** This start made it (cl_startGuard): nine seconds of frames, in the
+			 * menu or a game. */
+			void ClearStartGuard(float dt);
+			float startGuardTime = 0.0F;
 			float vrSpeedTime = 0.0F;
 			int vrSpeedFrames = 0;
 			bool vrSpeedChecked = false;

@@ -953,6 +953,7 @@ namespace spades {
 				// last had focus (steady clock, seconds), whether it lost it since,
 				// and when the height is to be reset once it is back on.
 				double lastFocusedAt = 0.0;
+				Vector3 lastFocusedHead{0.0F, 0.0F, 0.0F}; // tracking space
 				bool lostFocus = false;
 				double putOnResetAt = 0.0;
 				bool prevTrigger[2] = {false, false};

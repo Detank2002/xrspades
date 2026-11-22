@@ -360,6 +360,24 @@ namespace spades {
 			vrMenuEye = eye;
 		}
 
+		void MainScreen::ClearStartGuard(float dt) {
+			// Nine seconds of frames anywhere: in the menu, or a game joined at
+			// once (cleared only in the menu, a player who went straight into a
+			// game and left from it had their graphics put back on Performance at
+			// the next start).
+#if defined(__ANDROID__)
+			if (startGuardTime >= 9.0F)
+				return;
+			startGuardTime += std::min(dt, 0.1F);
+			if (startGuardTime >= 9.0F && (int)cl_startGuard) {
+				cl_startGuard = 0;
+				Settings::GetInstance()->Flush();
+			}
+#else
+			(void)dt;
+#endif
+		}
+
 		void MainScreen::CheckVRMenuSpeed(float dt) {
 			// On a standalone headset, settings too heavy for it (the PC's Ultra
 			// on a Quest) left it too slow to set them back, or ran it out of
@@ -372,14 +390,20 @@ namespace spades {
 #if defined(__ANDROID__)
 			if (vrSpeedChecked || !ui || dt <= 0.0F)
 				return;
-			vrSpeedTime += dt;
+			// Only the frames the headset shows: off a head, or asleep, the loop
+			// runs slowly or not at all, and that is not the graphics
+			// (counted, a game started with the headset on the table was put
+			// back on Performance)
+			client::IVRSystem* vr = client::GetVRSystem();
+			if (!vr || !vr->GetFrameState().focused || !vr->GetFrameState().shouldRender)
+				return;
+			vrSpeedTime += std::min(dt, 0.1F);
 			if (vrSpeedTime < 3.0F)
 				return; // the map settling in
 			vrSpeedFrames++;
 			if (vrSpeedTime < 9.0F)
 				return;
 			vrSpeedChecked = true;
-			cl_startGuard = 0;
 			const float fps = static_cast<float>(vrSpeedFrames) / (vrSpeedTime - 3.0F);
 			const QualityPreset& performance = GetHeadsetQualityPresets().front();
 			SPLog("[VR] Menu speed: %.0f FPS", fps);
@@ -531,6 +555,7 @@ namespace spades {
 
 		void MainScreen::RunFrame(float dt) {
 			SPADES_MARK_FUNCTION();
+			ClearStartGuard(dt);
 			if (subview) {
 				try {
 					subview->RunFrame(dt);

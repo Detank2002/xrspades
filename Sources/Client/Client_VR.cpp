@@ -408,7 +408,11 @@ namespace spades {
 			const Vector3 eyeFwd = vrRig.headAxes[0];
 			const Vector3 headDown = vrRig.headAxes[2];
 			const float s = vrRig.scale;
-			Vector3 fwd = eyeFwd - headDown * (eyeFwd.z > 0.0F ? 1.0F : -1.0F);
+			// Only looking steeply up or down (over 45 degrees): level, a head
+			// tipped sideways to sight down the gun put its down vector to the
+			// side, and the heading and the shoulder turned with it.
+			const float steep = Clamp((std::fabs(eyeFwd.z) - 0.7F) / 0.25F, 0.0F, 1.0F);
+			Vector3 fwd = eyeFwd - headDown * ((eyeFwd.z > 0.0F ? 1.0F : -1.0F) * steep);
 			fwd.z = 0.0F;
 			fwd = fwd.GetLength() > 0.01F ? fwd.Normalize() : MakeVector3(1, 0, 0);
 			const Vector3 right = MakeVector3(-fwd.y, fwd.x, 0.0F);
@@ -919,7 +923,9 @@ namespace spades {
 			if (!vrTable.active || !vrRig.active || !IsVRFrameActive())
 				return;
 			const float play = Clamp((float)vr_worldScale, 0.5F, 4.0F);
-			const float k = vrRig.scale / play; // play-sized blocks to the table's
+			// The table's scale (vrRig.scale is the body's again by the time the
+			// scene is drawn: ApplyVRToSceneDefinition puts it back)
+			const float k = vrTable.pose.scale / play; // play-sized blocks to the table's
 			Handle<IModel> arm = renderer->RegisterModel("Models/Player/Arm.kv6");
 			ModelRenderParam param;
 			param.customColor = MakeVector3(0.55F, 0.55F, 0.55F);
@@ -1329,7 +1335,10 @@ namespace spades {
 			// half after it is back on, once the head has settled. Off is the
 			// game losing focus for over three seconds (or not running for
 			// twenty: a headset may stop the app outright; a map loading stalls
-			// for less).
+			// for less), and the head then reading 12 cm higher or lower, or
+			// half a metre away: the system menu opened for a while leaves the
+			// head where it was, and a reset then, taken crouched, would have
+			// made the crouch the standing height.
 			{
 				const double now = std::chrono::duration<double>(
 				                     std::chrono::steady_clock::now().time_since_epoch())
@@ -1338,13 +1347,20 @@ namespace spades {
 					vrRig.lostFocus = true;
 				} else {
 					const double away = vrRig.lastFocusedAt > 0.0 ? now - vrRig.lastFocusedAt : 0.0;
-					if (vrRig.calibrated && ((vrRig.lostFocus && away > 3.0) || away > 20.0)) {
+					const Vector3 moved = fs.head.position - vrRig.lastFocusedHead;
+					const bool shifted =
+					  fs.head.valid && (std::fabs(moved.y) > 0.12F ||
+					                    std::sqrt(moved.x * moved.x + moved.z * moved.z) > 0.5F);
+					if (vrRig.calibrated && shifted &&
+					    ((vrRig.lostFocus && away > 3.0) || away > 20.0)) {
 						vrRig.putOnResetAt = now + 1.5;
 						SPLog("[VR] The headset is back on after %.0f s: the height is reset "
 						      "shortly", away);
 					}
 					vrRig.lostFocus = false;
 					vrRig.lastFocusedAt = now;
+					if (fs.head.valid)
+						vrRig.lastFocusedHead = fs.head.position;
 					if (vrRig.putOnResetAt > 0.0 && now >= vrRig.putOnResetAt) {
 						vrRig.putOnResetAt = 0.0;
 						vrRig.heightResetRequested = true;
