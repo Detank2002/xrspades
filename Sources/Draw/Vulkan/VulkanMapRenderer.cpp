@@ -151,7 +151,14 @@ namespace spades {
 				hiddenFaces.insert(k);
 			else
 				hiddenFaces.erase(k);
-			GameMapChanged(x, y, z, gameMap);
+			// Only the block's own chunk draws its faces (GameMapChanged would
+			// rebuild the 27 round it, six times for a damaged block)
+			const int cx = (x >> VulkanMapChunk::SizeBits) & (numChunkWidth - 1);
+			const int cy = (y >> VulkanMapChunk::SizeBits) & (numChunkHeight - 1);
+			const int cz = z >> VulkanMapChunk::SizeBits;
+			if (cz >= 0 && cz < numChunkDepth)
+				if (VulkanMapChunk* chunk = GetChunk(cx, cy, cz))
+					chunk->SetNeedsUpdate();
 		}
 
 		void VulkanMapRenderer::GameMapChanged(int x, int y, int z, client::GameMap* map) {

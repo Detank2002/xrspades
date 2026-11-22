@@ -39,7 +39,9 @@ namespace spades {
 		 */
 		class WeaponWindow : public gui::ui::UIElement {
 			ClientUI* ui;              // weak
-			gui::ui::UIElement* owner; // weak
+			// Held: the menu can be dropped (the screens rebuilt on a resize)
+			// while this page is up, and Close touches it
+			Handle<gui::ui::UIElement> owner;
 			Handle<gui::StandardPreferenceLayouter> layouter;
 			AABB2 contents;
 

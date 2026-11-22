@@ -2495,10 +2495,11 @@ namespace spades {
 			if (p.GetFront().GetSquaredLength() < 0.01F)
 				return;
 
-			// distance cull
+			// distance cull (not on the table view, whose eye is off the map
+			// and which shows all of it)
 			const auto& viewOrigin = client.GetLastSceneDef().viewOrigin;
 			float distSqr = (p.GetOrigin() - viewOrigin).GetSquaredLength2D();
-			if (distSqr > FOG_DISTANCE_SQ)
+			if (distSqr > FOG_DISTANCE_SQ && !client.vrTable.active)
 				return;
 
 			bool isThirdPerson = ShouldRenderInThirdPersonView();
@@ -2921,7 +2922,7 @@ namespace spades {
 			// distance cull
 			const auto& viewOrigin = client.GetLastSceneDef().viewOrigin;
 			float distSqr = (p.GetOrigin() - viewOrigin).GetSquaredLength2D();
-			if (distSqr > FOG_DISTANCE_SQ)
+			if (distSqr > FOG_DISTANCE_SQ && !client.vrTable.active)
 				return;
 
 			Handle<IModel> model;

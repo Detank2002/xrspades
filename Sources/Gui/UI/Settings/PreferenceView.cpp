@@ -353,6 +353,8 @@ namespace spades {
 			}
 			if (backButton)
 				backButton->SetBounds(AABB2(tabLeft, y + 5.0F, tabWidth, tabRowHeight));
+			// The help goes under Back, wherever the tabs now end
+			helpTop = y + 5.0F + tabRowHeight + 12.0F;
 			UpdateTabs();
 		}
 
@@ -457,7 +459,7 @@ namespace spades {
 			// start right below this tab's nav buttons (or below Back when it has none)
 			float top = helpTop;
 			ui::UIElement* navPanel = tabs[selectedTabIndex]->navPanel;
-			if (navPanel != nullptr)
+			if (navPanel != nullptr && navPanel->visible)
 				top = navPanel->GetBounds().max.y + 12.0F;
 
 			// use whatever sidebar height is left

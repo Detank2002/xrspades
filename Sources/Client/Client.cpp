@@ -210,6 +210,11 @@ namespace spades {
 				return;
 
 			scriptedUI->CloseUI();
+			// The table's copy is of the old map (a new one at the same address
+			// passed for it)
+			vrTableModel = nullptr;
+			vrTableModelPrev = nullptr;
+			vrTableBuiltFor = nullptr;
 
 			// A held menu belongs to the world it opened in: its aim and its target
 			// mean nothing in the next one.

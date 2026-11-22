@@ -3449,7 +3449,9 @@ namespace spades {
 								chatWindow->Draw();
 							// On the wrist only if asked for (testers found it
 							// crowded there); see vr_killfeed
-							if (!onWrist || (int)vr_killfeed == 2)
+							// (and not at all in a headset with it off)
+							if ((!vrFrame || (int)vr_killfeed != 0) &&
+							    (!onWrist || (int)vr_killfeed == 2))
 								killfeedWindow->Draw();
 
 							if (!localPlayerIsSpectator) { // player is not spectator

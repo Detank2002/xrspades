@@ -311,10 +311,10 @@ namespace spades {
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "ON"),
 			                  _Tr("Preferences", "Grenades")},
 			                 {0, 1, 2});
-			// 2: only the player under the crosshair; 1: every player in sight too
+			// 2: the player under the crosshair; 1: the same with the distance
 			l.AddChoiceField(_Tr("Preferences", "Player Names"), "cg_playerNames",
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Pointed At"),
-			                  _Tr("Preferences", "Everyone")},
+			                  _Tr("Preferences", "Pointed At, With Distance")},
 			                 {0, 2, 1});
 			l.Advanced();
 			l.AddToggleField(_Tr("Preferences", "Show Dead Player Names"), "cg_playerNamesDead");
@@ -536,11 +536,14 @@ namespace spades {
 
 			l.Advanced();
 			l.SetPlatform(PlatformFlat);
+#if !defined(__ANDROID__) // a headset has only Vulkan
 			l.AddChoiceField(_Tr("Preferences", "Renderer (Next Start)"), "r_vulkan",
 			                 {"Vulkan", "OpenGL"}, {1, 0});
 			l.AddHelp(_Tr("Preferences",
 				"Vulkan is faster and needed for VR. OpenGL is there for a PC whose "
-				"driver has trouble with Vulkan."));
+				"driver has trouble with Vulkan; it needs VR off, in the window that "
+				"opens before the game."));
+#endif
 			l.AddToggleField(_Tr("Preferences", "Use The Monitor's Resolution (Next Start)"),
 			                 "r_videoAutoResolution");
 			l.AddSliderField(_Tr("Preferences", "Render Scaling Filter"), "r_scaleFilter", 0, 2, 1,

@@ -146,7 +146,8 @@ namespace spades {
 		void WeaponWindow::Close() {
 			Handle<WeaponWindow> keepAlive(this);
 			owner->enable = true;
-			GetParent()->RemoveChild(this);
+			if (GetParent())
+				GetParent()->RemoveChild(this);
 			if (closed)
 				closed(*this);
 		}

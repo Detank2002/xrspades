@@ -1000,6 +1000,7 @@ namespace spades {
 			 * voxel), drawn in place of the map itself (AddVRTableMapToScene). */
 			void AddVRTableMapToScene();
 			Handle<IModel> vrTableModel;
+			Handle<IModel> vrTableModelPrev;
 			std::vector<uint32_t> vrTableCells; // last built: colour, 0 for air
 			int vrTableFactor = 0;
 			float vrTableBuiltAt = -100.0F;

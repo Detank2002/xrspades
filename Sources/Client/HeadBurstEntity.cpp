@@ -196,8 +196,13 @@ namespace spades {
 
 				c.life -= dt;
 				if (c.resting) {
-					anyAlive = true;
-					continue;
+					// Woken when what it lay on is gone
+					const Vector3 at = c.matrix.GetOrigin();
+					if (map->ClipWorld(at.x, at.y, at.z + 0.5F)) {
+						anyAlive = true;
+						continue;
+					}
+					c.resting = false;
 				}
 
 				Matrix4 lastMat = c.matrix;

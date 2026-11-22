@@ -815,7 +815,8 @@ namespace spades {
 				if (off < 2.0F * 0.0174532925F)
 					vrTipMoving = false;
 			}
-			vrTipAt = d.viewOrigin + vrTipDir * (1.6F * vrRig.scale);
+			const float scale = vrTable.active ? vrTable.pose.scale : vrRig.scale;
+			vrTipAt = d.viewOrigin + vrTipDir * (1.6F * scale);
 		}
 
 		void Client::DrawVRTutorial() {
@@ -850,7 +851,8 @@ namespace spades {
 				side = side * -1.0F;
 			if (Vector3::Dot(at - d.viewOrigin, d.viewAxis[2]) <= 0.0F)
 				return; // behind you
-			if (!Project(at, c) || !Project(at + side * (0.3F * s), e))
+			const float ts = vrTable.active ? vrTable.pose.scale : s;
+			if (!Project(at, c) || !Project(at + side * (0.3F * ts), e))
 				return;
 			// 0.6m wide at 1.6m (about 21 degrees), whatever the eye's resolution.
 			const float halfW = (e - c).GetLength();
@@ -913,7 +915,9 @@ namespace spades {
 			if (IsDemoMode())
 				return true;
 			auto p = world->GetLocalPlayer();
-			return !p || p->IsSpectator() || !p->IsAlive();
+			// Spectators and demos only: a dead player on a team would see the
+			// whole map's enemies on it while waiting to respawn
+			return !p || p->IsSpectator();
 		}
 
 		void Client::AddVRTableHandsToScene() {
@@ -1016,6 +1020,7 @@ namespace spades {
 							}
 					// Voxel (0,0,0) from 0 to 1: scaled by f, on the map's own grid
 					vm->SetOrigin(MakeVector3(0.5F, 0.5F, 0.5F));
+					vrTableModelPrev = vrTableModel; // a frame in flight may draw it
 					vrTableModel = renderer->CreateModel(*vm);
 					vrTableCells = std::move(cells);
 					vrTableFactor = f;
@@ -1362,8 +1367,14 @@ namespace spades {
 					if (fs.head.valid)
 						vrRig.lastFocusedHead = fs.head.position;
 					if (vrRig.putOnResetAt > 0.0 && now >= vrRig.putOnResetAt) {
-						vrRig.putOnResetAt = 0.0;
-						vrRig.heightResetRequested = true;
+						// Not while looking well down (picking the controllers up,
+						// bent over): a moment later, upright
+						if (fs.head.valid && -fs.head.Axis(2).y > 0.5F) {
+							vrRig.putOnResetAt = now + 0.5;
+						} else {
+							vrRig.putOnResetAt = 0.0;
+							vrRig.heightResetRequested = true;
+						}
 					}
 				}
 			}
@@ -1956,7 +1967,28 @@ namespace spades {
 						        VRHapticShape::Kick);
 					}
 					vrRig.spadeTouching = touching;
-					vrRig.swingLatched = false;
+					// Players are not solid, so a strike never comes against one:
+					// a swing at the arm's pace with the tip by somebody hits, as
+					// it did before the spade was made solid
+					bool byPlayer = false;
+					if (world && swingAt > 0.0F) {
+						const Vector3 tip = vrRig.handPos[toolHand] +
+						                    vrRig.handAxes[toolHand][0] * vrRig.toolReach;
+						for (size_t i = 0; i < world->GetNumPlayerSlots() && !byPlayer; i++) {
+							auto other = world->GetPlayer(static_cast<unsigned int>(i));
+							if (!other || &other.value() == &p || !other->IsAlive() ||
+							    other->IsSpectator())
+								continue;
+							const Vector3 body = other->GetEye() + MakeVector3(0.0F, 0.0F, 1.0F);
+							byPlayer = (body - tip).GetLength() < 1.6F;
+						}
+					}
+					if (byPlayer && !vrRig.swingLatched && speed > swingAt) {
+						vrRig.swingLatched = true;
+						vrRig.swingHold = 0.15F;
+					} else if (speed < swingAt * 0.5F) {
+						vrRig.swingLatched = false;
+					}
 				} else if (p.IsToolSpade() && swingAt > 0.0F && vrRig.handValid[toolHand]) {
 					float speed = (vrRig.handVelocity[toolHand] / vrRig.scale).GetLength();
 					if (!vrRig.swingLatched && speed > swingAt) {
@@ -2199,7 +2231,8 @@ namespace spades {
 			if (table) {
 				vrRig.bodyYaw = bodyYaw;
 				vrRig.scale = bodyScale;
-				def.wholeMap = true;
+				// Not wholeMap: the map itself is not drawn (skipWorld), and with
+				// it every chunk of it was meshed in the frame the table opened
 				// No water: its sheet is 128 blocks round the eye, so on the table
 				// it covered a patch under you, and went past the map's edges
 				// (testers). The sea floor shows instead.

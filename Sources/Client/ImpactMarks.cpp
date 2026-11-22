@@ -113,6 +113,14 @@ namespace spades {
 				uint64_t order = 0;
 			};
 			std::unordered_map<uint64_t, Damaged> damaged;
+			// Models replaced or dropped, kept a few frames: a frame still in
+			// flight may draw them (every hit rebuilds its block's)
+			std::deque<std::pair<int, Handle<IModel>>> retired;
+			void Retire(Handle<IModel>& m) {
+				if (m)
+					retired.emplace_back(0, std::move(m));
+				m = nullptr;
+			}
 			uint64_t damageOrder = 0;
 			static uint64_t Key(const IntVector3& b) {
 				return (static_cast<uint64_t>(b.x & 0xFFFF) << 32) |
@@ -132,7 +140,10 @@ namespace spades {
 					      all;
 				return all;
 			}
-			void Restore(Damaged& d) { HideFaces(d.block, false); }
+			void Restore(Damaged& d) {
+				HideFaces(d.block, false);
+				Retire(d.model);
+			}
 			void RestoreAll() {
 				for (auto& kv : damaged)
 					Restore(kv.second);
@@ -175,6 +186,7 @@ namespace spades {
 						}
 				// Voxel (0,0,0) from 0 to 1, not centred on 0 as models are by default
 				m->SetOrigin(MakeVector3(0.5F, 0.5F, 0.5F));
+				Retire(d.model);
 				d.model = client.GetRenderer().CreateModel(*m);
 			}
 
@@ -402,6 +414,10 @@ namespace spades {
 				impl->RestoreAll();
 				return;
 			}
+			for (auto& rm : impl->retired)
+				rm.first++;
+			while (!impl->retired.empty() && impl->retired.front().first > 4)
+				impl->retired.pop_front();
 			IRenderer& r = impl->client.GetRenderer();
 			ModelRenderParam param;
 			param.drawOutline = false;
