@@ -54,6 +54,7 @@ SPADES_SETTING(vr_worldScale);
 SPADES_SETTING(vr_snapTurn);
 SPADES_SETTING(vr_smoothTurnSpeed);
 SPADES_SETTING(vr_leftHanded);
+SPADES_SETTING(vr_swapSticks);
 SPADES_SETTING(cl_startGuard);
 SPADES_SETTING(cl_startRescued);
 
@@ -284,8 +285,14 @@ namespace spades {
 				              scale);
 			};
 
+			// The hand a (bound) stick is on: with the sticks swapped, the other
+			// one. A stick whose hand points at the panel scrolls it
+			// (VRMenuPointer), and neither walks nor turns.
+			const bool swapped = (bool)vr_swapSticks;
+			auto stickHand = [&](int h) { return swapped ? 1 - h : h; };
 			// Turning, about the head: snapped (vr_snapTurn degrees) or smooth.
-			const float tx = fs.hands[toolHand].thumbstick.x;
+			const float tx =
+			  onPanel(stickHand(toolHand)) ? 0.0F : fs.hands[toolHand].thumbstick.x;
 			float dyaw = 0.0F;
 			const float snap = (float)vr_snapTurn;
 			if (snap > 0.0F) {
@@ -320,7 +327,7 @@ namespace spades {
 			};
 			const Vector3 head = vrMenuEye + headOffset();
 			Vector2 stick = fs.hands[offHand].thumbstick;
-			if (onPanel(offHand))
+			if (onPanel(stickHand(offHand)))
 				stick = MakeVector2(0.0F, 0.0F);
 			const float len = stick.GetLength();
 			Vector3 move = MakeVector3(0.0F, 0.0F, 0.0F);
@@ -348,12 +355,15 @@ namespace spades {
 			const float hx = head.x + (eye.x - vrMenuEye.x);
 			if (move.y != 0.0F && open(hx, head.y + move.y + (move.y > 0.0F ? 0.3F : -0.3F)))
 				eye.y += move.y;
-			// The ground under the body: stepped up onto or fallen down to, eased
-			const Vector3 at = eye + headOffset();
-			for (int z = std::max(0, (int)std::floor(at.z + 1.6F)); z < map.Depth(); z++) {
-				if (solid(at.x, at.y, (float)z)) {
-					const float want = (float)z - 2.5F - (at.z - eye.z);
-					eye.z += (want - eye.z) * (1.0F - std::exp(-dt * 10.0F));
+			// The ground under the body (not under the head, which may lean into
+			// a wall or past the map's edge: from there it climbed the wall, or
+			// into the sky): stepped up onto by a block at most, or fallen down
+			// to, eased
+			for (int z = std::max(0, (int)std::floor(eye.z + 1.6F)); z < map.Depth(); z++) {
+				if (solid(eye.x, eye.y, (float)z)) {
+					const float want = (float)z - 2.5F;
+					if (want >= eye.z - 1.1F)
+						eye.z += (want - eye.z) * (1.0F - std::exp(-dt * 10.0F));
 					break;
 				}
 			}

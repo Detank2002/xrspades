@@ -1171,8 +1171,13 @@ namespace spades {
 			const float deg = 0.0174532925F;
 			const float dead =
 			  game ? 12.0F * deg : std::atan(frameState.hudWidth * 0.5F / d) + 5.0F * deg;
-			const bool dragging = !game && (frameState.hands[0].trigger > 0.5F ||
-			                                frameState.hands[1].trigger > 0.5F);
+			// Any trigger held, bound or not, or a hand's pinch (what the menu
+			// pointer clicks with)
+			bool dragging = false;
+			for (int i = 0; i < 2 && !game; i++)
+				dragging = dragging || frameState.hands[i].trigger > 0.5F ||
+				           frameState.rawHands[i].trigger > 0.5F ||
+				           frameState.handPinch[i] > 0.5F;
 			const float off = std::acos(Clamp(Vector3::Dot(hudTrailDir, level), -1.0F, 1.0F));
 			if (off > dead && !dragging && hasHeading)
 				hudTrailMoving = true;

@@ -1574,7 +1574,12 @@ namespace spades {
 				StartAimScenario((int)cg_debugStartAim);
 			}
 			// The first time in a headset: the comfort choices, over the menu
-			if (!vrSetupChecked) {
+			// The first-time setup stands over the menu: it waits for another
+			// dialog (the name prompt) to close first, and while it is up the
+			// menu stays off whatever a closing dialog turned back on
+			if (vrSetup && vrSetup->visible)
+				enable = false;
+			if (!vrSetupChecked && enable) {
 				vrSetupChecked = true;
 				if (VRSetupScreen::IsDue()) {
 					Handle<VRSetupScreen> s = Handle<VRSetupScreen>::New(&GetManager());

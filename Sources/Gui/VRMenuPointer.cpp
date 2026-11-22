@@ -89,8 +89,12 @@ namespace spades {
 			// The menu button (or both B/Y buttons, for controllers whose menu
 			// button belongs to the system) is Escape.
 			// (and whatever button the bindings made the menu button)
+			// The controllers' own menu button is Escape too only while a menu
+			// or typing is up: in play a button bound away from the menu did its
+			// new job and opened the menu as well.
+			const bool inMenu = view.NeedsAbsoluteMouseCoordinate() || view.AcceptsTextInput();
 			bool menu = fs.hands[VRHandLeft].menu || fs.hands[VRHandRight].menu ||
-			            rawFs.hands[VRHandLeft].menu || rawFs.hands[VRHandRight].menu ||
+			            (inMenu && (rawFs.hands[VRHandLeft].menu || rawFs.hands[VRHandRight].menu)) ||
 			            (fs.hands[VRHandLeft].buttonSecondary &&
 			             fs.hands[VRHandRight].buttonSecondary);
 			if (menu && !menuHeld) {
@@ -201,15 +205,22 @@ namespace spades {
 
 			bool click = triggerDown[hand] && !pointerTaken;
 			const bool pressed = click && !triggerHeld[hand];
+			if (pressed)
+				pressOnView = onPanel && !(panelKeys && keyboardRect.Contains(position));
+			if (!click)
+				pressOnView = false;
 			if (panelKeys && onPanel && keyboardRect.Contains(position) && !clickDown) {
 				if (pressed && hoverKey >= 0) {
 					PressKey(view, keys[static_cast<std::size_t>(hoverKey)]);
 					KeyFeedback(keys[static_cast<std::size_t>(hoverKey)], hoverKey);
 				}
 				RepeatHeldKey(view, click, pressed);
-			} else if (mouseToView && click != clickDown && (onPanel || !click)) {
-				view.KeyEvent("LeftMouseButton", click);
-				clickDown = click;
+			} else if (mouseToView && click && !clickDown && onPanel && pressOnView) {
+				view.KeyEvent("LeftMouseButton", true);
+				clickDown = true;
+			} else if (mouseToView && !click && clickDown) {
+				view.KeyEvent("LeftMouseButton", false);
+				clickDown = false;
 			}
 
 			// Thumbstick up/down scrolls, faster the further it is pushed.

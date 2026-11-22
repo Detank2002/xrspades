@@ -151,6 +151,10 @@ namespace spades {
 			bool onPanel = false;
 			Vector2 position{0.0F, 0.0F};
 			bool clickDown = false;
+			// The press now held began on the menu panel, off the keyboard: only
+			// such a press is the view's click (swept onto the panel, a held
+			// trigger clicked whatever it reached)
+			bool pressOnView = false;
 			bool triggerHeld[2] = {false, false};
 			bool menuHeld = false;
 			float wheelTimer = 0.0F;
