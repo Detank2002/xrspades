@@ -58,6 +58,7 @@ one change, in a player's words.
 - Improved: in VR, your height is reset by itself when you put the headset back on
 - Changed: a headshot bursts the head only now and then (one in twenty)
 - Changed: in VR, the belt is stepped like the rest of the game's voxels
+- Fixed: in VR, the grenades and blocks sit lower at the hips, digging straight down no longer grabs them, and the grenades on the belt no longer overlap
 - Fixed: in VR, the reflex sight's Cross is cut off by the sight's frame where the frame really is
 - Fixed: in VR, aiming with the stock while looking steeply down no longer swings the gun as you nod
 - Fixed: in VR, the table view keeps a smooth frame rate on Quest: the map on it is a simpler, blockier copy

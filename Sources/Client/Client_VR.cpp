@@ -1993,9 +1993,13 @@ namespace spades {
 			int slot = VRHolsterNone;
 			// Only with the tool pointed down, at the ground by the feet where
 			// the hand is at the hip: in a tunnel a block is always in reach, and
-			// no holster ever counted there (a tester's report).
-			const bool reach = (p.IsToolSpade() || p.IsToolBlock()) &&
-			                   p.GetToolDirection().z > 0.5F && VRToolHasReach(p);
+			// no holster ever counted there (a tester's report). Pointed almost
+			// straight down it counts as digging whether or not a block is in
+			// reach: dug three deep, the floor of the hole was out of it, and the
+			// grip took blocks from the hip (testers).
+			const float down = p.GetToolDirection().z;
+			const bool reach = (p.IsToolSpade() || p.IsToolBlock()) && down > 0.5F &&
+			                   (down > 0.8F || VRToolHasReach(p));
 			// The holsters face the body's way, not the eyes' (VRHolsterFrame)
 			VRHolsterFrameUpdate(vrRig.holsterFrame, fs, dt, vrRig.standingHeight,
 			                     (int)vr_holsterFollow != 0);

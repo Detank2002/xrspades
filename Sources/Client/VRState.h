@@ -555,7 +555,7 @@ namespace spades {
 		struct VRHolsterFrame {
 			bool valid = false;
 			Vector3 forward = MakeVector3(0, 0, -1); // level, tracking space
-			float hipDrop = 0.6F;                    // metres under the eyes
+			float hipDrop = 0.672F;                  // metres under the eyes
 		};
 		constexpr float kVRHolsterDeadZone = 0.61F; // 35 degrees, in radians
 		/** One frame: `eyeHeight` the standing eye height over the floor (m),

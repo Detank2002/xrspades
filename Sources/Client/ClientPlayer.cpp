@@ -2099,14 +2099,17 @@ namespace spades {
 				// The one in the hand is not on the hip
 				if (p.GetTool() == Player::ToolGrenade && have > 0)
 					have--;
-				const int loops = std::max(3, std::min(have, 6));
+				// Grenade.kv6 is 6 voxels wide (7.3 cm here): 8.5 cm apart, four at
+				// most along the hip (at 6.5 cm they overlapped and flickered,
+				// testers)
+				const int loops = std::max(3, std::min(have, 4));
 				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
 				// 9 voxels tall: 11 cm
 				const float voxel = 0.11F / 9.0F * s * pop(VRHolsterGrenades);
 				const Vector3 out = -side * (0.04F * s); // the grenades' hip is the other side
 				ModelRenderParam param;
 				for (int i = 0; i < loops; i++) {
-					const Vector3 along = f * ((i - (loops - 1) * 0.5F) * 0.065F * s);
+					const Vector3 along = f * ((i - (loops - 1) * 0.5F) * 0.085F * s);
 					// The loop: a thin strap over the belt, a little proud of it
 					strap.matrix = frameAlong(f, MakeVector3(0.018F * s, 0.008F * s, 0.055F * s),
 					                          grenadesAt - side * (0.012F * s) + along);

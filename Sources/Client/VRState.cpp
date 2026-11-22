@@ -766,9 +766,10 @@ namespace spades {
 
 		void VRHolsterFrameUpdate(VRHolsterFrame& f, const VRFrameState& fs, float dt,
 		                          float eyeHeight, bool followHead) {
-			// The hips a share of the standing eye height: 60 cm for eyes at 1.6 m,
-			// within reason for the tallest and shortest
-			f.hipDrop = std::max(0.42F, std::min(0.8F, eyeHeight * 0.375F));
+			// The hips a share of the standing eye height: 67 cm under eyes at
+			// 1.6 m, within reason for the tallest and shortest. (60 cm was too
+			// high, testers: a hand low at the side digging took from them.)
+			f.hipDrop = std::max(0.48F, std::min(0.9F, eyeHeight * 0.42F));
 			if (!fs.head.valid)
 				return;
 			Vector3 h = fs.head.Axis(2) * -1.0F;
@@ -808,7 +809,7 @@ namespace spades {
 				return false;
 			// Tracking space: +X right, +Y up, -Z forward.
 			Vector3 f;
-			float hipDrop = 0.6F;
+			float hipDrop = 0.672F;
 			if (frame && frame->valid) {
 				f = frame->forward;
 				hipDrop = frame->hipDrop;
