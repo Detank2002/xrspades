@@ -181,6 +181,8 @@ namespace spades {
 			Vector3 xrayColor = MakeVector3(1, 1, 1);
 			std::map<IModel*, std::string> modelFiles;
 			std::vector<std::pair<std::string, Matrix4>>* capture = nullptr;
+			// The body mirror's reflection (SetMirror), or null
+			const Matrix4* mirror = nullptr;
 			// The outfit's set, "Models/Player/Custom/<set>/", whose held items
 			// replace the usual ones (empty: none); and what each path gave.
 			std::string heldFolder;
@@ -282,6 +284,11 @@ namespace spades {
 				capture = into;
 			}
 
+			/** Every model drawn from here on is drawn reflected by `m` instead,
+			 * over the world, casting no shadow; lights and sprites are left out
+			 * (null: stop). The body mirror (Client::vrMirror). */
+			void SetMirror(const Matrix4* m) { mirror = m; }
+
 			Handle<IImage> CreateImage(Bitmap& bmp) { return base->CreateImage(bmp); }
 			Handle<IModel> CreateModel(VoxelModel& m) { return base->CreateModel(m); }
 
@@ -293,6 +300,8 @@ namespace spades {
 			void StartScene(const SceneDefinition&) { OnProhibitedAction(); }
 
 			void AddLight(const client::DynamicLightParam& light) {
+				if (mirror)
+					return;
 				AABB3 aabb{light.origin, light.origin};
 				if (light.type == DynamicLightTypeLinear)
 					aabb += light.point2;
@@ -302,7 +311,7 @@ namespace spades {
 			}
 
 			void RenderModel(IModel& model, const ModelRenderParam& _p) {
-				if (capture) {
+				if (capture && !mirror) {
 					auto it = modelFiles.find(&model);
 					if (it != modelFiles.end())
 						capture->emplace_back(it->second, _p.matrix);
@@ -335,17 +344,28 @@ namespace spades {
 
 				IModel& drawn = HeldItem(model);
 				auto bounds = (p.matrix * OBB3(drawn.GetBoundingBox())).GetBoundingAABB();
-				if (CheckVisibility(bounds))
-					base->RenderModel(drawn, p);
+				if (!CheckVisibility(bounds))
+					return;
+				if (mirror) {
+					p.matrix = *mirror * p.matrix;
+					p.depthHack = true; // over the world, as a mirror's picture is
+					p.castShadow = false;
+					p.xray = false;
+				}
+				base->RenderModel(drawn, p);
 			}
 			void AddDebugLine(Vector3 a, Vector3 b, Vector4 color) { OnProhibitedAction(); }
 
 			void AddSprite(IImage& image, Vector3 center, float radius, float rotation) {
+				if (mirror)
+					return;
 				Vector3 rad(radius * 1.5F, radius * 1.5F, radius * 1.5F);
 				if (CheckVisibility(AABB3(center - rad, center + rad)))
 					base->AddSprite(image, center, radius, rotation);
 			}
 			void AddLongSprite(IImage& image, Vector3 p1, Vector3 p2, float radius) {
+				if (mirror)
+					return;
 				Vector3 rad(radius * 1.5F, radius * 1.5F, radius * 1.5F);
 				AABB3 bounds1(p1 - rad, p1 + rad);
 				AABB3 bounds2(p2 - rad, p2 + rad);
@@ -354,10 +374,14 @@ namespace spades {
 					base->AddLongSprite(image, p1, p2, radius);
 			}
 			void AddGlare(IImage& image, const GlareParam& param) {
+				if (mirror)
+					return;
 				if (CheckVisibility(AABB3(param.origin, param.origin)))
 					base->AddGlare(image, param);
 			}
 			void AddImagePlane(IImage& image, Vector3 origin, Vector3 axisU, Vector3 axisV) {
+				if (mirror)
+					return;
 				AABB3 bounds(origin, origin);
 				bounds += origin + axisU;
 				bounds += origin + axisV;
@@ -1819,7 +1843,7 @@ namespace spades {
 		                             const Vector3 handAxes[2][3], int toolHand, bool drawHead,
 		                             bool drawUpperArms, const ModelRenderParam& baseParam,
 		                             const Matrix4* torso) {
-			IRenderer& renderer = client.GetRenderer();
+			IRenderer& renderer = VRBodyRenderer();
 			std::string modelPath = "Models/Player/";
 			if (!cg_classicPlayerModels)
 				modelPath += player.GetWeapon().GetName() + "/";
@@ -1977,7 +2001,7 @@ namespace spades {
 					vrSkin.SetVRHand(true);
 				// A skin of your gun that does not give its sights (a mod's, made
 				// before VR): the models it draws, to find them from
-				const bool fitSights = player.IsLocalPlayer() &&
+				const bool fitSights = player.IsLocalPlayer() && !vrMirrorPass &&
 				                       currentTool == Player::ToolWeapon &&
 				                       !vrSkin.ImplementsInterface();
 				std::vector<std::pair<std::string, Matrix4>> drawn;
@@ -2027,7 +2051,7 @@ namespace spades {
 			    p.IsSpectator() || client.vrTable.active ||
 			    !rig.holsterValid[VRHolsterBlocks] || !rig.holsterValid[VRHolsterGrenades])
 				return;
-			IRenderer& renderer = client.GetRenderer();
+			IRenderer& renderer = VRBodyRenderer();
 			const float s = rig.scale; // blocks per metre
 			const Vector3 f = rig.holsterForward;
 			// Model axes: x along, y across, z down (right-handed: a mirrored
@@ -2397,6 +2421,84 @@ namespace spades {
 			// With a body, the arms run from its shoulders.
 			AddVRBody(client.vrRig.camera, client.vrRig.headAxes, valid, pos, axes, toolHand, false,
 			          body, param);
+
+			if (p.IsLocalPlayer() && client.vrMirror.shown)
+				AddVRMirror(valid, pos, axes, toolHand);
+		}
+
+		IRenderer& ClientPlayer::VRBodyRenderer() {
+			if (vrMirrorPass)
+				return *sandboxedRenderer;
+			return client.GetRenderer();
+		}
+
+		void ClientPlayer::AddVRMirror(const bool valid[2], const Vector3 pos[2],
+		                               const Vector3 axes[2][3], int toolHand) {
+			// The body mirror (Client::UpdateVRMirror): your body again, reflected,
+			// beside the menu panel: the belt and what is on it, the tools on your
+			// shoulders, your arms and head, as the settings have them now (Hip
+			// Height, Show Your Body, Your Arms...). Only the body, no world.
+			// It all goes through the sandbox, which reflects it; its box round
+			// the eyes is checked where each model is drawn from, before that.
+			const Matrix4 m = client.vrMirror.matrix;
+			sandboxedRenderer->SetMirror(&m);
+			vrMirrorPass = true;
+
+			AddVRHolsterItems();
+			AddVRShoulderTools();
+			ModelRenderParam param;
+			param.customColor = ConvertColorRGB(player.GetColor());
+			const bool body = (int)vr_showBody != 0;
+			if (body)
+				AddVRLocalBody(param);
+			// The head too, which your own view never draws
+			AddVRBody(client.vrRig.camera, client.vrRig.headAxes, valid, pos, axes, toolHand, true,
+			          body, param);
+
+			vrMirrorPass = false;
+			sandboxedRenderer->SetMirror(nullptr);
+		}
+
+		void ClientPlayer::AddVRShoulderTools() {
+			// The gun and the spade where they are taken from, over the shoulders
+			// (VRHolsterPlace), standing up behind the shoulder; the one in
+			// the hand is not there. Only the mirror shows them.
+			const auto& rig = client.vrRig;
+			if (!(int)vr_holsters)
+				return;
+			IRenderer& renderer = VRBodyRenderer();
+			const Vector3 up = MakeVector3(0, 0, -1);
+			const Vector3 back = rig.holsterForward * -1.0F;
+			auto place = [&](const char* path, int slot, bool longAlongZ) {
+				if (!rig.holsterValid[slot])
+					return;
+				Handle<IModel> model = renderer.RegisterModel(path);
+				if (!model)
+					return;
+				const AABB3 box = model->GetBoundingBox();
+				const Vector3 mid = (box.min + box.max) * 0.5F;
+				// Model axes: x right, y forward, z down, as held. A gun is long
+				// along y: its muzzle up here, its underside to the back. The
+				// spade is long along z: as it hangs, the handle up.
+				ModelRenderParam param;
+				param.matrix = (longAlongZ ? Matrix4::FromAxis(rig.holsterRight, back, up * -1.0F,
+				                                               rig.holsterPos[slot])
+				                           : Matrix4::FromAxis(rig.holsterRight, up, back,
+				                                               rig.holsterPos[slot])) *
+				               Matrix4::Scale(0.05F) * Matrix4::Translate(mid * -1.0F);
+				renderer.RenderModel(*model, param);
+			};
+			if (currentTool != Player::ToolWeapon) {
+				const char* gun = "Models/Weapons/Rifle/Weapon.kv6";
+				switch (player.GetWeaponType()) {
+					case SMG_WEAPON: gun = "Models/Weapons/SMG/Weapon.kv6"; break;
+					case SHOTGUN_WEAPON: gun = "Models/Weapons/Shotgun/Weapon.kv6"; break;
+					default: break;
+				}
+				place(gun, VRHolsterGun, false);
+			}
+			if (currentTool != Player::ToolSpade)
+				place("Models/Weapons/Spade/Spade.kv6", VRHolsterSpade, true);
 		}
 
 		void ClientPlayer::AddVRLocalBody(const ModelRenderParam& baseParam) {
@@ -2405,7 +2507,7 @@ namespace spades {
 			// behind the head, as a real one does, so looking down shows your chest
 			// and not the inside of your neck; the head itself is not drawn.
 			Player& p = player;
-			IRenderer& renderer = client.GetRenderer();
+			IRenderer& renderer = VRBodyRenderer();
 			std::string modelPath = "Models/Player/";
 			if (!cg_classicPlayerModels)
 				modelPath += p.GetWeapon().GetName() + "/";
@@ -2416,7 +2518,9 @@ namespace spades {
 			// by 65. (The head's forward has z down.)
 			{
 				const float down = std::asin(Clamp(client.vrRig.headAxes[0].z, -1.0F, 1.0F));
-				const float fade = Clamp((down - DEG2RAD(40.0F)) / DEG2RAD(25.0F), 0.0F, 1.0F);
+				const float fade =
+				  vrMirrorPass ? 0.0F // the mirror shows it whole, wherever you look
+				               : Clamp((down - DEG2RAD(40.0F)) / DEG2RAD(25.0F), 0.0F, 1.0F);
 				if (fade > 0.95F)
 					return;
 				if (fade > 0.0F) {

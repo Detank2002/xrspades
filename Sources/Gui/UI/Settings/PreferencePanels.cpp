@@ -704,6 +704,14 @@ namespace spades {
 			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Body"));
 			l.AddToggleField(_Tr("Preferences", "Show Your Body"), "vr_showBody");
+			l.AddChoiceField(_Tr("Preferences", "Body Mirror"), "vr_bodyMirror",
+			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "In Menus"),
+			                  _Tr("Preferences", "Always")},
+			                 {0, 1, 2});
+			l.AddHelp(_Tr("Preferences",
+				"Your body, reflected beside the menu: where the gun and spade sit on your "
+				"shoulders and the grenades and blocks on your belt, your arms as you move "
+				"them. Change Hip Height or the body settings and watch it change."));
 			l.Advanced();
 			l.AddChoiceField(_Tr("Preferences", "Your Arms"), "vr_showArms",
 			                 {_Tr("Preferences", "HANDS"), _Tr("Preferences", "FOREARMS"),

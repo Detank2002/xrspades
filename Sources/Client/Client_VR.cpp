@@ -105,6 +105,10 @@ DEFINE_SPADES_SETTING(vr_holsters, "1");
 // The hips (blocks and grenades) this many centimetres higher (or, negative,
 // lower) than a share of the eye height puts them (VRHolsterFrameUpdate)
 DEFINE_SPADES_SETTING(vr_hipHeight, "0");
+// The body mirror: 0 never, 1 while a menu is up in a game, 2 always
+DEFINE_SPADES_SETTING(vr_bodyMirror, "1");
+// How far round from the menu panel it stands, in degrees (0: in front)
+DEFINE_SPADES_SETTING(vr_bodyMirrorAngle, "50");
 // 1: the holsters turn with every turn of the head, as before 0.4.0. 0: they face
 // the body's way, which lets the head look aside (VRHolsterFrame).
 DEFINE_SPADES_SETTING(vr_holsterFollow, "0");
@@ -305,6 +309,47 @@ namespace spades {
 				SetVRToolForward(vrRig.aimFilter.Get());
 			ApplyVRRecoil();
 			ApplyVRToolCollision();
+			UpdateVRMirror(fs);
+		}
+
+		void Client::UpdateVRMirror(const VRFrameState& fs) {
+			// Your body reflected in a plane beside the menu panel, on the side of
+			// the hand that does not point: raise a hand, try the Hip Height, and
+			// see it there. Only while a menu is up (or always, 2), in a game
+			// with you alive in it; not on the table view.
+			vrMirror.shown = false;
+			const int mode = (int)vr_bodyMirror;
+			if (mode <= 0 || !world || vrTable.active || !fs.head.valid)
+				return;
+			auto p = world->GetLocalPlayer();
+			if (!p || !p->IsAlive() || p->IsSpectator())
+				return;
+			if (mode == 1 && !(scriptedUI->NeedsInput() && !scriptedUI->IsChatPanelOpen()))
+				return;
+
+			// Towards the panel, level (else the way the head faces)
+			Vector3 fwd = fs.hudPanel.valid ? VRToWorld(fs.hudPanel.position - fs.head.position)
+			                                : vrRig.headAxes[0];
+			fwd.z = 0.0F;
+			if (fwd.GetLength() < 1.0E-3F)
+				fwd = vrRig.headAxes[0], fwd.z = 0.0F;
+			if (fwd.GetLength() < 1.0E-3F)
+				return;
+			fwd = fwd.Normalize();
+			const Vector3 right = MakeVector3(-fwd.y, fwd.x, 0.0F);
+			// Past the panel's edge (it is about 56 degrees across), on the
+			// pointing hand's other side
+			const float side = VRToolHand() == VRHandRight ? -1.0F : 1.0F;
+			const float a = DEG2RAD(Clamp((float)vr_bodyMirrorAngle, 0.0F, 120.0F));
+			const Vector3 n = (fwd * std::cos(a) + right * (side * std::sin(a))).Normalize();
+			// The plane 0.9 m away: the reflection stands 1.8 m off, whole in view
+			const Vector3 at = vrRig.camera + n * (0.9F * vrRig.scale);
+			// x - 2 n (n . (x - at)): columns of I - 2 n n^T, then 2 (n . at) n
+			const float d = Vector3::Dot(n, at);
+			auto col = [&](const Vector3& e) { return e - n * (2.0F * Vector3::Dot(n, e)); };
+			vrMirror.matrix = Matrix4::FromAxis(col(MakeVector3(1, 0, 0)), col(MakeVector3(0, 1, 0)),
+			                                    col(MakeVector3(0, 0, 1)), n * (2.0F * d));
+			vrMirror.shown = true;
 		}
 
 		float Client::VRToolReach(Player& p) const {

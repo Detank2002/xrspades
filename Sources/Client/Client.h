@@ -1003,6 +1003,13 @@ namespace spades {
 			Handle<IModel> vrTableModelPrev;
 			// A map just arrived, in a headset: the world is kept out of sight
 			// until frames come steadily (UpdateVRSettle)
+			// The body mirror (vr_bodyMirror): a vertical plane beside the menu
+			// panel your body is drawn reflected in (ClientPlayer::AddVRMirror)
+			struct {
+				bool shown = false;
+				Matrix4 matrix = Matrix4::Identity();
+			} vrMirror;
+			void UpdateVRMirror(const VRFrameState& fs);
 			bool vrSettling = false;
 			float vrSettleTime = 0.0F, vrSettleSteady = 0.0F, vrSettleWorst = 0.0F;
 			int vrSettleFrames = 0, vrSettleSlow = 0;
