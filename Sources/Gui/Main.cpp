@@ -112,6 +112,10 @@ DEFINE_SPADES_SETTING(cl_zsHeadsetParticles, "0");
 DEFINE_SPADES_SETTING(cl_zsDefaults040, "0");
 SPADES_SETTING(cg_mouseAccel);
 SPADES_SETTING(cg_muzzleFire);
+// Set once a config has had a respawning player's body removed turned on (a
+// default from late in 0.4.0's testing, after cl_zsDefaults040 had run)
+DEFINE_SPADES_SETTING(cl_zsCorpseDefaulted, "0");
+SPADES_SETTING(cg_corpseClearOnRespawn);
 SPADES_SETTING(r_colorCorrection);
 
 #ifdef WIN32
@@ -1214,6 +1218,10 @@ int main(int argc, char** argv) {
 			if ((int)cg_muzzleFire == 0)
 				cg_muzzleFire = 1;
 			cl_zsDefaults040 = 1;
+		}
+		if (!static_cast<bool>(cl_zsCorpseDefaulted)) {
+			cg_corpseClearOnRespawn = 1;
+			cl_zsCorpseDefaulted = 1;
 		}
 
 		// Apply --override-cvar values in memory. The previous value of each
