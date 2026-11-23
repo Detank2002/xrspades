@@ -67,6 +67,10 @@ one change, in a player's words.
 - New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
 - Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
 - Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
+- Improved: in VR, a new map stays hidden for a moment until the frame rate settles, instead of juddering while it loads
+- New: in VR, a Hip Height slider moves the grenades and blocks on your belt up or down
+- Fixed: in VR, a line of blocks drawn quickly starts where you began it
+- Changed: a player's body is removed when they respawn, so heavy fighting keeps a steady frame rate (Options, Effects to change it, and how many bodies stay)
 
 ## 0.3.6
 

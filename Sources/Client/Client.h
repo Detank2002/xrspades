@@ -1001,6 +1001,12 @@ namespace spades {
 			void AddVRTableMapToScene();
 			Handle<IModel> vrTableModel;
 			Handle<IModel> vrTableModelPrev;
+			// A map just arrived, in a headset: the world is kept out of sight
+			// until frames come steadily (UpdateVRSettle)
+			bool vrSettling = false;
+			float vrSettleTime = 0.0F, vrSettleSteady = 0.0F, vrSettleWorst = 0.0F;
+			int vrSettleFrames = 0, vrSettleSlow = 0;
+			void UpdateVRSettle(float dt, float framePeriod);
 			std::vector<uint32_t> vrTableCells; // last built: colour, 0 for air
 			int vrTableFactor = 0;
 			float vrTableBuiltAt = -100.0F;

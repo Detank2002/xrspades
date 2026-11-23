@@ -719,9 +719,17 @@ namespace spades {
 		void Client::DrawScene() {
 			SPADES_MARK_FUNCTION();
 
-			renderer->StartScene(lastSceneDef);
+			// No water without a map (a sheet at the bottom of the loading
+			// screen, for nothing), and none of the world while it settles
+			SceneDefinition def = lastSceneDef;
+			const bool settling = vrSettling && IsVRFrameActive();
+			if (!world || settling)
+				def.skipWater = true;
+			if (settling)
+				def.skipWorld = true;
+			renderer->StartScene(def);
 
-			if (world) {
+			if (world && !settling) {
 				stmp::optional<Player&> maybePlayer = world->GetLocalPlayer();
 
 				// How lit the world around the lamps is: dynamic lights aside, all of it

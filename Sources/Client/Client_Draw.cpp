@@ -3890,6 +3890,17 @@ namespace spades {
 				Draw2DWithWorld();
 			else
 				Draw2DWithoutWorld();
+
+			// While the new map settles out of sight (UpdateVRSettle)
+			if (vrSettling && IsVRFrameActive()) {
+				IFont& font = fontManager->GetLargeFont();
+				const std::string text = _Tr("Client", "Getting the map ready...");
+				const Vector2 size = font.Measure(text);
+				font.DrawShadow(text,
+				                MakeVector2(std::floor((renderer->ScreenWidth() - size.x) * 0.5F),
+				                            std::floor(renderer->ScreenHeight() * 0.3F)),
+				                1.0F, MakeVector4(1, 1, 1, 0.9F), MakeVector4(0, 0, 0, 0.6F));
+			}
 		}
 	} // namespace client
 } // namespace spades

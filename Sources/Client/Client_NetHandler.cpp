@@ -47,7 +47,9 @@
 #include "DemoRecorder.h"
 #include "NetClient.h"
 
-DEFINE_SPADES_SETTING(cg_corpseClearOnRespawn, "0");
+// A player's body goes when they respawn (in intense fighting the bodies
+// piled up, and their physics cost frames: testers)
+DEFINE_SPADES_SETTING(cg_corpseClearOnRespawn, "1");
 DEFINE_SPADES_SETTING(cg_centerMessage, "2");
 DEFINE_SPADES_SETTING(cg_autoScreenshot, "0");
 // On by default since 0.4.0, the newest few kept (cg_demoMaxFiles): a moment

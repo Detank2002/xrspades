@@ -215,6 +215,10 @@ namespace spades {
 			vrTableModel = nullptr;
 			vrTableModelPrev = nullptr;
 			vrTableBuiltFor = nullptr;
+			// A new map: in a headset it is not shown until frames come steadily
+			vrSettling = w != nullptr && GetVRSystem() != nullptr;
+			vrSettleTime = vrSettleSteady = vrSettleWorst = 0.0F;
+			vrSettleFrames = vrSettleSlow = 0;
 
 			// A held menu belongs to the world it opened in: its aim and its target
 			// mean nothing in the next one.

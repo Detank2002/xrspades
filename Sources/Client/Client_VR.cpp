@@ -102,6 +102,9 @@ DEFINE_SPADES_SETTING(vr_swingSpeed, "2.5");
 DEFINE_SPADES_SETTING(vr_spadeContact, "1");
 // Tools on the body: squeeze the gun hand's grip over a shoulder or at a hip.
 DEFINE_SPADES_SETTING(vr_holsters, "1");
+// The hips (blocks and grenades) this many centimetres higher (or, negative,
+// lower) than a share of the eye height puts them (VRHolsterFrameUpdate)
+DEFINE_SPADES_SETTING(vr_hipHeight, "0");
 // 1: the holsters turn with every turn of the head, as before 0.4.0. 0: they face
 // the body's way, which lets the head look aside (VRHolsterFrame).
 DEFINE_SPADES_SETTING(vr_holsterFollow, "0");
@@ -959,6 +962,31 @@ namespace spades {
 			}
 		}
 
+		void Client::UpdateVRSettle(float dt, float framePeriod) {
+			// For the first seconds of a map the frames come slowly (the map is
+			// built, its pieces meshed), and a headset judders with them
+			// (testers: hard on those who feel it). Until a second of frames has
+			// come at the headset's rate, give or take, the world is left out:
+			// an empty space, the menus over it. Never more than eight seconds,
+			// whatever the settings.
+			if (!vrSettling)
+				return;
+			vrSettleTime += dt;
+			const float budget = framePeriod > 0.0F ? framePeriod * 1.3F : 0.02F;
+			const bool onTime = dt > 0.0F && dt <= budget;
+			vrSettleSteady = onTime ? vrSettleSteady + dt : 0.0F;
+			vrSettleFrames++;
+			vrSettleSlow += onTime ? 0 : 1;
+			vrSettleWorst = std::max(vrSettleWorst, dt);
+			if ((vrSettleSteady >= 1.0F && vrSettleTime >= 1.0F) || vrSettleTime >= 8.0F) {
+				vrSettling = false;
+				SPLog("[VR] The map is shown after %.1f s%s: %d frames, %d over %.1f ms, the "
+				      "slowest %.0f ms",
+				      vrSettleTime, vrSettleTime >= 8.0F ? " (frames still slow)" : "",
+				      vrSettleFrames, vrSettleSlow, budget * 1000.0F, vrSettleWorst * 1000.0F);
+			}
+		}
+
 		void Client::AddVRTableMapToScene() {
 			// The map seen on the table is a coarse copy of it: a voxel for every
 			// vr_tableDetail blocks each way, solid if any block in it is, in the
@@ -1331,6 +1359,7 @@ namespace spades {
 
 			const VRFrameState& fs = vr->GetFrameState();
 			vrRig.active = true;
+			UpdateVRSettle(dt, fs.displayPeriod);
 
 			// The headset taken off and put back on: set down on a table, the
 			// tracked height goes with it, and back on the head the body was
@@ -2051,7 +2080,25 @@ namespace spades {
 			// The holsters face the body's way, not the eyes' (VRHolsterFrame)
 			VRHolsterFrameUpdate(vrRig.holsterFrame, fs, dt, vrRig.standingHeight,
 			                     (int)vr_holsterFollow != 0);
-			const bool mayHolster = (int)vr_holsters && !vrRig.twoHanded && !reach;
+			vrRig.holsterFrame.hipDrop =
+			  Clamp(vrRig.holsterFrame.hipDrop - Clamp((float)vr_hipHeight, -30.0F, 30.0F) * 0.01F,
+			        0.25F, 1.2F);
+			// The grip's grace (a squeeze a moment before or after the hand is at
+			// a holster still takes from it) only near one: anywhere else it held
+			// the grip's own action back 0.2 s, and a line of blocks drawn
+			// quickly began where the hand had got to by then (testers).
+			bool nearHolster = false;
+			if (fs.hands[toolHand].grip.valid) {
+				for (int i = 0; i < 4 && !nearHolster; i++) {
+					Vector3 at, hf, hr;
+					float radius;
+					if (VRHolsterPlace(fs, toolHand, i, at, radius, hf, hr, &vrRig.holsterFrame))
+						nearHolster =
+						  (fs.hands[toolHand].grip.position - at).GetLength() < radius + 0.15F;
+				}
+			}
+			const bool mayHolster =
+			  (int)vr_holsters && !vrRig.twoHanded && !reach && nearHolster;
 			if ((int)vr_holsters && VRGripMayHolster(vrRig.grip, vrRig.twoHanded, reach)) {
 				slot = VRHolsterAt(fs, toolHand, vrRig.holsterHover, &vrRig.holsterFrame);
 				if (slot >= 0 && p.GetTool() == holstered[slot])

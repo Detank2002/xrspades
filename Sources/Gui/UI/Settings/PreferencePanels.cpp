@@ -205,6 +205,9 @@ namespace spades {
 			l.AddToggleField(_Tr("Preferences", "Heal Screen Effects"), "cg_healScreenEffects");
 			l.AddToggleField(_Tr("Preferences", "Ragdolls"), "cg_ragdoll");
 			l.AddToggleField(_Tr("Preferences", "Enhanced Ragdoll Physics"), "cg_corpseLineCollision");
+			l.AddToggleField(_Tr("Preferences", "Remove Bodies On Respawn"), "cg_corpseClearOnRespawn");
+			l.AddSliderField(_Tr("Preferences", "Most Bodies At Once"), "cg_corpseHardLimit", 2, 32, 1,
+			                 NumberFormatter(0, ""));
 
 			l.AddHeading(_Tr("Preferences", "Messages"));
 			l.AddChoiceField(_Tr("Preferences", "Center Messages"), "cg_centerMessage",
@@ -667,6 +670,12 @@ namespace spades {
 			l.AddHelp(_Tr("Preferences", "Squeeze the grip over a shoulder (gun, spade) or at a hip "
 			                             "(blocks, grenades) to take that tool."));
 			l.AddToggleField(_Tr("Preferences", "Grenades And Blocks On Your Belt"), "vr_holsterItems");
+			l.AddSliderField(_Tr("Preferences", "Hip Height"), "vr_hipHeight", -30, 30, 1,
+			                 NumberFormatter(0, " cm"));
+			l.AddHelp(_Tr("Preferences",
+				"Moves where the blocks and grenades are on your hips up or down, from "
+				"where your height puts them: up if your hand finds them low, down if "
+				"it takes them while you dig or build."));
 			l.AddToggleField(_Tr("Preferences", "Reload By Hand (Magazine From The Belt)"),
 			                 "vr_reloadGesture");
 			l.AddToggleField(_Tr("Preferences", "Laser Pointer"), "vr_laser");
