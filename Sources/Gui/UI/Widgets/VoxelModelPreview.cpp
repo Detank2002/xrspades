@@ -153,11 +153,13 @@ namespace spades {
 					  std::max(0.0F, -0.4F * Vector3::Dot(normal, right) -
 					                   0.6F * Vector3::Dot(normal, down) + 0.69F * facing);
 					const auto channel = [&](int shift) {
-						// Black KV6 voxels are team-colored in the game. Use neutral
-						// gray in the showroom, not an unrelated bright blue.
+						// UI images already contain display/sRGB bytes. A per-channel
+						// gamma lift here made dark metals pale and desaturated paint.
+						// Neutral scalar lighting keeps the KV6 palette's hue/contrast.
+						// Black KV6 team-color voxels use neutral charcoal in the preview.
 						const float value =
 						  face.color == 0 ? 0.16F : float((face.color >> shift) & 255) / 255.0F;
-						return std::min(1.0F, std::pow(value, 0.6F) * (0.76F + 0.24F * light));
+						return value * (0.76F + 0.24F * light);
 					};
 					result.push_back(
 					  {center + project(face.origin), project(face.axisU), project(face.axisV),

@@ -58,9 +58,11 @@ mods use the stock body.
 The preview mesh preserves original surface colors and thin parts. It only
 merges equal-color coplanar faces, never downsampling filled interior voxels
 into the surface. A shallow, well-lit orthographic view is framed from the
-occupied bounds throughout a full turn. Black team-color voxels use neutral
-gray, not arbitrary blue. Per-pixel depth and four-sample antialiasing produce
-an ordinary RGBA image, compatible with the regular UI and VR menu surface.
+occupied bounds throughout a full turn. Neutral scalar lighting preserves the
+KV6 palette's hue and contrast; there is no per-channel gamma/brightness lift
+or translucent tint. Black team-color voxels use neutral charcoal, not arbitrary
+blue. Per-pixel depth and four-sample antialiasing produce an ordinary sRGB RGBA
+image, compatible with the regular UI and VR menu surface.
 Only visible cards rasterize/upload, at 24 Hz, with one image draw per card.
 
 Candidate KV6/face reads are capped at 34 MiB before ZIP decompression and

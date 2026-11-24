@@ -55,6 +55,38 @@ int main() {
 	Check(single.Project(AABB2(0, 0, 0, 100), 0).empty(), "zero-sized projection is safe");
 	CheckRotation(single);
 
+	// The thumbnail is an ordinary sRGB UI image, not a linear-light world
+	// framebuffer. Lifting each channel with pow(value, 0.6) washed out dark
+	// metals and shifted saturated wood/paint toward gray in the Mods menu.
+	for (const std::uint32_t rgb : {0x101010U, 0x204080U, 0x2060C0U, 0xF4F4F4U}) {
+		auto swatch = Handle<VoxelModel>::New(1, 1, 1);
+		swatch->SetSolid(0, 0, 0, rgb);
+		VoxelModelPreview colorPreview(*swatch);
+		for (int angle = 0; angle < 24; ++angle) {
+			for (const auto& q :
+			     colorPreview.Project(AABB2(0, 0, 80, 60), float(angle) * kTwoPi / 24)) {
+				const float r = float(rgb & 255) / 255;
+				const float g = float((rgb >> 8) & 255) / 255;
+				const float b = float((rgb >> 16) & 255) / 255;
+				Check(q.color.x <= r && q.color.y <= g && q.color.z <= b,
+				      "studio light never gamma-lifts a palette channel");
+				Check(q.color.x >= r * 0.7F && q.color.y >= g * 0.7F && q.color.z >= b * 0.7F,
+				      "dark palette details remain readable without a white tint");
+				Check(std::fabs(q.color.x * g - q.color.y * r) < 0.00001F &&
+				        std::fabs(q.color.y * b - q.color.z * g) < 0.00001F,
+				      "neutral studio light preserves palette hue and saturation");
+				Check(q.color.w == 1, "solid preview faces are never translucent");
+			}
+		}
+	}
+
+	auto teamColor = Handle<VoxelModel>::New(1, 1, 1);
+	teamColor->SetSolid(0, 0, 0, 0);
+	for (const auto& q : VoxelModelPreview(*teamColor).Project(AABB2(0, 0, 80, 60), 0.8F))
+		Check(q.color.x > 0 && q.color.x <= 0.16F && q.color.x == q.color.y &&
+		        q.color.y == q.color.z,
+		      "team-colored voxels use neutral charcoal, not pale gray");
+
 	auto pair = Handle<VoxelModel>::New(2, 1, 1);
 	pair->SetSolid(0, 0, 0, 0xEEEEEE);
 	pair->SetSolid(1, 0, 0, 0x444444);
