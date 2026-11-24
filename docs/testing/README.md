@@ -24,6 +24,12 @@ xvfb-run -a -s '-screen 0 1024x768x24' \
   python3 Server/test/native_startup_test.py build/bin/zerospades build/startup-artifacts
 ```
 
+If the machine has no window-capable Vulkan ICD, `--renderer sw` exercises the
+real software-rendered title screen, font atlas, screenshot and clean shutdown
+without a GPU. It does **not** test the Vulkan water pipeline. The check sets
+both `r_renderer` and `r_vulkan` explicitly, so a Vulkan-default build cannot
+silently turn a requested GL/software test into another Vulkan run.
+
 The check uses null audio; passing it does not certify physical audio devices,
 a vendor's GPU/driver, VR headsets, or in-game mod interactions. Those need
 separate device/in-game testing. Do not describe shader/unit tests alone as a

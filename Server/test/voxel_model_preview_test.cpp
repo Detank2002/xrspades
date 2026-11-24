@@ -10,6 +10,7 @@
 
 #include <Core/MemoryStream.h>
 #include <Core/VoxelModel.h>
+#include <Gui/SkinPreviewScene.h>
 #include <Gui/UI/Widgets/VoxelModelPreview.h>
 
 using namespace spades;
@@ -83,9 +84,69 @@ int main() {
 	auto teamColor = Handle<VoxelModel>::New(1, 1, 1);
 	teamColor->SetSolid(0, 0, 0, 0);
 	for (const auto& q : VoxelModelPreview(*teamColor).Project(AABB2(0, 0, 80, 60), 0.8F))
-		Check(q.color.x > 0 && q.color.x <= 0.16F && q.color.x == q.color.y &&
-		        q.color.y == q.color.z,
-		      "team-colored voxels use neutral charcoal, not pale gray");
+		Check(q.color.x == 0 && q.color.y == 0 && q.color.z == 0,
+		      "default custom color is truly black, just like the held model");
+
+	// Separate models must share one frame, not be individually centered/scaled.
+	// KV6 pivots and mirrored/nonuniform attachment matrices are significant.
+	auto red = Handle<VoxelModel>::New(1, 1, 1);
+	auto blue = Handle<VoxelModel>::New(1, 1, 1);
+	red->SetSolid(0, 0, 0, 0x0000FF);
+	blue->SetSolid(0, 0, 0, 0xFF0000);
+	red->SetOrigin(MakeVector3(-10, 20, 30));
+	blue->SetOrigin(MakeVector3(7, -9, 3));
+	spades::gui::SkinPreviewScene scene;
+	spades::gui::SkinPreviewPart body, attachment;
+	body.model = red;
+	body.matrix = Matrix4::Translate(10, -20, -30);
+	attachment.model = blue;
+	attachment.matrix = Matrix4::Translate(12, 9, -3) * Matrix4::Scale(-1, 1, 1);
+	scene.parts = {body, attachment};
+	VoxelModelPreview assembly(scene);
+	auto reference = Handle<VoxelModel>::New(5, 1, 1);
+	reference->SetSolid(0, 0, 0, 0x0000FF);
+	reference->SetSolid(4, 0, 0, 0xFF0000);
+	VoxelModelPreview assembledReference(*reference);
+	Check(assembly.GetFaceCount() == 12, "both separate components are meshed");
+	CheckRotation(assembly);
+	for (int angle = 0; angle < 24; ++angle)
+		Check(assembly.Rasterize(120, 80, float(angle) * kTwoPi / 24) ==
+		        assembledReference.Rasterize(120, 80, float(angle) * kTwoPi / 24),
+		      "component pivots, relative positions and mirrored normals match assembled geometry");
+	scene.parts[1].matrix =
+	  Matrix4::Rotate(MakeVector3(0, 1, 0), 0.4F) * Matrix4::Scale(2, 0.7F, 1.3F);
+	CheckRotation(VoxelModelPreview(scene));
+
+	// Only exactly-black team/custom voxels change; ordinary paint stays intact.
+	auto paint = Handle<VoxelModel>::New(2, 1, 1);
+	paint->SetSolid(0, 0, 0, 0);
+	paint->SetSolid(1, 0, 0, 0x0000FF);
+	auto tintedReference = Handle<VoxelModel>::New(2, 1, 1);
+	tintedReference->SetSolid(0, 0, 0, 0xFF0000);
+	tintedReference->SetSolid(1, 0, 0, 0x0000FF);
+	body.model = paint;
+	body.matrix = Matrix4::Identity();
+	body.customColor = MakeVector3(0, 0, 1);
+	scene.parts = {body};
+	Check(VoxelModelPreview(scene).Rasterize(120, 80, 0.8F) ==
+	        VoxelModelPreview(*tintedReference).Rasterize(120, 80, 0.8F),
+	      "per-draw custom color replaces black only, without tinting the whole model");
+	body.model = cube;
+	body.opacity = 0.25F;
+	scene.parts = {body};
+	const auto translucent = VoxelModelPreview(scene).Rasterize(80, 80, 0.8F)[40 + 40 * 80];
+	Check((translucent >> 24) >= 63 && (translucent >> 24) <= 112,
+	      "ghost parts preserve their opacity rather than becoming opaque");
+	body.opacity = 1;
+	body.matrix.m[5] = std::numeric_limits<float>::quiet_NaN();
+	scene.parts = {body};
+	bool invalidTransformRefused = false;
+	try {
+		VoxelModelPreview invalid(scene);
+	} catch (const std::exception&) {
+		invalidTransformRefused = true;
+	}
+	Check(invalidTransformRefused, "non-finite component transforms are rejected safely");
 
 	auto pair = Handle<VoxelModel>::New(2, 1, 1);
 	pair->SetSolid(0, 0, 0, 0xEEEEEE);

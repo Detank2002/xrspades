@@ -33,6 +33,7 @@ def launch(executable: Path, artifacts: Path, renderer: str) -> None:
     for setting in (
         "cl_showStartupWindow=0",
         f"r_renderer={renderer}",
+        f"r_vulkan={int(renderer == 'vulkan')}",
         "r_allowSoftwareRendering=1",
         "r_fullscreen=0",
         "r_videoWidth=800",
@@ -82,7 +83,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("executable", type=Path)
     parser.add_argument("artifacts", type=Path)
-    parser.add_argument("--renderer", choices=("vulkan", "gl", "both"), default="both")
+    parser.add_argument("--renderer", choices=("vulkan", "gl", "sw", "both"), default="both")
     args = parser.parse_args()
     executable = args.executable.resolve()
     if not executable.is_file():

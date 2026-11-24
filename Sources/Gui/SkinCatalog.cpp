@@ -101,28 +101,11 @@ namespace spades {
 				return result;
 			}
 
-			Handle<VoxelModel> LoadPreviewBytes(const std::string& bytes) {
-				// Browsing a custom pak must not allocate an arbitrarily large model.
-				// Check the KV6 header before LoadKV6 allocates its block/offset arrays.
-				if (bytes.size() < 32 || bytes.compare(0, 4, "Kvxl") != 0)
-					SPRaise("Invalid preview model header");
-				auto u32 = [&bytes](std::size_t at) {
-					const auto* p = reinterpret_cast<const unsigned char*>(bytes.data() + at);
-					return std::uint64_t(p[0]) | (std::uint64_t(p[1]) << 8) |
-					       (std::uint64_t(p[2]) << 16) | (std::uint64_t(p[3]) << 24);
-				};
-				const auto w = u32(4), h = u32(8), d = u32(12), blocks = u32(28);
-				constexpr std::uint64_t limit = 4 * 1024 * 1024;
-				if (!w || !h || !d || w > 512 || h > 512 || d > 64 || w * h * d > limit ||
-				    blocks > w * h * d || 32 + blocks * 8 + w * 4 + w * h * 2 > bytes.size())
-					SPRaise("Preview model is too large or truncated");
-				MemoryStream stream(bytes.data(), bytes.size());
-				return VoxelModel::LoadKV6(stream);
-			}
 		} // namespace
 
-		SkinCatalog::SkinCatalog(ModsScreenHelper& helper,
-		                         const std::vector<std::string>& enabled) {
+		SkinCatalog::SkinCatalog(ModsScreenHelper& helper, const std::vector<std::string>& enabled,
+		                         SkinPreviewOptions previewOptions)
+		    : previewOptions(std::move(previewOptions)) {
 			for (const std::string& name : enabled) {
 				if (paks.count(name) != 0)
 					continue;
@@ -186,6 +169,76 @@ namespace spades {
 			return std::nullopt;
 		}
 
+		SkinPreviewScene SkinCatalog::LoadPreviewScene(SkinType type,
+		                                               const std::string& modName) const {
+			if (!IsWeaponSkin(type))
+				SPRaise("This category has no voxel preview");
+			const SkinPreviewReader reader = [&](const std::string& path,
+			                                     std::size_t limit) -> std::optional<std::string> {
+				if (!modName.empty())
+					if (auto bytes = ReadModFile(modName, path, limit))
+						return bytes;
+				std::unique_ptr<IStream> stream;
+				try {
+					stream = ModOverlay::OpenBaseResource(path.c_str());
+				} catch (const std::exception&) {
+					return std::nullopt;
+				}
+				if (stream->GetLength() > limit)
+					SPRaise("Base preview resource is too large");
+				auto bytes = stream->Read(limit + 1);
+				if (bytes.size() > limit)
+					SPRaise("Base preview resource is too large");
+				return bytes;
+			};
+			// A model-only pack may replace just the canonical third-person body,
+			// or just first-person components. Accept a stock script pose only if
+			// it actually draws one of this candidate's models, not a guessed name.
+			const auto filesIt = files.find(modName);
+			auto contributes = [&](std::string path) {
+				if (filesIt == files.end())
+					return false;
+				path = Lower(std::move(path));
+				return std::binary_search(filesIt->second.begin(), filesIt->second.end(), path) ||
+				       std::binary_search(filesIt->second.begin(), filesIt->second.end(),
+				                          path + ".weak");
+			};
+			bool hasModels = false;
+			if (filesIt != files.end()) {
+				const std::string dir = Lower(SkinModelDirectory(type));
+				for (const auto& file : filesIt->second)
+					hasModels =
+					  hasModels || (file.compare(0, dir.size(), dir) == 0 &&
+					                (EndsWith(file, ".kv6") || EndsWith(file, ".kv6.weak")));
+			}
+			const std::string scriptDir = "scripts/skin/" + std::string(SkinTypeKey(type)) + "/";
+			std::string diagnostic;
+			for (const bool thirdPerson : {false, true}) {
+				try {
+					auto scene = CaptureSkinPreview(type, reader, previewOptions, thirdPerson);
+					if (hasModels &&
+					    !contributes(scriptDir + (thirdPerson ? "thirdperson.as" : "view.as")) &&
+					    std::none_of(
+					      scene.parts.begin(), scene.parts.end(),
+					      [&](const SkinPreviewPart& part) { return contributes(part.path); }))
+						SPRaise("Stock pose does not draw this skin's models");
+					scene.diagnostic = diagnostic;
+					return scene;
+				} catch (const std::exception& ex) {
+					if (!diagnostic.empty())
+						diagnostic += "; ";
+					diagnostic += ex.what();
+				}
+			}
+			SkinPreviewScene scene;
+			SkinPreviewPart part;
+			part.model = LoadPreview(type, modName);
+			part.path = SkinPreviewPath(type);
+			scene.parts.push_back(std::move(part));
+			scene.diagnostic = std::move(diagnostic);
+			return scene;
+		}
+
 		Handle<VoxelModel> SkinCatalog::LoadPreview(SkinType type,
 		                                            const std::string& modName) const {
 			if (!IsWeaponSkin(type))
@@ -201,10 +254,10 @@ namespace spades {
 					for (const std::string& path : RegisteredModelPaths(*source))
 						if (path.compare(0, dir.size(), dir) == 0 && EndsWith(path, ".kv6"))
 							if (auto bytes = ReadModFile(modName, path))
-								return LoadPreviewBytes(*bytes);
+								return LoadSkinPreviewModel(*bytes);
 				}
 				if (auto bytes = ReadModFile(modName, SkinPreviewPath(type)))
-					return LoadPreviewBytes(*bytes);
+					return LoadSkinPreviewModel(*bytes);
 
 				// For model-only packs, prefer a body, never a loose magazine,
 				// scope, casing, etc. as the skin's only display model.
@@ -221,14 +274,14 @@ namespace spades {
 							part = part || base.find(fragment) != std::string::npos;
 						if (!part) {
 							if (auto bytes = ReadModFile(modName, file))
-								return LoadPreviewBytes(*bytes);
+								return LoadSkinPreviewModel(*bytes);
 						}
 					}
 				}
 			}
 			// Sound/script-only skins still have the stock body. In particular,
 			// Default must not accidentally preview the currently equipped mod.
-			return LoadPreviewBytes(
+			return LoadSkinPreviewModel(
 			  ModOverlay::OpenBaseResource(SkinPreviewPath(type))->ReadAllBytes());
 		}
 

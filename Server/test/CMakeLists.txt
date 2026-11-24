@@ -48,8 +48,25 @@ zs_test_executable(server_extension_key_test
 	"${ZS_TEST_SOURCES}/Client/ServerExtensionKey.cpp")
 add_test(NAME server_extension_key COMMAND server_extension_key_test)
 
-# The enabled collection vs. equipped skin, and the backend-independent 3D
-# thumbnail mesh. No SDL window, GPU, game world or script engine is needed.
+# The enabled collection vs. equipped skin and backend-independent thumbnails.
+# A private, real AngelScript VM captures assembled poses without the game's
+# bindings/module, SDL, a GPU, a world, or any downloaded fixtures.
+find_package(Threads REQUIRED)
+if(NOT TARGET Angelscript)
+	add_subdirectory("${ZS_TEST_SOURCES}/AngelScript/projects/cmake"
+		"${CMAKE_CURRENT_BINARY_DIR}/angelscript")
+	add_subdirectory("${ZS_TEST_SOURCES}/AngelScript/projects/cmake_addons"
+		"${CMAKE_CURRENT_BINARY_DIR}/angelscript-addons")
+endif()
+add_library(zs_preview_test_runtime STATIC EXCLUDE_FROM_ALL
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_preview_test_support.cpp"
+	"${ZS_TEST_SOURCES}/Gui/SkinPreviewScript.cpp"
+	"${ZS_TEST_SOURCES}/ScriptBindings/MathScript.cpp"
+	"${ZS_TEST_SOURCES}/Core/Math.cpp"
+	"${ZS_TEST_SOURCES}/Core/ThreadLocalStorage.cpp")
+target_include_directories(zs_preview_test_runtime PRIVATE "${ZS_TEST_SOURCES}")
+target_compile_features(zs_preview_test_runtime PRIVATE cxx_std_17)
+target_link_libraries(zs_preview_test_runtime PUBLIC Angelscript_addons Angelscript Threads::Threads)
 zs_test_executable(skin_selection_test
 	"${CMAKE_CURRENT_SOURCE_DIR}/skin_selection_test.cpp"
 	"${ZS_TEST_SOURCES}/Gui/SkinSelection.cpp")
@@ -66,6 +83,7 @@ zs_test_executable(voxel_model_preview_test
 	"${ZS_TEST_SOURCES}/Core/RefCountedObject.cpp")
 target_compile_definitions(voxel_model_preview_test PRIVATE
 	ZS_TEST_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/Resources")
+target_link_libraries(voxel_model_preview_test PRIVATE zs_preview_test_runtime)
 add_test(NAME voxel_model_preview COMMAND voxel_model_preview_test)
 
 # Exercise real pak mounting, independent previews and failed-selection rollback
@@ -90,8 +108,24 @@ zs_test_executable(skin_overlay_test
 	"${ZS_TEST_SOURCES}/Client/IRenderer.cpp"
 	"${ZS_TEST_SOURCES}/unzip/unzip.c"
 	"${ZS_TEST_SOURCES}/unzip/ioapi.c")
-target_link_libraries(skin_overlay_test PRIVATE ZLIB::ZLIB)
+target_link_libraries(skin_overlay_test PRIVATE ZLIB::ZLIB zs_preview_test_runtime)
 add_test(NAME skin_overlay COMMAND skin_overlay_test)
+
+zs_test_executable(skin_preview_fixture
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_preview_fixture.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_core_test_support.cpp"
+	"${ZS_TEST_SOURCES}/Core/DynamicMemoryStream.cpp"
+	"${ZS_TEST_SOURCES}/Gui/UI/Widgets/VoxelModelPreview.cpp"
+	"${ZS_TEST_SOURCES}/Gui/SkinSelection.cpp"
+	"${ZS_TEST_SOURCES}/Core/ZipFileSystem.cpp"
+	"${ZS_TEST_SOURCES}/Core/StdStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/MemoryStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/IStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/VoxelModel.cpp"
+	"${ZS_TEST_SOURCES}/Core/RefCountedObject.cpp"
+	"${ZS_TEST_SOURCES}/unzip/unzip.c"
+	"${ZS_TEST_SOURCES}/unzip/ioapi.c")
+target_link_libraries(skin_preview_fixture PRIVATE ZLIB::ZLIB zs_preview_test_runtime)
 
 # Existing font holders must update in place, not retain freed FreeType faces
 # or the first selected fallback atlas. Uses the game's bundled font fixtures.
@@ -171,9 +205,21 @@ if(Python3_Interpreter_FOUND)
 	add_test(NAME vr_puppet_pose
 		COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/test_vr_puppet.py"
 		        $<TARGET_FILE:vr_pose_fixture>)
+	add_test(NAME skin_preview_python
+		COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/test_skin_previews.py"
+		        $<TARGET_FILE:skin_preview_fixture> "${CMAKE_SOURCE_DIR}/Resources")
+	set_tests_properties(skin_preview_python PROPERTIES TIMEOUT 90)
+	set(ZS_TEST_SKIN_PACKS "" CACHE PATH "Optional pinned official skin corpus (no implicit downloads)")
+	if(ZS_TEST_SKIN_PACKS)
+		add_test(NAME skin_preview_official
+			COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/test_skin_previews.py"
+			        $<TARGET_FILE:skin_preview_fixture> "${CMAKE_SOURCE_DIR}/Resources"
+			        --packs-dir "${ZS_TEST_SKIN_PACKS}")
+		set_tests_properties(skin_preview_official PROPERTIES TIMEOUT 180 LABELS "official-paks")
+	endif()
 endif()
 
 add_custom_target(zs_tests DEPENDS
 	vr_state_test xr_caps_test vr_pose_fixture update_package_test training_server_test
 	server_extension_key_test skin_selection_test voxel_model_preview_test skin_overlay_test
-	font_reload_test ${ZS_VULKAN_TEST_TARGETS})
+	font_reload_test skin_preview_fixture ${ZS_VULKAN_TEST_TARGETS})

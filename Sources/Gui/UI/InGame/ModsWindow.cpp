@@ -26,14 +26,18 @@
 #include <memory>
 #include <vector>
 
+#include <Client/Client.h>
 #include <Client/ClientUI.h>
 #include <Client/FTFont.h>
 #include <Client/Fonts.h>
 #include <Client/IFont.h>
 #include <Client/IImage.h>
 #include <Client/IRenderer.h>
+#include <Client/Player.h>
+#include <Client/World.h>
 #include <Core/Bitmap.h>
 #include <Core/Debug.h>
+#include <Core/Settings.h>
 #include <Core/Strings.h>
 #include <Core/VoxelModel.h>
 #include <Gui/ModOverlay.h>
@@ -108,8 +112,11 @@ namespace spades {
 					animationStart = GetManager().time;
 					try {
 						if (gui::IsWeaponSkin(type)) {
-							auto voxels = catalog->LoadPreview(type, modName);
-							preview = std::make_unique<VoxelModelPreview>(*voxels);
+							auto scene = catalog->LoadPreviewScene(type, modName);
+							if (!scene.diagnostic.empty())
+								SPLog("Mod preview fallback (%s): %s", modName.c_str(),
+								      scene.diagnostic.c_str());
+							preview = std::make_unique<VoxelModelPreview>(scene);
 						} else if (type == SkinType::Font) {
 							if (auto bytes = catalog->LoadFontPreview(modName)) {
 								auto set = std::make_shared<ngclient::FTFontSet>();
@@ -318,7 +325,19 @@ namespace spades {
 		ModsWindow::ModsWindow(UIElement* owner, ClientUI* ui)
 		    : UIElement(&owner->GetManager()), ui(ui), owner(owner) {
 			helper = Handle<ModsScreenHelper>::New();
-			catalog = Handle<SkinCatalog>::New(*helper, helper->GetEnabledMods());
+			gui::SkinPreviewOptions previewOptions;
+			// Read-only snapshot: a preview ConfigItem never reaches Settings or
+			// changes an optional sight/color used by the actual held weapon.
+			for (const auto& name : Settings::GetInstance()->GetAllItemNames()) {
+				Settings::ItemHandle item(name, nullptr);
+				previewOptions.settings.emplace(name, static_cast<std::string>(item));
+			}
+			if (ui->client)
+				if (auto* world = ui->client->GetWorld())
+					if (auto player = world->GetLocalPlayer())
+						previewOptions.teamColor = ConvertColorRGB(player->GetColor());
+			catalog = Handle<SkinCatalog>::New(*helper, helper->GetEnabledMods(),
+			                                   std::move(previewOptions));
 			UIManager* manager = &GetManager();
 			SetFont(manager->GetRootElement().GetFont());
 			SetBounds(manager->GetRootElement().GetBounds());

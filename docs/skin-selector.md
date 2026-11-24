@@ -47,29 +47,52 @@ cannot replace a separately chosen SMG, Font or SFX.
 
 ## Previews and live changes
 
-Weapon previews read a KV6 body directly from that mod's archives, never the
-renderer’s shared model cache. Simple literal `RegisterModel` references in
-`ThirdPerson.as` are preferred over placeholder canonical bodies; renamed
-model-only packs have a body-model fallback. This is a body preview, **not**
-a full script-assembled scene. Browsing never mounts a candidate or executes
-its scripts. Default reads below the mod overlay; sound/script-only weapon
-mods use the stock body.
+Weapon previews capture the **assembled idle weapon**, not one guessed main
+model and not every KV6 in the archive. A private AngelScript engine runs the
+candidate's view skin against a recording renderer. Only actual `AddModel`
+draws are kept: alternate sights, empty magazines, casings and reload states
+that are not drawn in that pose stay out. The result preserves each part's
+matrix, scale, pivot, custom color and ghost opacity. Long sprites such as a
+lightsaber blade become depth-tested additive glow, rather than a solid box.
+No pack-name-specific assembly rules are used.
+
+The recorder reads from the candidate's archives, then stock resources, never
+the equipped overlay or renderer's shared model cache. Default uses stock
+resources exclusively. If a stock view does not draw any model supplied by a
+model-only candidate, or capture fails, the catalog tries its third-person
+skin, then a bounded body-model fallback. Fallback diagnostics go to the log;
+a bad preview cannot prevent selecting its card.
+
+Browsing never mounts a candidate or runs it in the live game's script module.
+The recording engine exposes local config snapshots, inert audio/image
+objects and a small procedural-voxel API, with no file/network/world API or
+settings writer. It uses its own deterministic random generator, not gameplay's
+RNG. The snapshot includes the current sight/charm settings and the local
+player color used by the held weapon. The pose is raised, ready, not aiming,
+not reloading, with a full magazine and settled idle updates.
 
 The preview mesh preserves original surface colors and thin parts. It only
 merges equal-color coplanar faces, never downsampling filled interior voxels
-into the surface. A shallow, well-lit orthographic view is framed from the
-occupied bounds throughout a full turn. Neutral scalar lighting preserves the
-KV6 palette's hue and contrast; there is no per-channel gamma/brightness lift
-or translucent tint. Black team-color voxels use neutral charcoal, not arbitrary
-blue. Per-pixel depth and four-sample antialiasing produce an ordinary sRGB RGBA
-image, compatible with the regular UI and VR menu surface.
-Only visible cards rasterize/upload, at 24 Hz, with one image draw per card.
+into the surface. Parts are transformed before computing shared occupied
+bounds, so attachments retain their relative positions throughout rotation.
+A shallow orthographic view and neutral scalar lighting preserve the KV6
+palette's hue and contrast, without a per-channel gamma/brightness lift.
+Only exactly-black voxels take that draw's actual `customColor`; other colors
+are not tinted. Per-pixel depth, translucent-face ordering and four-sample
+antialiasing produce an ordinary straight-alpha sRGB RGBA image, compatible
+with the regular UI and VR menu surface. Only visible cards rasterize/upload,
+at 24 Hz, with one image draw per card.
 
-Candidate KV6/face reads are capped at 34 MiB before ZIP decompression and
-preview script reads at 512 KiB. KV6 dimensions/cell counts and mesh complexity
-are bounded (512 × 512 × 64, at most four million cells and 100,000 merged
-faces); thumbnail images are at most 512 × 512. A corrupt or excessively
-complex preview is logged and omitted; its named card stays usable.
+Candidate KV6 reads are capped at 34 MiB before ZIP decompression, script
+sections at 512 KiB (2 MiB and 32 sections total), and capture at 128 model
+draws / 64 beams. Script execution has a line-callback/deadline budget and
+stack/call-depth limits. KV6 dimensions/cell counts and mesh complexity are
+bounded (512 × 512 × 64, at most four million cells per model, eight million
+loaded cells total and 100,000 merged faces); thumbnail images are at most
+512 × 512. This is a restricted in-process compatibility VM, **not** an OS
+sandbox: script compilation and general string/array allocations do not have
+hard process-level CPU/memory quotas. A corrupt or excessively complex preview
+is logged and omitted; its named card stays usable.
 
 Models/images/sounds/scripts use the existing live-reload path. Font changes
 also refresh existing font holders in place: new FreeType sets and fallback
@@ -107,16 +130,49 @@ Headless selector regressions:
   choices, Default vs unset, stale preferences and persistence compatibility.
 - `voxel_model_preview`: exact/merged surfaces, no pink interior leakage on
   high-resolution bodies, per-pixel occlusion, antialiased RGBA output,
-  rotation/bounds throughout a turn, safe limits and all five stock bodies.
+  rotation/bounds, multipart assembly against a reference, pivots, mirrored /
+  nonuniform transforms, black-only custom color, opacity and invalid inputs.
 - `skin_overlay`: production ZIP/catalog/mount/filter/change-detection code,
-  independent previews (including script-named bodies), immediate choices,
-  persistence, mixed/folder packs and failed script/backend/font rollback.
-  Application/collection I/O, diagnostics, GPU/audio devices and script/font
-  runtimes are replaced here. Font refresh itself is tested separately below.
+  candidate-specific assembled previews, stock-view → third-person → body
+  fallbacks, Default below the equipped overlay, immediate choices, persistence,
+  mixed/folder packs and failed script/backend/font rollback. Preview capture
+  uses the real private VM; live script reload uses a failure-marker stand-in.
+  Application/collection I/O, diagnostics and GPU/audio devices are headless
+  substitutes. Font refresh itself is tested separately below.
+- `skin_preview_python`: stdlib Python tests invoke the production preview
+  recorder/mesher/rasterizer fixture. Tests all five stock assemblies across
+  four sight settings × charms off/on, plus synthetic active-vs-registered
+  parts, transforms/pivots/colors, procedural-model ownership, local config
+  writes, inert audio, bad scripts/paths/models and execution/draw/read limits.
+  Each successful scene is checked at 24 angles, with RGBA/antialiasing checks.
 - `font_reload`: real FreeType, FontManager, fallback descriptions and glyph
   caches, using bundled fonts and headless image devices/atlas codec. Checks
   stable existing holders across renderers, new/default faces and fallback
   glyphs, failed face/descriptor/atlas uploads, and image lifetimes.
+
+### All official packs (optional network fixture)
+
+`Server/test/fixtures/skin_preview_packs.json` pins all 18 packs from
+`zerospades/zerospades-paks` at revision
+`367d002311a3e0f29c65e064d0e2c83e6598b51b`, with sizes and SHA-256 hashes.
+Downloads are explicit, never part of a normal configure/CTest run:
+
+```sh
+python3 Server/test/test_skin_previews.py build/Server/test/skin_preview_fixture Resources \
+  --fetch --packs-dir build/official-skin-paks --artifacts build/preview-audit
+```
+
+Use the actual `skin_preview_fixture` executable path for your build layout.
+Subsequent runs omit `--fetch`. To include the local corpus in CTest, configure
+with `-DZS_TEST_SKIN_PACKS="$PWD/build/official-skin-paks"` and run
+`ctest --test-dir build -R skin_preview --output-on-failure`.
+
+The corpus run verifies all 18 archive hashes/ZIPs. All **13 weapon packs** and
+**five stock weapons** exercise four sight settings × charms off/on: **144
+scene configurations**, each checked through 24 angles, with explicit active
+attachment expectations. The four Font packs and one SFX pack have no voxel
+assembly, so this corpus test checks their archives, not visual/audio behavior.
+Rendered JSON and raw RGBA frames stay under the ignored `build/` directory.
 
 Manual native checks (not replaced by headless tests):
 

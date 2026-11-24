@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "SkinPreviewScript.h"
 #include "SkinSelection.h"
 #include <Core/RefCountedObject.h>
 
@@ -37,21 +38,25 @@ namespace spades {
 			std::vector<SkinMod> mods;
 			std::map<std::string, std::vector<std::string>> paks;
 			std::map<std::string, std::vector<std::string>> files;
+			SkinPreviewOptions previewOptions;
 
 			std::optional<std::string> ReadModFile(const std::string& modName,
 			                                       const std::string& path,
 			                                       std::size_t maxBytes = 34 * 1024 * 1024) const;
 
 		public:
-			SkinCatalog(ModsScreenHelper& helper, const std::vector<std::string>& enabled);
+			SkinCatalog(ModsScreenHelper& helper, const std::vector<std::string>& enabled,
+			            SkinPreviewOptions previewOptions = {});
 			const std::vector<SkinMod>& GetMods() const { return mods; }
 			const std::vector<std::string>& GetPakPaths(const std::string& modName) const;
 
-			/**
-			 * Reads the display model from THIS mod's archives, never the currently
-			 * mounted winner or the renderer's model cache. Empty modName reads the
-			 * unmodified base model. Does not mount or execute any preview scripts.
+			/** Captures the assembled idle pose from this candidate, then stock.
+			 * Never mounts a candidate or uses the live script/renderer caches.
+			 * A failed view capture tries third person, then a bounded body fallback.
 			 */
+			SkinPreviewScene LoadPreviewScene(SkinType type, const std::string& modName) const;
+
+			/** Model-only/unsupported-script fallback, also read independently. */
 			Handle<VoxelModel> LoadPreview(SkinType type, const std::string& modName) const;
 
 			// Optional TrueType/OpenType face for an independent Aa sample. An

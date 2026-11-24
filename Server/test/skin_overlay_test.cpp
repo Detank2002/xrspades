@@ -61,6 +61,20 @@ namespace {
 		stream.SetPosition(0);
 		return stream.ReadAllBytes();
 	}
+	std::string SceneScript(const std::string& body, bool thirdPerson = false,
+	                        const std::string& magazine = {}) {
+		return "namespace spades { class TestSkin : IWeaponSkin { Renderer@ r; Model@ body, mag; "
+		       "TestSkin(Renderer@ renderer, AudioDevice@ dev) { @r = renderer; "
+		       "@body = r.RegisterModel(\"" +
+		       body + "\"); " +
+		       (magazine.empty() ? "" : "@mag = r.RegisterModel(\"" + magazine + "\"); ") +
+		       "} void AddToScene() { ModelRenderParam p; p.matrix = CreateTranslateMatrix(1,2,3); "
+		       "p.customColor = Vector3(.2F,.4F,.8F); r.AddModel(body, p); " +
+		       (magazine.empty() ? ""
+		                         : "p.matrix *= CreateScaleMatrix(.5F); r.AddModel(mag, p); ") +
+		       "} } IWeaponSkin@ Create" + (thirdPerson ? "ThirdPerson" : "View") +
+		       "RifleSkin(Renderer@ r, AudioDevice@ dev) { return TestSkin(r, dev); } }";
+	}
 	void U16(std::string& out, std::uint32_t value) {
 		out.push_back(static_cast<char>(value));
 		out.push_back(static_cast<char>(value >> 8));
@@ -126,7 +140,12 @@ int main() {
 	try {
 		Write(std::string(kRifle) + ".weak", Model(0x777777));
 		Write(std::string(kSMG) + ".weak", Model(0x888888));
-		Write(kScript, "stock script");
+		Write("Scripts/Base/Utils.as", "");
+		Write("Scripts/Skin/BasicViewWeapon.as", "");
+		Write("Scripts/Skin/BasicViewTool.as", "");
+		Write("Models/Weapons/Rifle/FirstPerson.kv6", Model(0xAAAAAA));
+		Write(kScript, SceneScript("Models/Weapons/Rifle/FirstPerson.kv6"));
+		Write("Scripts/Skin/Rifle/ThirdPerson.as", SceneScript(kRifle, true));
 		Write("Fonts/Gui.ttf", "Stock font");
 		Write("Gfx/Fonts/OpenSans.ttf", "Stock Open Sans");
 		Write("Sounds/Feedback/HitFeedback.opus", "Stock hit");
@@ -158,6 +177,11 @@ int main() {
 		     {"Scripts/Skin/Rifle/ThirdPerson.as",
 		      "// RegisterModel(\"Models/Weapons/Rifle/Weapon.kv6\");\n"
 		      "@model = renderer.RegisterModel\n(\"Models/Weapons/Rifle/Display.kv6\");"}});
+		Pak("Assembled.pak", {{kRifle, Model(0x333333)},
+		                      {"Models/Weapons/Rifle/Body.kv6", Model(0x003355)},
+		                      {"Models/Weapons/Rifle/Magazine.kv6.weak", Model(0x557700)},
+		                      {kScript, SceneScript("Models/Weapons/Rifle/Body.kv6", false,
+		                                            "Models/Weapons/Rifle/Magazine.kv6")}});
 		MountSkinTestDisk(g_userResourceDirectory);
 
 		{
@@ -292,8 +316,9 @@ int main() {
 		      "try-mod remains isolated");
 		g_tryMod = false;
 
-		extended.insert(extended.end(), {"Folder", "SEMI-Corrupt-.pak", "SEMI-Unreadable-.pak",
-		                                 "Missing.pak", "Partial", "Renamed.pak", "Scripted.pak"});
+		extended.insert(extended.end(),
+		                {"Folder", "SEMI-Corrupt-.pak", "SEMI-Unreadable-.pak", "Missing.pak",
+		                 "Partial", "Renamed.pak", "Scripted.pak", "Assembled.pak"});
 		catalog = Handle<SkinCatalog>::New(*helper, extended);
 		Check((catalog->LoadPreview(SkinType::Rifle, "Folder")->GetColor(0, 0, 0) & 0xFFFFFF) ==
 		        0xBBBBBB,
@@ -304,6 +329,25 @@ int main() {
 		Check((catalog->LoadPreview(SkinType::Rifle, "Scripted.pak")->GetColor(0, 0, 0) &
 		       0xFFFFFF) == 0x654321,
 		      "third-person display body is preferred over a placeholder canonical model");
+		const auto assembled = catalog->LoadPreviewScene(SkinType::Rifle, "Assembled.pak");
+		Check(assembled.scripted && assembled.diagnostic.empty() && assembled.parts.size() == 2,
+		      "catalog captures the complete private view scene, not a placeholder body");
+		Check((assembled.parts[0].model->GetColor(0, 0, 0) & 0xFFFFFF) == 0x003355 &&
+		        (assembled.parts[1].model->GetColor(0, 0, 0) & 0xFFFFFF) == 0x557700 &&
+		        assembled.parts[0].matrix.m[12] == 1 && assembled.parts[1].matrix.m[0] == 0.5F &&
+		        assembled.parts[0].customColor.z == 0.8F,
+		      "scene reads this candidate's normal/weak parts with per-draw matrices/colors");
+		const auto bodyOnly = catalog->LoadPreviewScene(SkinType::Rifle, "Folder");
+		Check(bodyOnly.scripted && bodyOnly.parts.size() == 1 &&
+		        (bodyOnly.parts[0].model->GetColor(0, 0, 0) & 0xFFFFFF) == 0xBBBBBB,
+		      "model-only body uses the third-person pose instead of an unrelated stock view");
+		const auto renamed = catalog->LoadPreviewScene(SkinType::Rifle, "Renamed.pak");
+		Check(!renamed.scripted && !renamed.diagnostic.empty() &&
+		        (renamed.parts[0].model->GetColor(0, 0, 0) & 0xFFFFFF) == 0x123456,
+		      "unsupported renamed model-only scenes use the bounded body fallback");
+		const auto stock = catalog->LoadPreviewScene(SkinType::Rifle, "");
+		Check(stock.scripted && (stock.parts[0].model->GetColor(0, 0, 0) & 0xFFFFFF) == 0xAAAAAA,
+		      "Default capture reads base scripts/models below the equipped overlay");
 		Check(catalog->GetMods().size() == extended.size() - 3,
 		      "missing, unreadable and partially unreadable archives are excluded");
 		bool corruptRefused = false;

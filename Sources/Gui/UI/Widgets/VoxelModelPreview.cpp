@@ -26,6 +26,7 @@
 
 #include <Core/Exception.h>
 #include <Core/VoxelModel.h>
+#include <Gui/SkinPreviewScene.h>
 
 namespace spades {
 	namespace gui {
@@ -39,6 +40,55 @@ namespace spades {
 			} // namespace
 
 			VoxelModelPreview::VoxelModelPreview(const VoxelModel& model) {
+				SkinPreviewPart part;
+				part.model = Handle<VoxelModel>(const_cast<VoxelModel&>(model));
+				AppendPart(part);
+				CenterScene();
+			}
+
+			VoxelModelPreview::VoxelModelPreview(const SkinPreviewScene& scene) {
+				if (scene.parts.size() > 128 || scene.beams.size() > 64)
+					SPRaise("Too many preview draws");
+				for (const auto& part : scene.parts)
+					AppendPart(part);
+				for (const auto& beam : scene.beams) {
+					const auto delta = beam.end - beam.start;
+					const float length = delta.GetLength();
+					if (!std::isfinite(length) || length < 0.00001F || length > 10000 ||
+					    !std::isfinite(beam.radius) || beam.radius <= 0 || beam.radius > 100 ||
+					    !std::isfinite(beam.color.x) || !std::isfinite(beam.color.y) ||
+					    !std::isfinite(beam.color.z))
+						SPRaise("Invalid preview beam");
+					beams.push_back({beam.start, beam.end, beam.color, beam.radius});
+				}
+				CenterScene();
+			}
+
+			void VoxelModelPreview::AppendPart(const SkinPreviewPart& part) {
+				if (!part.model)
+					SPRaise("Missing preview component");
+				for (const float f : part.matrix.m)
+					if (!std::isfinite(f) || std::fabs(f) > 100000)
+						SPRaise("Invalid preview transform");
+				if (!std::isfinite(part.opacity) || part.opacity < 0 || part.opacity > 1)
+					SPRaise("Invalid preview opacity");
+				if (part.opacity == 0)
+					return;
+				const VoxelModel& model = *part.model;
+				const auto a = part.matrix.GetAxis(0), b = part.matrix.GetAxis(1),
+				           c = part.matrix.GetAxis(2);
+				const float det = Vector3::Dot(a, Vector3::Cross(b, c));
+				if (!std::isfinite(det) || det == 0)
+					SPRaise("Singular preview transform");
+				std::uint32_t customColor = 0;
+				const float channels[] = {part.customColor.x, part.customColor.y,
+				                          part.customColor.z};
+				for (int i = 0; i < 3; ++i) {
+					if (!std::isfinite(channels[i]))
+						SPRaise("Invalid preview color");
+					customColor |= std::uint32_t(Clamp(channels[i], 0.0F, 1.0F) * 255 + 0.5F)
+					               << (8 * i);
+				}
 				std::array<int, 3> lo{model.GetWidth(), model.GetHeight(), model.GetDepth()};
 				std::array<int, 3> hi{0, 0, 0};
 				for (int x = 0; x < model.GetWidth(); ++x)
@@ -48,19 +98,14 @@ namespace spades {
 							if (!((bits >> z) & 1))
 								continue;
 							const int p[] = {x, y, z};
-							for (int a = 0; a < 3; ++a) {
-								lo[a] = std::min(lo[a], p[a]);
-								hi[a] = std::max(hi[a], p[a] + 1);
+							for (int axis = 0; axis < 3; ++axis) {
+								lo[axis] = std::min(lo[axis], p[axis]);
+								hi[axis] = std::max(hi[axis], p[axis] + 1);
 							}
 						}
 					}
 				if (hi[0] == 0)
 					return;
-				halfSize =
-				  MakeVector3(float(hi[0] - lo[0]), float(hi[1] - lo[1]), float(hi[2] - lo[2])) *
-				  0.5F;
-				const auto center =
-				  MakeVector3(float(lo[0]), float(lo[1]), float(lo[2])) + halfSize;
 
 				// Greedy rectangles on each surface plane preserve every silhouette,
 				// gap and surface color, including on high-resolution custom models.
@@ -111,13 +156,58 @@ namespace spades {
 								dv[v] = float(rh);
 								if (faces.size() == kMaxFaces)
 									SPRaise("Preview surface is too complex");
-								faces.push_back({MakeVector3(p[0], p[1], p[2]) - center,
-								                 MakeVector3(du[0], du[1], du[2]),
-								                 MakeVector3(dv[0], dv[1], dv[2]), color & 0xFFFFFF,
-								                 dir});
+								const auto normal = kNormals[dir];
+								// Inverse-transpose, including nonuniform/mirrored scales.
+								const auto transformedNormal = ((Vector3::Cross(b, c) * normal.x +
+								                                 Vector3::Cross(c, a) * normal.y +
+								                                 Vector3::Cross(a, b) * normal.z) /
+								                                det)
+								                                 .Normalize();
+								const auto rgb = color & 0xFFFFFF;
+								faces.push_back(
+								  {(part.matrix *
+								    (MakeVector3(p[0], p[1], p[2]) + model.GetOrigin()))
+								     .GetXYZ(),
+								   a * du[0] + b * du[1] + c * du[2],
+								   a * dv[0] + b * dv[1] + c * dv[2], rgb == 0 ? customColor : rgb,
+								   transformedNormal, part.opacity});
 								x += rw;
 							}
 					}
+				}
+			}
+
+			void VoxelModelPreview::CenterScene() {
+				if (IsEmpty())
+					return;
+				Vector3 lo = faces.empty() ? beams.front().start : faces.front().origin, hi = lo;
+				auto include = [&](Vector3 p) {
+					const float xyz[] = {p.x, p.y, p.z};
+					for (const auto value : xyz)
+						if (!std::isfinite(value) || std::fabs(value) > 1000000)
+							SPRaise("Invalid preview bounds");
+					lo = MakeVector3(std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z));
+					hi = MakeVector3(std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z));
+				};
+				for (const auto& face : faces)
+					for (const auto p :
+					     {face.origin, face.origin + face.axisU, face.origin + face.axisV,
+					      face.origin + face.axisU + face.axisV})
+						include(p);
+				for (const auto& beam : beams) {
+					const auto radius = MakeVector3(beam.radius, beam.radius, beam.radius);
+					include(beam.start - radius);
+					include(beam.start + radius);
+					include(beam.end - radius);
+					include(beam.end + radius);
+				}
+				halfSize = (hi - lo) * 0.5F;
+				const auto center = (hi + lo) * 0.5F;
+				for (auto& face : faces)
+					face.origin -= center;
+				for (auto& beam : beams) {
+					beam.start -= center;
+					beam.end -= center;
 				}
 			}
 
@@ -145,7 +235,7 @@ namespace spades {
 				};
 				result.reserve(faces.size() / 2);
 				for (const Face& face : faces) {
-					const auto normal = kNormals[face.direction];
+					const auto normal = face.normal;
 					const float facing = Vector3::Dot(normal, toward);
 					if (facing <= 0.0001F)
 						continue;
@@ -156,14 +246,13 @@ namespace spades {
 						// UI images already contain display/sRGB bytes. A per-channel
 						// gamma lift here made dark metals pale and desaturated paint.
 						// Neutral scalar lighting keeps the KV6 palette's hue/contrast.
-						// Black KV6 team-color voxels use neutral charcoal in the preview.
-						const float value =
-						  face.color == 0 ? 0.16F : float((face.color >> shift) & 255) / 255.0F;
+						// Exactly-black voxels already carry this draw's custom color.
+						const float value = float((face.color >> shift) & 255) / 255.0F;
 						return value * (0.76F + 0.24F * light);
 					};
 					result.push_back(
 					  {center + project(face.origin), project(face.axisU), project(face.axisV),
-					   MakeVector4(channel(0), channel(8), channel(16), 1),
+					   MakeVector4(channel(0), channel(8), channel(16), face.opacity),
 					   Vector3::Dot(face.origin, toward), Vector3::Dot(face.axisU, toward),
 					   Vector3::Dot(face.axisV, toward)});
 				}
@@ -178,7 +267,14 @@ namespace spades {
 				const int w = width * 2, h = height * 2;
 				std::vector<std::uint32_t> pixels(w * h, 0);
 				std::vector<float> depth(w * h, -std::numeric_limits<float>::infinity());
-				for (const Quad& q : Project(AABB2(0, 0, float(w), float(h)), yaw)) {
+				auto quads = Project(AABB2(0, 0, float(w), float(h)), yaw);
+				const auto transparent = std::partition(
+				  quads.begin(), quads.end(), [](const Quad& q) { return q.color.w == 1; });
+				std::sort(transparent, quads.end(), [](const Quad& a, const Quad& b) {
+					return a.depth + (a.depthU + a.depthV) * 0.5F <
+					       b.depth + (b.depthU + b.depthV) * 0.5F;
+				});
+				for (const Quad& q : quads) {
 					const float det = q.axisU.x * q.axisV.y - q.axisU.y * q.axisV.x;
 					if (std::fabs(det) < 0.00001F)
 						continue;
@@ -208,11 +304,88 @@ namespace spades {
 							const float z = q.depth + u * q.depthU + v * q.depthV;
 							const int i = x + y * w;
 							if (z > depth[i]) {
-								depth[i] = z;
-								pixels[i] = rgba;
+								if (q.color.w == 1) {
+									depth[i] = z;
+									pixels[i] = rgba;
+								} else {
+									const float alpha = q.color.w;
+									const float oldAlpha = float(pixels[i] >> 24) / 255;
+									const float outAlpha = alpha + oldAlpha * (1 - alpha);
+									if (outAlpha <= 0)
+										continue;
+									auto blended = std::uint32_t(outAlpha * 255 + 0.5F) << 24;
+									for (int shift : {0, 8, 16}) {
+										const float value = (float((rgba >> shift) & 255) * alpha +
+										                     float((pixels[i] >> shift) & 255) *
+										                       oldAlpha * (1 - alpha)) /
+										                    outAlpha;
+										blended |= std::uint32_t(value + 0.5F) << shift;
+									}
+									pixels[i] = blended;
+								}
 							}
 						}
 				}
+				if (!beams.empty() && std::isfinite(yaw)) {
+					const float sn = std::sin(yaw), cs = std::cos(yaw);
+					const float st = std::sin(0.16F), ct = std::cos(0.16F);
+					const Vector3 right = MakeVector3(cs, sn, 0);
+					const Vector3 down = MakeVector3(sn * st, -cs * st, ct);
+					const Vector3 toward = MakeVector3(sn * ct, -cs * ct, -st);
+					const float radius = std::hypot(halfSize.x, halfSize.y);
+					const float scale =
+					  0.94F * std::min(float(w) / (2 * radius),
+					                   float(h) / (2 * (halfSize.z * ct + radius * st)));
+					auto project = [&](Vector3 p) {
+						return MakeVector2(float(w) * 0.5F + Vector3::Dot(p, right) * scale,
+						                   float(h) * 0.5F + Vector3::Dot(p, down) * scale);
+					};
+					for (const auto& beam : beams) {
+						const auto a = project(beam.start), b = project(beam.end), ab = b - a;
+						const float length2 = Vector2::Dot(ab, ab);
+						const float r = beam.radius * scale;
+						const int x0 = std::max(0, int(std::floor(std::min(a.x, b.x) - r)));
+						const int y0 = std::max(0, int(std::floor(std::min(a.y, b.y) - r)));
+						const int x1 = std::min(w, int(std::ceil(std::max(a.x, b.x) + r)));
+						const int y1 = std::min(h, int(std::ceil(std::max(a.y, b.y) + r)));
+						for (int y = y0; y < y1; ++y)
+							for (int x = x0; x < x1; ++x) {
+								const auto p = MakeVector2(float(x) + 0.5F, float(y) + 0.5F);
+								const float t =
+								  length2 > 0 ? Clamp(Vector2::Dot(p - a, ab) / length2, 0.0F, 1.0F)
+								              : 0;
+								const auto distance = p - (a + ab * t);
+								const float falloff =
+								  1 - Vector2::Dot(distance, distance) / (r * r);
+								if (falloff <= 0)
+									continue;
+								const auto center = Mix(beam.start, beam.end, t);
+								const int i = x + y * w;
+								if (Vector3::Dot(center, toward) + beam.radius <= depth[i])
+									continue;
+								const float weight = falloff * falloff;
+								const float oldAlpha = float(pixels[i] >> 24) / 255;
+								const float coverage = Clamp(
+								  std::max({beam.color.x, beam.color.y, beam.color.z}) * weight,
+								  0.0F, 1.0F);
+								const float alpha = coverage + oldAlpha * (1 - coverage);
+								if (alpha <= 0)
+									continue;
+								auto rgba = std::uint32_t(alpha * 255 + 0.5F) << 24;
+								const float color[] = {beam.color.x, beam.color.y, beam.color.z};
+								for (int channel = 0; channel < 3; ++channel) {
+									const float value =
+									  (float((pixels[i] >> (8 * channel)) & 255) / 255 * oldAlpha +
+									   std::max(0.0F, color[channel]) * weight) /
+									  alpha;
+									rgba |= std::uint32_t(Clamp(value, 0.0F, 1.0F) * 255 + 0.5F)
+									        << (8 * channel);
+								}
+								pixels[i] = rgba;
+							}
+					}
+				}
+
 				std::vector<std::uint32_t> result(width * height, 0);
 				for (int y = 0; y < height; ++y)
 					for (int x = 0; x < width; ++x) {
@@ -220,15 +393,14 @@ namespace spades {
 						for (int dy = 0; dy < 2; ++dy)
 							for (int dx = 0; dx < 2; ++dx) {
 								const auto p = pixels[x * 2 + dx + (y * 2 + dy) * w];
-								if (p >> 24) {
-									++count;
-									r += p & 255;
-									g += (p >> 8) & 255;
-									b += (p >> 16) & 255;
-								}
+								const unsigned alpha = p >> 24;
+								count += alpha;
+								r += (p & 255) * alpha;
+								g += ((p >> 8) & 255) * alpha;
+								b += ((p >> 16) & 255) * alpha;
 							}
 						if (count)
-							result[x + y * width] = (count * 255 / 4 << 24) | (r / count) |
+							result[x + y * width] = (count / 4 << 24) | (r / count) |
 							                        (g / count << 8) | (b / count << 16);
 					}
 				return result;

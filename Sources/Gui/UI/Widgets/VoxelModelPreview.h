@@ -28,6 +28,8 @@ namespace spades {
 	class VoxelModel;
 
 	namespace gui {
+		struct SkinPreviewPart;
+		struct SkinPreviewScene;
 		namespace ui {
 			/**
 			 * An exact, lit voxel surface for a rotating thumbnail. Coplanar faces
@@ -41,21 +43,31 @@ namespace spades {
 			class VoxelModelPreview {
 				struct Face {
 					Vector3 origin, axisU, axisV;
-					std::uint32_t color;
-					int direction;
+					std::uint32_t color = 0;
+					Vector3 normal;
+					float opacity = 1;
+				};
+				struct Beam {
+					Vector3 start, end, color;
+					float radius = 0;
 				};
 				std::vector<Face> faces;
+				std::vector<Beam> beams;
 				Vector3 halfSize{0, 0, 0};
+
+				void AppendPart(const SkinPreviewPart& part);
+				void CenterScene();
 
 			public:
 				struct Quad {
 					Vector2 origin, axisU, axisV;
 					Vector4 color;
-					float depth, depthU, depthV;
+					float depth = 0, depthU = 0, depthV = 0;
 				};
 
 				explicit VoxelModelPreview(const VoxelModel& model);
-				bool IsEmpty() const { return faces.empty(); }
+				explicit VoxelModelPreview(const SkinPreviewScene& scene);
+				bool IsEmpty() const { return faces.empty() && beams.empty(); }
 				std::size_t GetFaceCount() const { return faces.size(); }
 				std::vector<Quad> Project(const AABB2& bounds, float yaw) const;
 				/** Straight-alpha RGBA pixels, top to bottom. Max 512 x 512. */
