@@ -973,12 +973,16 @@ namespace spades {
 			SPADES_MARK_FUNCTION();
 
 			for (const auto& entry : chunks) {
-				// Gone with a disabled mod: keep what is loaded.
-				if (!changes.Contains(entry.first) ||
-				    !FileManager::FileExists(entry.first.c_str()))
+				if (!changes.Contains(entry.first))
 					continue;
 				try {
-					Handle<ALAudioChunk> fresh{CreateChunk(entry.first.c_str()), false};
+					// Optional sounds (e.g. a mod's killstreak cues) have no stock
+					// file. Default must silence their existing cached chunks too,
+					// not keep playing the unequipped pack indefinitely.
+					Handle<ALAudioChunk> fresh{FileManager::FileExists(entry.first.c_str())
+					                             ? CreateChunk(entry.first.c_str())
+												 : CreateSilentChunk(),
+					                           false};
 					d->StopSourcesPlaying(entry.second->GetHandle());
 					entry.second->Replace(*fresh);
 				} catch (const std::exception& ex) {

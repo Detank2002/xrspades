@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <regex>
+#include <set>
 
 #include <utility>
 #include <vector>
@@ -48,8 +49,11 @@ namespace spades {
 
 					// Preliminary custom font support
 					auto files = FileManager::EnumFiles("Fonts");
-					for (const auto& name : files) {
-						if (!std::regex_match(name, g_fontNameRe))
+					std::set<std::string> loaded;
+					for (auto name : files) {
+						if (name.size() >= 5 && name.compare(name.size() - 5, 5, ".weak") == 0)
+							name.resize(name.size() - 5);
+						if (!std::regex_match(name, g_fontNameRe) || !loaded.insert(name).second)
 							continue;
 
 						SPLog("Loading custom font '%s'", name.c_str());
@@ -68,6 +72,15 @@ namespace spades {
 					} else {
 						SPLog("Font '%s' was not found", name.c_str());
 					}
+				}
+
+				void Reload() {
+					GlobalFontInfo next;
+					// The fallback reload also stages every active renderer's atlas
+					// images. After it succeeds, publishing the faces cannot fail.
+					IFont::ReloadFallbackFonts();
+					squareFontSet->SwapFaces(*next.squareFontSet);
+					guiFontSet->SwapFaces(*next.guiFontSet);
 				}
 
 				static GlobalFontInfo& GetInstance() {
@@ -131,6 +144,10 @@ namespace spades {
 
 			// bitmap fonts
 			smallFont = CreateBitmapFont(renderer, fontdata::Build6x8Atlas(), fontdata::k6x8AtlasCell);
+		}
+
+		void FontManager::ReloadFonts() {
+			GlobalFontInfo::GetInstance().Reload();
 		}
 
 		FontManager::~FontManager() {}

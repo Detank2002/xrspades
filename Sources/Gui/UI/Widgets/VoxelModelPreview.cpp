@@ -20,152 +20,216 @@
 #include "VoxelModelPreview.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <cstdint>
+#include <limits>
 
-#include <Client/IRenderer.h>
+#include <Core/Exception.h>
 #include <Core/VoxelModel.h>
 
 namespace spades {
 	namespace gui {
 		namespace ui {
 			namespace {
-				const IntVector3 kNormals[] = {{-1, 0, 0}, {1, 0, 0},  {0, -1, 0},
-				                               {0, 1, 0},  {0, 0, -1}, {0, 0, 1}};
-				constexpr std::size_t kMaxFaces = 20000;
+				const Vector3 kNormals[] = {{-1, 0, 0}, {1, 0, 0},  {0, -1, 0},
+				                            {0, 1, 0},  {0, 0, -1}, {0, 0, 1}};
+				// A pathological checkerboard must not stall the game or allocate an
+				// unbounded mesh. Real weapons are far below this, with no loss of detail.
+				constexpr std::size_t kMaxFaces = 100000;
 			} // namespace
 
 			VoxelModelPreview::VoxelModelPreview(const VoxelModel& model) {
-				IntVector3 lo(model.GetWidth(), model.GetHeight(), model.GetDepth());
-				IntVector3 hi(0, 0, 0);
-				bool any = false;
+				std::array<int, 3> lo{model.GetWidth(), model.GetHeight(), model.GetDepth()};
+				std::array<int, 3> hi{0, 0, 0};
 				for (int x = 0; x < model.GetWidth(); ++x)
 					for (int y = 0; y < model.GetHeight(); ++y) {
 						const auto bits = model.GetSolidBitsAtUnchecked(x, y);
 						for (int z = 0; z < model.GetDepth(); ++z) {
 							if (!((bits >> z) & 1))
 								continue;
-							any = true;
-							lo.x = std::min(lo.x, x);
-							lo.y = std::min(lo.y, y);
-							lo.z = std::min(lo.z, z);
-							hi.x = std::max(hi.x, x + 1);
-							hi.y = std::max(hi.y, y + 1);
-							hi.z = std::max(hi.z, z + 1);
+							const int p[] = {x, y, z};
+							for (int a = 0; a < 3; ++a) {
+								lo[a] = std::min(lo[a], p[a]);
+								hi[a] = std::max(hi[a], p[a] + 1);
+							}
 						}
 					}
-				if (!any)
+				if (hi[0] == 0)
 					return;
+				halfSize =
+				  MakeVector3(float(hi[0] - lo[0]), float(hi[1] - lo[1]), float(hi[2] - lo[2])) *
+				  0.5F;
+				const auto center =
+				  MakeVector3(float(lo[0]), float(lo[1]), float(lo[2])) + halfSize;
 
-				const auto extent = hi - lo;
-				// A thumbnail does not need sub-pixel voxels. Bound both the mesh
-				// and the per-frame sort/draw work for unusually detailed mods.
-				int stride = std::max(1, (std::max({extent.x, extent.y, extent.z}) + 95) / 96);
-				for (;;) {
-					const IntVector3 dim = (extent + (stride - 1)) / stride;
-					halfSize = MakeVector3(float(dim.x), float(dim.y), float(dim.z)) * 0.5F;
-					std::vector<std::uint32_t> colors(dim.x * dim.y * dim.z, 0);
-					std::vector<bool> solid(colors.size(), false);
-					auto index = [dim](int x, int y, int z) { return (x * dim.y + y) * dim.z + z; };
-					for (int x = lo.x; x < hi.x; ++x)
-						for (int y = lo.y; y < hi.y; ++y)
-							for (int z = lo.z; z < hi.z; ++z) {
-								if (!model.IsSolid(x, y, z))
+				// Greedy rectangles on each surface plane preserve every silhouette,
+				// gap and surface color, including on high-resolution custom models.
+				for (int dir = 0; dir < 6; ++dir) {
+					const int axis = dir / 2, u = (axis + 1) % 3, v = (axis + 2) % 3;
+					const int w = hi[u] - lo[u], h = hi[v] - lo[v];
+					std::vector<std::uint32_t> mask(w * h);
+					for (int slice = lo[axis]; slice < hi[axis]; ++slice) {
+						for (int y = 0; y < h; ++y)
+							for (int x = 0; x < w; ++x) {
+								int p[3];
+								p[axis] = slice;
+								p[u] = x + lo[u];
+								p[v] = y + lo[v];
+								auto& color = mask[x + y * w];
+								color = 0;
+								if (!model.IsSolid(p[0], p[1], p[2]))
 									continue;
-								const int i = index((x - lo.x) / stride, (y - lo.y) / stride,
-								                    (z - lo.z) / stride);
-								if (!solid[i])
-									colors[i] = model.GetColorUnchecked(x, y, z);
-								solid[i] = true;
+								const auto rgb = model.GetColorUnchecked(p[0], p[1], p[2]);
+								p[axis] += (dir & 1) ? 1 : -1;
+								if (!model.IsSolid(p[0], p[1], p[2]))
+									color = (rgb & 0xFFFFFF) | 0x1000000;
 							}
-					auto occupied = [&](IntVector3 p) {
-						return p.x >= 0 && p.y >= 0 && p.z >= 0 && p.x < dim.x && p.y < dim.y &&
-						       p.z < dim.z && solid[index(p.x, p.y, p.z)];
-					};
-					faces.clear();
-					for (int x = 0; x < dim.x && faces.size() <= kMaxFaces; ++x)
-						for (int y = 0; y < dim.y && faces.size() <= kMaxFaces; ++y)
-							for (int z = 0; z < dim.z && faces.size() <= kMaxFaces; ++z) {
-								if (!solid[index(x, y, z)])
+						for (int y = 0; y < h; ++y)
+							for (int x = 0; x < w;) {
+								const auto color = mask[x + y * w];
+								if (color == 0) {
+									++x;
 									continue;
-								const auto c = colors[index(x, y, z)] & 0xFFFFFF;
-								const Vector3 color =
-								  c == 0 ? MakeVector3(0.35F, 0.6F, 0.95F)
-								         : MakeVector3(float(c & 255), float((c >> 8) & 255),
-								                       float((c >> 16) & 255)) /
-								             255.0F;
-								for (int dir = 0; dir < 6; ++dir)
-									if (!occupied(IntVector3(x, y, z) + kNormals[dir]))
-										faces.push_back(
-										  {MakeVector3(x + 0.5F, y + 0.5F, z + 0.5F) - halfSize,
-										   color, dir});
+								}
+								int rw = 1, rh = 1;
+								while (x + rw < w && mask[x + rw + y * w] == color)
+									++rw;
+								for (; y + rh < h; ++rh) {
+									int n = 0;
+									while (n < rw && mask[x + n + (y + rh) * w] == color)
+										++n;
+									if (n != rw)
+										break;
+								}
+								for (int dy = 0; dy < rh; ++dy)
+									std::fill_n(mask.begin() + x + (y + dy) * w, rw, 0);
+								float p[3], du[3]{}, dv[3]{};
+								p[axis] = float(slice + (dir & 1));
+								p[u] = float(lo[u] + x);
+								p[v] = float(lo[v] + y);
+								du[u] = float(rw);
+								dv[v] = float(rh);
+								if (faces.size() == kMaxFaces)
+									SPRaise("Preview surface is too complex");
+								faces.push_back({MakeVector3(p[0], p[1], p[2]) - center,
+								                 MakeVector3(du[0], du[1], du[2]),
+								                 MakeVector3(dv[0], dv[1], dv[2]), color & 0xFFFFFF,
+								                 dir});
+								x += rw;
 							}
-					if (faces.size() <= kMaxFaces)
-						break;
-					stride *= 2;
+					}
 				}
 			}
 
 			std::vector<VoxelModelPreview::Quad> VoxelModelPreview::Project(const AABB2& bounds,
 			                                                                float yaw) const {
 				std::vector<Quad> result;
-				if (faces.empty() || bounds.GetWidth() <= 0 || bounds.GetHeight() <= 0)
+				if (faces.empty() || bounds.GetWidth() <= 0 || bounds.GetHeight() <= 0 ||
+				    !std::isfinite(yaw))
 					return result;
 				const float s = std::sin(yaw), c = std::cos(yaw);
-				constexpr float tilt = 0.28F;
+				constexpr float tilt = 0.16F;
 				const float st = std::sin(tilt), ct = std::cos(tilt);
 				const Vector3 right = MakeVector3(c, s, 0);
 				const Vector3 down = MakeVector3(s * st, -c * st, ct);
 				const Vector3 toward = MakeVector3(s * ct, -c * ct, -st);
-				const float radius = std::sqrt(halfSize.x * halfSize.x + halfSize.y * halfSize.y);
+				const float radius = std::hypot(halfSize.x, halfSize.y);
 				const float height = halfSize.z * ct + radius * st;
-				// Fixed scale over a complete turn, so long guns do not pulse as
-				// they rotate, and no pivot/empty padding can push a model off-card.
-				const float scale = 0.9F * std::min(bounds.GetWidth() / (2 * radius),
-				                                    bounds.GetHeight() / (2 * height));
+				// Stable full-turn framing, using occupied bounds rather than the
+				// model pivot/padding. A shallow studio view gives rifles more room.
+				const float scale = 0.94F * std::min(bounds.GetWidth() / (2 * radius),
+				                                     bounds.GetHeight() / (2 * height));
 				const Vector2 center = (bounds.min + bounds.max) * 0.5F;
 				auto project = [&](Vector3 p) {
 					return MakeVector2(Vector3::Dot(p, right), Vector3::Dot(p, down)) * scale;
 				};
 				result.reserve(faces.size() / 2);
 				for (const Face& face : faces) {
-					const auto n = kNormals[face.direction];
-					const Vector3 normal = MakeVector3(float(n.x), float(n.y), float(n.z));
+					const auto normal = kNormals[face.direction];
 					const float facing = Vector3::Dot(normal, toward);
-					if (facing <= 0.001F)
+					if (facing <= 0.0001F)
 						continue;
-					Vector3 u, v;
-					if (n.x != 0) {
-						u = MakeVector3(0, 1, 0);
-						v = MakeVector3(0, 0, 1);
-					} else if (n.y != 0) {
-						u = MakeVector3(1, 0, 0);
-						v = MakeVector3(0, 0, 1);
-					} else {
-						u = MakeVector3(1, 0, 0);
-						v = MakeVector3(0, 1, 0);
-					}
-					const Vector3 p = face.center + normal * 0.5F - (u + v) * 0.5F;
-					const float lit =
-					  std::max(0.0F, -0.35F * Vector3::Dot(normal, right) -
-					                   0.6F * Vector3::Dot(normal, down) + 0.72F * facing);
-					const Vector3 rgb = face.color * (0.5F + 0.5F * lit);
-					result.push_back({center + project(p), project(u), project(v),
-					                  MakeVector4(rgb.x, rgb.y, rgb.z, 1),
-					                  Vector3::Dot(face.center + normal * 0.5F, toward)});
+					const float light =
+					  std::max(0.0F, -0.4F * Vector3::Dot(normal, right) -
+					                   0.6F * Vector3::Dot(normal, down) + 0.69F * facing);
+					const auto channel = [&](int shift) {
+						// Black KV6 voxels are team-colored in the game. Use neutral
+						// gray in the showroom, not an unrelated bright blue.
+						const float value =
+						  face.color == 0 ? 0.16F : float((face.color >> shift) & 255) / 255.0F;
+						return std::min(1.0F, std::pow(value, 0.6F) * (0.76F + 0.24F * light));
+					};
+					result.push_back(
+					  {center + project(face.origin), project(face.axisU), project(face.axisV),
+					   MakeVector4(channel(0), channel(8), channel(16), 1),
+					   Vector3::Dot(face.origin, toward), Vector3::Dot(face.axisU, toward),
+					   Vector3::Dot(face.axisV, toward)});
 				}
-				std::sort(result.begin(), result.end(),
-				          [](const Quad& a, const Quad& b) { return a.depth < b.depth; });
 				return result;
 			}
 
-			void VoxelModelPreview::Render(client::IRenderer& renderer, const AABB2& bounds,
-			                               float yaw) const {
-				for (const Quad& quad : Project(bounds, yaw)) {
-					renderer.SetColorAlphaPremultiplied(quad.color);
-					renderer.DrawImage(nullptr, quad.origin, quad.origin + quad.axisU,
-					                   quad.origin + quad.axisV, AABB2(0, 0, 1, 1));
+			std::vector<std::uint32_t> VoxelModelPreview::Rasterize(int width, int height,
+			                                                        float yaw) const {
+				if (width < 1 || height < 1 || width > 512 || height > 512)
+					SPRaise("Invalid preview image size");
+				// Four coverage/depth samples per output pixel, including on SW.
+				const int w = width * 2, h = height * 2;
+				std::vector<std::uint32_t> pixels(w * h, 0);
+				std::vector<float> depth(w * h, -std::numeric_limits<float>::infinity());
+				for (const Quad& q : Project(AABB2(0, 0, float(w), float(h)), yaw)) {
+					const float det = q.axisU.x * q.axisV.y - q.axisU.y * q.axisV.x;
+					if (std::fabs(det) < 0.00001F)
+						continue;
+					const Vector2 corners[] = {q.origin, q.origin + q.axisU, q.origin + q.axisV,
+					                           q.origin + q.axisU + q.axisV};
+					Vector2 lo = corners[0], hi = corners[0];
+					for (const auto& p : corners) {
+						lo.x = std::min(lo.x, p.x);
+						lo.y = std::min(lo.y, p.y);
+						hi.x = std::max(hi.x, p.x);
+						hi.y = std::max(hi.y, p.y);
+					}
+					const int x0 = std::max(0, int(std::floor(lo.x)));
+					const int y0 = std::max(0, int(std::floor(lo.y)));
+					const int x1 = std::min(w, int(std::ceil(hi.x)));
+					const int y1 = std::min(h, int(std::ceil(hi.y)));
+					const auto rgba = 0xFF000000U | std::uint32_t(q.color.x * 255 + 0.5F) |
+					                  (std::uint32_t(q.color.y * 255 + 0.5F) << 8) |
+					                  (std::uint32_t(q.color.z * 255 + 0.5F) << 16);
+					for (int y = y0; y < y1; ++y)
+						for (int x = x0; x < x1; ++x) {
+							const auto p = MakeVector2(x + 0.5F, y + 0.5F) - q.origin;
+							const float u = (p.x * q.axisV.y - p.y * q.axisV.x) / det;
+							const float v = (q.axisU.x * p.y - q.axisU.y * p.x) / det;
+							if (u < 0 || v < 0 || u > 1 || v > 1)
+								continue;
+							const float z = q.depth + u * q.depthU + v * q.depthV;
+							const int i = x + y * w;
+							if (z > depth[i]) {
+								depth[i] = z;
+								pixels[i] = rgba;
+							}
+						}
 				}
+				std::vector<std::uint32_t> result(width * height, 0);
+				for (int y = 0; y < height; ++y)
+					for (int x = 0; x < width; ++x) {
+						unsigned count = 0, r = 0, g = 0, b = 0;
+						for (int dy = 0; dy < 2; ++dy)
+							for (int dx = 0; dx < 2; ++dx) {
+								const auto p = pixels[x * 2 + dx + (y * 2 + dy) * w];
+								if (p >> 24) {
+									++count;
+									r += p & 255;
+									g += (p >> 8) & 255;
+									b += (p >> 16) & 255;
+								}
+							}
+						if (count)
+							result[x + y * width] = (count * 255 / 4 << 24) | (r / count) |
+							                        (g / count << 8) | (b / count << 16);
+					}
+				return result;
 			}
 		} // namespace ui
 	} // namespace gui

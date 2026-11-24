@@ -32,8 +32,7 @@ namespace spades {
 		class SkinCatalog;
 		namespace ui {
 			class Button;
-			class Label;
-			class ListView;
+			class ListViewBase;
 		} // namespace ui
 	} // namespace gui
 	namespace client {
@@ -41,24 +40,20 @@ namespace spades {
 
 		/**
 		 * The Escape menu's skin selector. The main menu still manages which
-		 * mods are enabled; this page only equips one of those skins per weapon.
+		 * mods are enabled; this page selects one per weapon, Font and SFX.
 		 */
 		class ModsWindow : public gui::ui::UIElement {
 			ClientUI* ui; // weak
 			Handle<gui::ui::UIElement> owner;
 			Handle<gui::ModsScreenHelper> helper;
 			Handle<gui::SkinCatalog> catalog;
-			gui::ui::ListView* grid; // weak; owned as children
-			gui::ui::Label* statusLabel;
-			gui::ui::Label* categoryTitle;
+			gui::ui::ListViewBase* grid; // weak; owned as a child
 			std::array<gui::ui::Button*, gui::kSkinTypeCount> categoryButtons{};
 			AABB2 contents;
-			AABB2 sidebar;
 			int columns;
 
 			void ShowCategory(gui::SkinType type);
 			void OnSkinSelected(gui::SkinType type, const std::string& modName);
-			void SetStatus(const std::string& text, bool warning = false);
 
 		public:
 			gui::ui::EventHandler closed;

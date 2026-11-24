@@ -93,6 +93,35 @@ zs_test_executable(skin_overlay_test
 target_link_libraries(skin_overlay_test PRIVATE ZLIB::ZLIB)
 add_test(NAME skin_overlay COMMAND skin_overlay_test)
 
+# Existing font holders must update in place, not retain freed FreeType faces
+# or the first selected fallback atlas. Uses the game's bundled font fixtures.
+if(NOT FREETYPE_LIBRARIES)
+	find_package(Freetype REQUIRED)
+endif()
+find_package(Threads REQUIRED)
+zs_test_executable(font_reload_test
+	"${CMAKE_CURRENT_SOURCE_DIR}/font_reload_test.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_core_test_support.cpp"
+	"${ZS_TEST_SOURCES}/Client/Fonts.cpp"
+	"${ZS_TEST_SOURCES}/Client/FTFont.cpp"
+	"${ZS_TEST_SOURCES}/Client/IFont.cpp"
+	"${ZS_TEST_SOURCES}/Client/Quake3Font.cpp"
+	"${ZS_TEST_SOURCES}/Client/IRenderer.cpp"
+	"${ZS_TEST_SOURCES}/Core/Bitmap.cpp"
+	"${ZS_TEST_SOURCES}/Core/IBitmapCodec.cpp"
+	"${ZS_TEST_SOURCES}/Core/FileManager.cpp"
+	"${ZS_TEST_SOURCES}/Core/MemoryStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/IStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/RefCountedObject.cpp"
+	"${ZS_TEST_SOURCES}/Core/ThreadLocalStorage.cpp"
+	"${ZS_TEST_SOURCES}/Core/Math.cpp"
+	"${ZS_TEST_SOURCES}/Core/CP437.cpp")
+target_compile_definitions(font_reload_test PRIVATE
+	ZS_TEST_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/Resources")
+target_include_directories(font_reload_test PRIVATE ${FREETYPE_INCLUDE_DIRS})
+target_link_libraries(font_reload_test PRIVATE ${FREETYPE_LIBRARIES} Threads::Threads)
+add_test(NAME font_reload COMMAND font_reload_test)
+
 # A VR player's pose, as a client without a headset decodes it (what a macOS
 # build draws other players' VR from)
 find_package(Python3 COMPONENTS Interpreter)
@@ -104,4 +133,5 @@ endif()
 
 add_custom_target(zs_tests DEPENDS
 	vr_state_test xr_caps_test vr_pose_fixture update_package_test training_server_test
-	server_extension_key_test skin_selection_test voxel_model_preview_test skin_overlay_test)
+	server_extension_key_test skin_selection_test voxel_model_preview_test skin_overlay_test
+	font_reload_test)

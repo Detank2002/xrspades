@@ -1,8 +1,9 @@
 // Test-only replacements for the application entry point, collection I/O and
-// script engine. Real zip files, file mounting/filtering, model loading and
+// script/font engines. Real zip files, file mounting/filtering, model loading and
 // hot-reload change detection are exercised by skin_overlay_test. The script
 // fake fails on a known marker to test rollback without running arbitrary code.
 
+#include <Client/Fonts.h>
 #include <Core/FileManager.h>
 #include <Core/IFileSystem.h>
 #include <Core/StdStream.h>
@@ -48,6 +49,14 @@ namespace spades {
 			return r;
 		}
 	} // namespace gui
+	int fontReloads = 0;
+	namespace client {
+		void FontManager::ReloadFonts() {
+			++fontReloads;
+			if (FileManager::ReadAllBytes("Gfx/Fonts/OpenSans.ttf") == "BROKEN FONT")
+				throw std::runtime_error("bad font");
+		}
+	} // namespace client
 	bool alwaysBad = false;
 	ScriptManager::ScriptManager() : engine(nullptr) {}
 	ScriptManager::~ScriptManager() = default;

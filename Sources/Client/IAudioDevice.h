@@ -56,8 +56,9 @@ namespace spades {
 
 			/**
 			 * Reloads, in place, the chunks loaded via `RegisterSound` from a file in
-			 * `changes`, so their holders play the new sound. One that fails to load
-			 * keeps its old sound.
+			 * `changes`, so their holders play the new sound. A file removed by an
+			 * unequipped mod becomes silence if there is no stock replacement;
+			 * a present file that fails to decode keeps its old sound.
 			 */
 			virtual void ReloadResources(const ResourceChanges& changes) {}
 

@@ -31,7 +31,8 @@ using namespace spades::gui;
 void MountSkinTestDisk(const std::string& path);
 namespace spades {
 	extern bool alwaysBad;
-}
+	extern int fontReloads;
+} // namespace spades
 
 namespace {
 	constexpr const char* kRifle = "Models/Weapons/Rifle/Weapon.kv6";
@@ -126,6 +127,9 @@ int main() {
 		Write(std::string(kRifle) + ".weak", Model(0x777777));
 		Write(std::string(kSMG) + ".weak", Model(0x888888));
 		Write(kScript, "stock script");
+		Write("Fonts/Gui.ttf", "Stock font");
+		Write("Gfx/Fonts/OpenSans.ttf", "Stock Open Sans");
+		Write("Sounds/Feedback/HitFeedback.opus", "Stock hit");
 		Pak("SEMI-A-.pak", {{kRifle, Model(0x0000FF)}, {kScript, "A script"}});
 		Pak("SEMI-B-.pak", {{kRifle, Model(0xFF0000)}, {kScript, "B script"}});
 		Pak("SEMI-Broken-.pak", {{kRifle, Model(0x00FF00)}, {kScript, "BROKEN"}});
@@ -134,6 +138,11 @@ int main() {
 		                          {"Shaders/custom.vs", "restart"}});
 		Pak("SMG-C-.pak", {{kSMG, Model(0x00FFFF)}, {"Sounds/Weapons/SMG/Fire.opus", "SMG sound"}});
 		Pak("FONT-Gui-.pak", {{"Fonts/Gui.ttf", "Font unchanged"}});
+		Pak("FONT-Other-.pak", {{"Gfx/Fonts/OpenSans.ttf", "Other font"}});
+		Pak("FONT-Broken-.pak", {{"Gfx/Fonts/OpenSans.ttf", "BROKEN FONT"}});
+		Pak("SFX-A-.pak", {{"Sounds/Feedback/HitFeedback.opus", "A hit"}});
+		Pak("SFX-B-.pak", {{"Sounds/Feedback/HitFeedback.opus", "B hit"},
+		                   {"Sounds/Feedback/Killstreak/Killsound01.opus", "B kill"}});
 		Pak("Combined.pak",
 		    {{kRifle, Model(0xFF00FF)}, {kSMG, Model(0x00FF00)}, {kScript, "Combined"}});
 		Pak("Folder/01.pak", {{kRifle, Model(0xAAAAAA)}});
@@ -143,6 +152,12 @@ int main() {
 		Pak("Partial/01.pak", {{kRifle, Model(0xFFFFFF)}});
 		Write("Mods/Partial/02.pak", "not a ZIP");
 		Pak("Renamed.pak", {{"Models/Weapons/Rifle/Custom.kv6.weak", Model(0x123456)}});
+		Pak("Scripted.pak",
+		    {{kRifle, Model(0x333333)},
+		     {"Models/Weapons/Rifle/Display.kv6", Model(0x654321)},
+		     {"Scripts/Skin/Rifle/ThirdPerson.as",
+		      "// RegisterModel(\"Models/Weapons/Rifle/Weapon.kv6\");\n"
+		      "@model = renderer.RegisterModel\n(\"Models/Weapons/Rifle/Display.kv6\");"}});
 		MountSkinTestDisk(g_userResourceDirectory);
 
 		{
@@ -163,9 +178,9 @@ int main() {
 		TestAudio audio;
 		std::string error;
 		auto helper = Handle<ModsScreenHelper>::New();
-		const std::vector<std::string> enabled = {"FONT-Gui-.pak",     "SEMI-Broken-.pak",
-		                                          "SEMI-Restart-.pak", "SEMI-A-.pak",
-		                                          "SEMI-B-.pak",       "SMG-C-.pak"};
+		const std::vector<std::string> enabled = {
+		  "FONT-Broken-.pak", "FONT-Other-.pak",   "FONT-Gui-.pak", "SFX-B-.pak",  "SFX-A-.pak",
+		  "SEMI-Broken-.pak", "SEMI-Restart-.pak", "SEMI-A-.pak",   "SEMI-B-.pak", "SMG-C-.pak"};
 		helper->SetEnabledMods(enabled);
 		ModOverlay::Mount();
 		Check(ModOverlay::GetEquippedSkin(SkinType::Rifle) == "SEMI-B-.pak",
@@ -278,7 +293,7 @@ int main() {
 		g_tryMod = false;
 
 		extended.insert(extended.end(), {"Folder", "SEMI-Corrupt-.pak", "SEMI-Unreadable-.pak",
-		                                 "Missing.pak", "Partial", "Renamed.pak"});
+		                                 "Missing.pak", "Partial", "Renamed.pak", "Scripted.pak"});
 		catalog = Handle<SkinCatalog>::New(*helper, extended);
 		Check((catalog->LoadPreview(SkinType::Rifle, "Folder")->GetColor(0, 0, 0) & 0xFFFFFF) ==
 		        0xBBBBBB,
@@ -286,6 +301,9 @@ int main() {
 		Check((catalog->LoadPreview(SkinType::Rifle, "Renamed.pak")->GetColor(0, 0, 0) &
 		       0xFFFFFF) == 0x123456,
 		      "renamed weak model is previewed");
+		Check((catalog->LoadPreview(SkinType::Rifle, "Scripted.pak")->GetColor(0, 0, 0) &
+		       0xFFFFFF) == 0x654321,
+		      "third-person display body is preferred over a placeholder canonical model");
 		Check(catalog->GetMods().size() == extended.size() - 3,
 		      "missing, unreadable and partially unreadable archives are excluded");
 		bool corruptRefused = false;
@@ -313,6 +331,79 @@ int main() {
 		          ModApplyResult::Applied &&
 		        error.empty(),
 		      "same skin can be saved on retry");
+		// Global choices use the same immediate apply/persist/rollback path,
+		// without touching the weapon choices or the enabled collection.
+		const auto collection = helper->GetEnabledMods();
+		const auto rifleBeforeGlobals = Read(kRifle);
+		const auto fontsBefore = fontReloads;
+		Check(ModOverlay::ApplySkin(SkinType::Font, "FONT-Other-.pak", renderer, audio, error) ==
+		          ModApplyResult::Applied &&
+		        error.empty(),
+		      "font selection applies without restart");
+		Check(fontReloads == fontsBefore + 1 && Read("Gfx/Fonts/OpenSans.ttf") == "Other font" &&
+		        Read("Fonts/Gui.ttf") == "Stock font",
+		      "font refresh is requested on the new overlay");
+		Check(catalog->LoadFontPreview("FONT-Other-.pak") ==
+		          std::optional<std::string>("Other font") &&
+		        catalog->LoadFontPreview("") == std::optional<std::string>("Stock Open Sans"),
+		      "font previews read their own pack or stock bytes, never the equipped winner");
+		const auto fontPreference = Read("SelectedSkins.txt");
+		Check(ModOverlay::ApplySkin(SkinType::Font, "FONT-Broken-.pak", renderer, audio, error) ==
+		          ModApplyResult::Refused &&
+		        !error.empty(),
+		      "font refresh failure is reported");
+		Check(ModOverlay::GetEquippedSkin(SkinType::Font) == "FONT-Other-.pak" &&
+		        Read("Gfx/Fonts/OpenSans.ttf") == "Other font" &&
+		        Read("SelectedSkins.txt") == fontPreference,
+		      "failed font restores resources, preference and selection");
+		Check(ModOverlay::ApplySkin(SkinType::Font, "", renderer, audio, error) ==
+		          ModApplyResult::Applied &&
+		        Read("Gfx/Fonts/OpenSans.ttf") == "Stock Open Sans",
+		      "font Default restores stock");
+		Check(ModOverlay::ApplySkin(SkinType::Font, "FONT-Gui-.pak", renderer, audio, error) ==
+		        ModApplyResult::Applied,
+		      "custom Fonts directory is selectable too");
+		ModOverlay::Mount();
+		Check(ModOverlay::GetEquippedSkin(SkinType::Font) == "FONT-Gui-.pak",
+		      "font preference persists across startup");
+
+		constexpr const char* hit = "Sounds/Feedback/HitFeedback.opus";
+		constexpr const char* kill = "Sounds/Feedback/Killstreak/Killsound01.opus";
+		Check(ModOverlay::ApplySkin(SkinType::SFX, "SFX-B-.pak", renderer, audio, error) ==
+		          ModApplyResult::Applied &&
+		        Read(hit) == "B hit" && Read(kill) == "B kill",
+		      "SFX changes immediately, including mod-only sounds");
+		Check(audio.lastChanges.Contains(hit) && audio.lastChanges.Contains(kill) &&
+		        !audio.lastChanges.Contains("Sounds/Weapons/SMG/Fire.opus"),
+		      "audio reload targets shared SFX, not the selected weapon's sounds");
+		Check(ModOverlay::ApplySkin(SkinType::SFX, "", renderer, audio, error) ==
+		          ModApplyResult::Applied &&
+		        Read(hit) == "Stock hit" && !FileManager::FileExists(kill) &&
+		        audio.lastChanges.Contains(kill),
+		      "SFX Default restores stock and notifies audio to silence removed optional chunks");
+		ModOverlay::Mount();
+		Check(ModOverlay::GetEquippedSkin(SkinType::SFX).empty() &&
+		        ModOverlay::GetEquippedSkin(SkinType::Font) == "FONT-Gui-.pak" &&
+		        Read(kRifle) == rifleBeforeGlobals && Read(kSMG) == smg &&
+		        helper->GetEnabledMods() == collection,
+		      "all seven categories persist independently");
+		Check(ModOverlay::ApplySkin(SkinType::Font, "SFX-A-.pak", renderer, audio, error) ==
+		        ModApplyResult::Refused,
+		      "global wrong-category selection refused");
+
+		ResourceChanges fontChanges;
+		fontChanges.Add("Gfx/Fonts/OpenSans.ttf.weak");
+		fontChanges.Add("Gfx/Fonts/100-unifont.ospfont");
+		fontChanges.Add("Gfx/Fonts/100-unifont.png");
+		Check(
+		  fontChanges.GetReloadTime() == ResourceChanges::ReloadTime::Restart &&
+		    fontChanges.GetReloadTime(ResourceChanges::FontReload::Live) ==
+		      ResourceChanges::ReloadTime::Live,
+		  "only the selector opts into font reload; home-screen restart behavior stays unchanged");
+		fontChanges.Add("Shaders/custom.vs");
+		Check(fontChanges.GetReloadTime(ResourceChanges::FontReload::Live) ==
+		        ResourceChanges::ReloadTime::Restart,
+		      "font support does not hide other restart-only changes");
 		std::printf("skin_overlay_test: all passed\n");
 	} catch (const std::exception& ex) {
 		std::fprintf(stderr, "FAIL: %s\n", ex.what());

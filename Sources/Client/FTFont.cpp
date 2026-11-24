@@ -55,8 +55,11 @@ namespace spades {
 		struct FTFaceWrapper {
 			FT_Face face;
 			std::string buffer;
-			FTFaceWrapper(FT_Face f) : face(f) {}
-			~FTFaceWrapper() { FT_Done_Face(face); }
+			FTFaceWrapper() : face(nullptr) {}
+			~FTFaceWrapper() {
+				if (face)
+					FT_Done_Face(face);
+			}
 			operator FT_Face() const { return face; }
 		};
 
@@ -72,19 +75,24 @@ namespace spades {
 		FTFontSet::~FTFontSet() { SPADES_MARK_FUNCTION(); }
 
 		void FTFontSet::AddFace(const std::string& fileName) {
-			FT_Face face;
-			std::string data = FileManager::ReadAllBytes(fileName.c_str());
+			AddFaceBytes(FileManager::ReadAllBytes(fileName.c_str()), fileName);
+		}
 
-			auto ret = FT_New_Memory_Face(GetFreeType(),
-				reinterpret_cast<const FT_Byte*>(data.data()),
-				static_cast<FT_Long>(data.size()), 0, &face);
-
-			if (ret)
-				SPRaise("Failed to load font %s: FreeType error %d", fileName.c_str(), ret);
-
-			auto wr = stmp::make_unique<FTFaceWrapper>(face);
+		void FTFontSet::AddFaceBytes(std::string data, const std::string& name) {
+			auto wr = stmp::make_unique<FTFaceWrapper>();
 			wr->buffer = std::move(data);
+			const auto ret =
+			  FT_New_Memory_Face(GetFreeType(), reinterpret_cast<const FT_Byte*>(wr->buffer.data()),
+			                     static_cast<FT_Long>(wr->buffer.size()), 0, &wr->face);
+			if (ret)
+				SPRaise("Failed to load font %s: FreeType error %d", name.c_str(), ret);
 			faces.emplace_back(std::move(wr));
+		}
+
+		void FTFontSet::SwapFaces(FTFontSet& other) noexcept {
+			faces.swap(other.faces);
+			++revision;
+			++other.revision;
 		}
 
 		struct BinPlaceResult {
@@ -202,6 +210,7 @@ namespace spades {
 
 			SPAssert(renderer);
 			SPAssert(fontSet);
+			fontSetRevision = fontSet->revision;
 
 			rendererIsLowQuality = renderer->IsRendererSW();
 
@@ -210,6 +219,19 @@ namespace spades {
 		}
 
 		FTFont::~FTFont() { SPADES_MARK_FUNCTION(); }
+
+		void FTFont::UpdateFontSet() {
+			if (fontSetRevision == fontSet->revision)
+				return;
+			// Glyphs contain FT_Face pointers and atlas references. Discard both
+			// before measuring OR drawing from a newly published font set.
+			glyphMap.clear();
+			glyphs.clear();
+			sizes.clear();
+			bins.clear();
+			density = 0.0F;
+			fontSetRevision = fontSet->revision;
+		}
 
 		namespace {
 			// A density this far from the last one is a display of its own.
@@ -355,6 +377,7 @@ namespace spades {
 
 		Vector2 FTFont::Measure(const std::string& str) {
 			SPADES_MARK_FUNCTION();
+			UpdateFontSet();
 
 			float maxWidth = 0.0F;
 			float x = 0.0F;
@@ -560,6 +583,7 @@ namespace spades {
 		template <class ImageOf>
 		void FTFont::DrawGlyphs(const std::string& str, Vector2 offset, float scale, Vector4 color,
 		                        ImageOf imageOf) {
+			UpdateFontSet();
 			UpdateDensity();
 			const int size = RasterSize(scale);
 			// 2D units per pixel of the glyphs: a display pixel exactly, unless

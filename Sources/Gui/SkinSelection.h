@@ -27,9 +27,14 @@
 
 namespace spades {
 	namespace gui {
-		// Deliberately only the tools for which weapon mods are supported.
-		enum class SkinType : std::size_t { Spade, Grenade, Rifle, SMG, Shotgun, Count };
+		// Player/Intel/Tent remain unsupported. The last two entries are global
+		// mod categories, independent of each of the five weapon choices.
+		enum class SkinType : std::size_t { Spade, Grenade, Rifle, SMG, Shotgun, Font, SFX, Count };
+		constexpr std::size_t kWeaponSkinTypeCount = static_cast<std::size_t>(SkinType::Font);
 		constexpr std::size_t kSkinTypeCount = static_cast<std::size_t>(SkinType::Count);
+		constexpr bool IsWeaponSkin(SkinType type) {
+			return static_cast<std::size_t>(type) < kWeaponSkinTypeCount;
+		}
 		using EquippedSkins = std::array<std::string, kSkinTypeCount>;
 
 		struct SkinMod {

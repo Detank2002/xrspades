@@ -42,8 +42,8 @@ namespace spades {
 
 		/**
 		 * The enabled collection's active resources, mounted over the base paks.
-		 * Each weapon contributes only its equipped skin; other mods keep their
-		 * normal last-enabled-wins order. A --try-mod run mounts none of them.
+		 * Each weapon, Font and SFX contributes only its selected mod; other
+		 * categories keep their normal order. A --try-mod run mounts none of them.
 		 */
 		class ModOverlay {
 		public:

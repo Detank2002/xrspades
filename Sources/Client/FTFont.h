@@ -18,6 +18,9 @@
 
  */
 
+#pragma once
+
+#include <cstdint>
 #include <list>
 #include <memory>
 #include <unordered_map>
@@ -47,6 +50,7 @@ namespace spades {
 		class FTFontSet {
 			friend class FTFont;
 			std::list<std::unique_ptr<FTFaceWrapper>> faces;
+			std::uint64_t revision = 0;
 
 		public:
 			FTFontSet();
@@ -55,6 +59,11 @@ namespace spades {
 			~FTFontSet();
 
 			void AddFace(const std::string &fileName);
+			// Owns the bytes; useful for previews which must not mount a candidate.
+			void AddFaceBytes(std::string data, const std::string& name);
+			// Stable set identity: existing FTFonts invalidate glyphs before using
+			// any FT_Face from the new revision. Must run between frames.
+			void SwapFaces(FTFontSet& other) noexcept;
 		};
 
 		/**
@@ -120,6 +129,8 @@ namespace spades {
 			bool rendererIsLowQuality;
 
 			std::shared_ptr<FTFontSet> fontSet;
+			std::uint64_t fontSetRevision = 0;
+			void UpdateFontSet();
 
 			struct Bin;
 			std::list<Bin> bins;

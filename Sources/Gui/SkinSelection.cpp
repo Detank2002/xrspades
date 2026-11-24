@@ -25,10 +25,13 @@
 namespace spades {
 	namespace gui {
 		namespace {
-			const char* const kKeys[] = {"spade", "grenade", "rifle", "smg", "shotgun"};
+			const char* const kKeys[] = {"spade",   "grenade", "rifle", "smg",
+			                             "shotgun", "font",    "sfx"};
 			const char* const kDirectories[] = {"Models/Weapons/Spade/", "Models/Weapons/Grenade/",
 			                                    "Models/Weapons/Rifle/", "Models/Weapons/SMG/",
 			                                    "Models/Weapons/Shotgun/"};
+			const char* const kKillfeedIcons[] = {"e-melee", "f-grenade", "a-rifle", "b-smg",
+			                                      "c-shotgun"};
 			const char* const kModels[] = {
 			  "Models/Weapons/Spade/Spade.kv6", "Models/Weapons/Grenade/Grenade.kv6",
 			  "Models/Weapons/Rifle/Weapon.kv6", "Models/Weapons/SMG/Weapon.kv6",
@@ -50,15 +53,15 @@ namespace spades {
 			return kKeys[static_cast<std::size_t>(type)];
 		}
 		const char* SkinModelDirectory(SkinType type) {
-			return kDirectories[static_cast<std::size_t>(type)];
+			return IsWeaponSkin(type) ? kDirectories[static_cast<std::size_t>(type)] : nullptr;
 		}
 		const char* SkinPreviewPath(SkinType type) {
-			return kModels[static_cast<std::size_t>(type)];
+			return IsWeaponSkin(type) ? kModels[static_cast<std::size_t>(type)] : nullptr;
 		}
 
 		std::optional<SkinType> SkinTypeForPath(const std::string& path) {
 			const std::string p = Normalize(path);
-			for (std::size_t i = 0; i < kSkinTypeCount; ++i) {
+			for (std::size_t i = 0; i < kWeaponSkinTypeCount; ++i) {
 				const std::string key = kKeys[i];
 				for (const char* root : {"models/weapons/", "scripts/skin/", "sounds/weapons/"}) {
 					const std::string prefix = std::string(root) + key + "/";
@@ -66,7 +69,9 @@ namespace spades {
 						return static_cast<SkinType>(i);
 				}
 				for (const std::string& icon :
-				     {"gfx/hotbar/" + key + ".png", "gfx/killfeed/a-" + key + ".png"}) {
+				     {"gfx/hotbar/" + key + ".png",
+				      std::string("gfx/killfeed/") + kKillfeedIcons[i] + ".png",
+				      "gfx/killfeed/a-" + key + ".png"}) {
 					if (p == icon || p == icon + ".weak")
 						return static_cast<SkinType>(i);
 				}
@@ -75,6 +80,12 @@ namespace spades {
 			if (p == "gfx/scopearc.png" || p == "gfx/scopering.png" ||
 			    p == "gfx/scopearc.png.weak" || p == "gfx/scopering.png.weak")
 				return SkinType::Rifle;
+			if (p.compare(0, 6, "fonts/") == 0 || p.compare(0, 10, "gfx/fonts/") == 0)
+				return SkinType::Font;
+			// Weapon sounds stay with their weapon; SFX controls shared feedback,
+			// footsteps, impacts, etc. without overriding a weapon skin's sounds.
+			if (p.compare(0, 7, "sounds/") == 0)
+				return SkinType::SFX;
 			return std::nullopt;
 		}
 
@@ -152,8 +163,8 @@ namespace spades {
 				return false;
 			if (auto type = SkinTypeForPath(path))
 				return equipped[static_cast<std::size_t>(*type)] == mod.name;
-			// Dependencies outside a weapon directory are kept only for mods
-			// actually in use. Non-weapon mods retain their normal apply order.
+			// Common dependencies are kept only for mods actually in use.
+			// Unsupported categories retain their normal main-menu apply order.
 			return !mod.HasSkins() ||
 			       std::find(equipped.begin(), equipped.end(), mod.name) != equipped.end();
 		}

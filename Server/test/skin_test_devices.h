@@ -68,7 +68,11 @@ public:
 class TestAudio : public IAudioDevice {
 public:
 	int reloads = 0;
-	void ReloadResources(const ResourceChanges&) override { ++reloads; }
+	ResourceChanges lastChanges;
+	void ReloadResources(const ResourceChanges& changes) override {
+		++reloads;
+		lastChanges = changes;
+	}
 	IAudioChunk* RegisterSound(const char*) override { return nullptr; }
 	void SetGameMap(GameMap*) override {}
 	void Play(IAudioChunk*, const Vector3&, const AudioParam&) override {}

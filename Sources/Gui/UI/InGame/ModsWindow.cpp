@@ -27,9 +27,12 @@
 #include <vector>
 
 #include <Client/ClientUI.h>
+#include <Client/FTFont.h>
 #include <Client/Fonts.h>
 #include <Client/IFont.h>
+#include <Client/IImage.h>
 #include <Client/IRenderer.h>
+#include <Core/Bitmap.h>
 #include <Core/Debug.h>
 #include <Core/Strings.h>
 #include <Core/VoxelModel.h>
@@ -57,7 +60,7 @@ namespace spades {
 		using gui::ui::ButtonBase;
 		using gui::ui::ElideText;
 		using gui::ui::Label;
-		using gui::ui::ListView;
+		using gui::ui::ListViewBase;
 		using gui::ui::ListViewModel;
 		using gui::ui::SetColorNP;
 		using gui::ui::UIElement;
@@ -65,7 +68,6 @@ namespace spades {
 		using gui::ui::VoxelModelPreview;
 
 		namespace {
-			const Vector4 kAccent = MakeVector4(1.0F, 0.84F, 0.28F, 1.0F);
 			constexpr float kCardGap = 8.0F;
 
 			std::string TypeCaption(SkinType type) {
@@ -75,6 +77,8 @@ namespace spades {
 					case SkinType::Rifle: return _Tr("Client", "Rifle");
 					case SkinType::SMG: return _Tr("Client", "SMG");
 					case SkinType::Shotgun: return _Tr("Client", "Shotgun");
+					case SkinType::Font: return _Tr("Client", "Font");
+					case SkinType::SFX: return _Tr("Client", "SFX");
 					default: return {};
 				}
 			}
@@ -86,32 +90,119 @@ namespace spades {
 				return name.empty() ? modName : name;
 			}
 
-			class CategoryButton : public Button {
-			public:
-				CategoryButton(UIManager* manager) : Button(manager) {}
-				void Render() override {
-					Button::Render();
-					if (toggled) {
-						auto& r = GetManager().GetRenderer();
-						const auto p = GetScreenPosition();
-						SetColorNP(r, kAccent);
-						r.DrawImage(nullptr, AABB2(p.x + 1, p.y + 1, 3, size.y - 2));
-					}
-				}
-			};
-
-			/** One independently loaded model; never use RegisterModel's shared winner. */
+			/** Independently loaded previews, never RegisterModel's mounted winner. */
 			class SkinCard : public ButtonBase {
 				Handle<SkinCatalog> catalog;
 				SkinType type;
 				std::string modName;
 				std::unique_ptr<VoxelModelPreview> preview;
+				Handle<IFont> fontPreview;
+				Handle<IImage> image;
 				bool loaded = false;
+				float animationStart = 0;
+				float initialYaw;
+				int renderedFrame = -1;
+
+				void Load() {
+					loaded = true;
+					animationStart = GetManager().time;
+					try {
+						if (gui::IsWeaponSkin(type)) {
+							auto voxels = catalog->LoadPreview(type, modName);
+							preview = std::make_unique<VoxelModelPreview>(*voxels);
+						} else if (type == SkinType::Font) {
+							if (auto bytes = catalog->LoadFontPreview(modName)) {
+								auto set = std::make_shared<ngclient::FTFontSet>();
+								set->AddFaceBytes(std::move(*bytes), modName);
+								fontPreview =
+								  Handle<ngclient::FTFont>::New(&GetManager().GetRenderer(),
+								                                std::move(set), 40.0F, 40.0F)
+								    .Cast<IFont>();
+							}
+						}
+					} catch (const std::exception& ex) {
+						// A damaged/complex preview cannot prevent equipping a usable mod.
+						SPLog("Mod preview unavailable (%s): %s", modName.c_str(), ex.what());
+					}
+				}
+
+				void DrawModel(IRenderer& r, const AABB2& bounds) {
+					if (!preview || preview->IsEmpty() || bounds.GetWidth() <= 0 ||
+					    bounds.GetHeight() <= 0)
+						return;
+					const float elapsed = std::max(0.0F, GetManager().time - animationStart);
+					const int frame = int(elapsed * 24.0F);
+					const float density =
+					  std::min({std::max(1.0F, r.ScreenPixelRatio()), 2.0F,
+					            512.0F / bounds.GetWidth(), 512.0F / bounds.GetHeight()});
+					const int w = std::max(1, int(std::floor(bounds.GetWidth() * density)));
+					const int h = std::max(1, int(std::floor(bounds.GetHeight() * density)));
+					try {
+						const bool resized =
+						  !image || int(image->GetWidth()) != w || int(image->GetHeight()) != h;
+						if (resized || renderedFrame != frame) {
+							const float yaw =
+							  std::fmod(initialYaw + float(frame) * (0.4F / 24), kTwoPi);
+							auto pixels = preview->Rasterize(w, h, yaw);
+							auto bitmap = Handle<Bitmap>::New(pixels.data(), w, h);
+							if (resized)
+								image = r.CreateImage(*bitmap);
+							else
+								image->Update(*bitmap, 0, 0);
+							renderedFrame = frame;
+						}
+						if (image) {
+							SetColorNP(r, MakeVector4(1, 1, 1, 1));
+							r.DrawImage(image, bounds);
+						}
+					} catch (const std::exception& ex) {
+						SPLog("Mod thumbnail unavailable (%s): %s", modName.c_str(), ex.what());
+						preview.reset();
+						image = {};
+					}
+				}
+
+				void DrawFont(const AABB2& bounds) {
+					auto* font = fontPreview ? fontPreview.GetPointerOrNull() : GetFont();
+					if (!font || bounds.GetWidth() <= 12 || bounds.GetHeight() <= 12)
+						return;
+					const auto measure = font->Measure("Aa");
+					const float scale =
+					  std::min({fontPreview ? 1.0F : 2.0F,
+					            (bounds.GetWidth() - 12) / std::max(1.0F, measure.x),
+					            (bounds.GetHeight() - 12) / std::max(1.0F, measure.y)});
+					font->DrawShadow("Aa", (bounds.min + bounds.max - measure * scale) * 0.5F,
+					                 scale, MakeVector4(1, 1, 1, 1), MakeVector4(0, 0, 0, 0.4F));
+				}
+
+				void DrawSound(IRenderer& r, const AABB2& bounds) {
+					const auto center = (bounds.min + bounds.max) * 0.5F;
+					const float scale =
+					  std::min({1.0F, bounds.GetWidth() / 80, bounds.GetHeight() / 60});
+					auto at = [&](float x, float y) { return center + MakeVector2(x, y) * scale; };
+					SetColorNP(r, MakeVector4(1, 1, 1, 0.9F));
+					r.DrawImage(nullptr, AABB2(at(-25, -8), at(-15, 8)));
+					r.DrawFilledTriangle(at(-17, -8), at(-5, -18), at(-5, 18));
+					r.DrawFilledTriangle(at(-17, -8), at(-5, 18), at(-17, 8));
+					for (float radius : {15.0F, 25.0F})
+						for (int segment = 0; segment < 12; ++segment) {
+							const float a = -0.8F + float(segment) * (1.6F / 12);
+							const float b = a + 1.6F / 12;
+							r.DrawLine(at(-4 + radius * std::cos(a), radius * std::sin(a)),
+							           at(-4 + radius * std::cos(b), radius * std::sin(b)),
+							           2 * scale);
+						}
+				}
 
 			public:
 				SkinCard(UIManager* manager, SkinCatalog* catalog, SkinType type,
-				         const std::string& modName, const std::string& name)
-				    : ButtonBase(manager), catalog(catalog), type(type), modName(modName) {
+				         const std::string& modName, const std::string& name, int index)
+				    : ButtonBase(manager),
+				      catalog(catalog),
+				      type(type),
+				      modName(modName),
+				      initialYaw((type == SkinType::Spade ? 0.35F : 1.15F) +
+					             float(index % 7) * 0.1F) {
 					caption = name;
 				}
 
@@ -119,53 +210,35 @@ namespace spades {
 					auto& r = GetManager().GetRenderer();
 					const auto p = GetScreenPosition();
 					const bool selected = ModOverlay::GetEquippedSkin(type) == modName;
-					SetColorNP(r, selected
-					                ? MakeVector4(0.13F, 0.12F, 0.075F, 1)
-									: MakeVector4(hover ? 0.10F : 0.055F, hover ? 0.10F : 0.055F,
-									              hover ? 0.10F : 0.055F, 1));
-					r.DrawImage(nullptr, AABB2(p.x, p.y, size.x, size.y));
-					SetColorNP(r, selected ? kAccent : MakeVector4(1, 1, 1, hover ? 0.65F : 0.22F));
-					r.DrawOutlinedRect(p.x, p.y, p.x + size.x, p.y + size.y, selected ? 2 : 1);
+					// The pause menu's Button palette, including its selected state.
+					const auto color = selected || (pressed && hover)
+					                     ? MakeVector4(0.7F, 0.7F, 0.7F, 0.9F)
+					                   : hover ? MakeVector4(0.4F, 0.4F, 0.4F, 0.7F)
+					                           : MakeVector4(0.2F, 0.2F, 0.2F, 0.5F);
+					SetColorNP(r, color);
+					r.DrawFilledRect(p.x + 1, p.y + 1, p.x + size.x - 1, p.y + size.y - 1);
+					SetColorNP(r, MakeVector4(0, 0, 0, color.w));
+					r.DrawOutlinedRect(p.x + 1, p.y + 1, p.x + size.x - 1, p.y + size.y - 1);
 
-					// Only visible rows load/mesh models. The row model retains them
-					// while scrolling, but offscreen cards do no rendering work.
-					if (!loaded) {
-						loaded = true;
-						try {
-							auto voxels = catalog->LoadPreview(type, modName);
-							preview.reset(new VoxelModelPreview(*voxels));
-						} catch (const std::exception& ex) {
-							SPLog("Skin preview unavailable (%s): %s", modName.c_str(), ex.what());
-						}
-					}
-					if (preview && !preview->IsEmpty()) {
-						const float yaw = std::fmod(GetManager().time * 0.5F + 0.8F, kTwoPi);
-						preview->Render(r, AABB2(p.x + 10, p.y + 18, size.x - 20, size.y - 54),
-						                yaw);
-					} else if (auto* font = GetFont()) {
-						const auto text = ElideText(*font, _Tr("Client", "Preview unavailable"),
-						                            size.x - 16, 0.75F);
-						const auto measure = font->Measure(text) * 0.75F;
-						font->Draw(text,
-						           p + MakeVector2((size.x - measure.x) * 0.5F,
-						                           (size.y - 28 - measure.y) * 0.5F),
-						           0.75F, MakeVector4(0.55F, 0.55F, 0.55F, 1));
-					}
+					// Only visible rows load/rasterize anything. One cached image per
+					// card, at 24 Hz, rather than thousands of UI draws every frame.
+					if (!loaded)
+						Load();
+					const AABB2 area(p.x + 10, p.y + 8, size.x - 20, size.y - 44);
+					if (gui::IsWeaponSkin(type))
+						DrawModel(r, area);
+					else if (type == SkinType::Font)
+						DrawFont(area);
+					else if (type == SkinType::SFX)
+						DrawSound(r, area);
 
-					SetColorNP(r, MakeVector4(0, 0, 0, 0.65F));
-					r.DrawImage(nullptr, AABB2(p.x + 2, p.y + size.y - 30, size.x - 4, 28));
 					if (auto* font = GetFont()) {
 						const auto text = ElideText(*font, caption, size.x - 16);
 						const auto measure = font->Measure(text);
-						font->Draw(text,
-						           p + MakeVector2((size.x - measure.x) * 0.5F,
-						                           size.y - 30 + (28 - measure.y) * 0.5F),
-						           1, selected ? kAccent : MakeVector4(1, 1, 1, 1));
-						if (selected) {
-							const auto badge =
-							  ElideText(*font, _Tr("Client", "Equipped"), size.x - 16, 0.65F);
-							font->Draw(badge, p + MakeVector2(8, 4), 0.65F, kAccent);
-						}
+						font->DrawShadow(text,
+						                 p + MakeVector2((size.x - measure.x) * 0.5F,
+						                                 size.y - 30 + (24 - measure.y) * 0.5F),
+						                 1, MakeVector4(1, 1, 1, 1), MakeVector4(0, 0, 0, 0.4F));
 					}
 				}
 			};
@@ -177,12 +250,10 @@ namespace spades {
 				SkinGridRow(UIManager* manager, int columns)
 				    : UIElement(manager), columns(columns) {}
 				void OnResized() override {
-					const float w = (size.x - kCardGap) / float(columns);
+					const float w = size.x / float(columns);
 					int i = 0;
-					for (const auto& card : GetChildren()) {
-						card->SetBounds(
-						  AABB2(kCardGap + float(i++) * w, 4, w - kCardGap, size.y - kCardGap));
-					}
+					for (const auto& card : GetChildren())
+						card->SetBounds(AABB2(float(i++) * w, 0, w - kCardGap, size.y - kCardGap));
 				}
 			};
 
@@ -191,7 +262,7 @@ namespace spades {
 				Handle<SkinCatalog> catalog;
 				SkinType type;
 				int columns;
-				std::vector<std::pair<std::string, std::string>> entries; // mod name, caption
+				std::vector<std::pair<std::string, std::string>> entries;
 				std::vector<Handle<UIElement>> rows;
 				std::function<void(const std::string&)> select;
 
@@ -215,7 +286,13 @@ namespace spades {
 				}
 
 				int GetNumRows() override { return static_cast<int>(rows.size()); }
-				int GetNumSkins() const { return static_cast<int>(entries.size()) - 1; }
+				int GetSelectedRow() const {
+					const auto selected = ModOverlay::GetEquippedSkin(type);
+					for (std::size_t i = 0; i < entries.size(); ++i)
+						if (entries[i].first == selected)
+							return int(i) / columns;
+					return 0;
+				}
 
 				Handle<UIElement> CreateElement(int row) override {
 					if (!rows[row]) {
@@ -225,7 +302,7 @@ namespace spades {
 						for (int i = row * columns; i < end; ++i) {
 							const auto& entry = entries[i];
 							auto card = Handle<SkinCard>::New(manager, catalog.GetPointerOrNull(),
-							                                  type, entry.first, entry.second);
+							                                  type, entry.first, entry.second, i);
 							card->activated = [this, name = entry.first](UIElement&) {
 								select(name);
 							};
@@ -251,79 +328,46 @@ namespace spades {
 			const float h = std::min(manager->screenHeight - 48.0F, 640.0F);
 			contents =
 			  AABB2((manager->screenWidth - w) * 0.5F, (manager->screenHeight - h) * 0.5F, w, h);
-			sidebar = AABB2(contents.min.x + 12, contents.min.y + 64,
-			                Clamp(w * 0.18F, 96.0F, 164.0F), h - 132);
-			const float gridX = sidebar.max.x + 10;
+			const AABB2 sidebar(contents.min.x + 12, contents.min.y + 48,
+			                    Clamp(w * 0.18F, 96.0F, 164.0F), h - 108);
+			const float gridX = sidebar.max.x + 12;
 
 			{
 				auto title = Handle<Label>::New(manager);
 				title->text = _Tr("Client", "Mods");
 				title->SetFont(&ui->GetFontManager().GetHeadingFont());
-				title->SetBounds(
-				  AABB2(contents.min.x + 16, contents.min.y + 8, sidebar.GetWidth(), 28));
+				title->shadowColor = MakeVector4(0, 0, 0, 0.4F);
+				title->SetBounds(AABB2(contents.min.x + 16, contents.min.y + 12, w - 32, 28));
 				AddChild(title.GetPointerOrNull());
 			}
-			{
-				auto label = Handle<Label>::New(manager);
-				categoryTitle = label.GetPointerOrNull();
-				label->textColor = kAccent;
-				label->SetBounds(
-				  AABB2(gridX + 4, contents.min.y + 12, contents.max.x - gridX - 16, 24));
-				AddChild(label.GetPointerOrNull());
-			}
-			{
-				auto label = Handle<Label>::New(manager);
-				label->SetFont(&ui->GetFontManager().GetSmallGuiFont());
-				label->text =
-				  ElideText(*label->GetFont(),
-				            _Tr("Client", "Choose a skin to equip it immediately."), w - 32);
-				label->textColor = MakeVector4(0.65F, 0.65F, 0.65F, 1);
-				label->SetBounds(AABB2(contents.min.x + 16, contents.min.y + 37, w - 32, 20));
-				AddChild(label.GetPointerOrNull());
-			}
-			const float categoryStep =
-			  std::min(38.0F, (sidebar.GetHeight() - 12) / float(gui::kSkinTypeCount));
+			const float step =
+			  std::min(32.0F, (sidebar.GetHeight() - 8) / float(gui::kSkinTypeCount));
 			for (std::size_t i = 0; i < gui::kSkinTypeCount; ++i) {
 				const auto type = static_cast<SkinType>(i);
-				auto button = Handle<CategoryButton>::New(manager);
+				auto button = Handle<Button>::New(manager);
 				button->caption = TypeCaption(type);
-				button->SetBounds(AABB2(sidebar.min.x + 5,
-				                        sidebar.min.y + 6 + float(i) * categoryStep,
-				                        sidebar.GetWidth() - 10, categoryStep - 6));
+				const float gap = i >= gui::kWeaponSkinTypeCount ? 8.0F : 0.0F;
+				button->SetBounds(AABB2(sidebar.min.x, sidebar.min.y + float(i) * step + gap,
+				                        sidebar.GetWidth(), step - 2));
 				button->activated = [this, type](UIElement&) { ShowCategory(type); };
 				categoryButtons[i] = button.GetPointerOrNull();
 				AddChild(button.GetPointerOrNull());
 			}
 			{
-				auto view = Handle<ListView>::New(manager);
+				auto view = Handle<ListViewBase>::New(manager);
 				grid = view.GetPointerOrNull();
 				grid->SetBounds(
 				  AABB2(gridX, sidebar.min.y, contents.max.x - gridX - 12, sidebar.GetHeight()));
-				grid->rowHeight = std::min(164.0F, std::floor(sidebar.GetHeight() * 0.5F));
-				columns = Clamp(static_cast<int>(grid->GetItemWidth() / 178.0F), 1, 3);
+				const int visibleRows = Clamp(int(sidebar.GetHeight() / 150.0F), 1, 3);
+				grid->rowHeight = std::floor(sidebar.GetHeight() / float(visibleRows));
+				columns = Clamp(static_cast<int>(grid->GetItemWidth() / 190.0F), 1, 3);
 				AddChild(grid);
-			}
-			{
-				auto label = Handle<Label>::New(manager);
-				statusLabel = label.GetPointerOrNull();
-				label->SetBounds(AABB2(contents.min.x + 16, contents.max.y - 57, w - 164, 24));
-				AddChild(statusLabel);
-			}
-			{
-				auto label = Handle<Label>::New(manager);
-				label->SetFont(&ui->GetFontManager().GetSmallGuiFont());
-				label->text = ElideText(
-				  *label->GetFont(),
-				  _Tr("Client", "Enable more skins in the main menu's Mods tab."), w - 164);
-				label->textColor = MakeVector4(0.55F, 0.55F, 0.55F, 1);
-				label->SetBounds(AABB2(contents.min.x + 16, contents.max.y - 31, w - 164, 22));
-				AddChild(label.GetPointerOrNull());
 			}
 			{
 				auto button = Handle<Button>::New(manager);
 				button->caption = _Tr("Client", "Back");
 				button->hotKeyText = _Tr("Client", "[Esc]");
-				button->SetBounds(AABB2(contents.max.x - 132, contents.max.y - 48, 116, 32));
+				button->SetBounds(AABB2(contents.max.x - 132, contents.max.y - 44, 116, 30));
 				button->activated = [this](UIElement&) { Close(); };
 				AddChild(button.GetPointerOrNull());
 			}
@@ -335,22 +379,11 @@ namespace spades {
 		void ModsWindow::ShowCategory(SkinType type) {
 			for (std::size_t i = 0; i < gui::kSkinTypeCount; ++i)
 				categoryButtons[i]->toggled = i == static_cast<std::size_t>(type);
-			categoryTitle->text = _Tr("Client", "{0} skins", TypeCaption(type));
 			auto model = Handle<SkinGridModel>::New(
 			  &GetManager(), catalog.GetPointerOrNull(), *helper, type, columns,
 			  [this, type](const std::string& name) { OnSkinSelected(type, name); });
 			grid->SetModel(model.GetPointerOrNull());
-			grid->ScrollToTop();
-			if (model->GetNumSkins() == 0)
-				SetStatus(_Tr("Client", "No enabled skins for this weapon. Default is available."));
-			else
-				SetStatus(_Tr("Client", "Equipped: {0}",
-				              DisplayName(*helper, ModOverlay::GetEquippedSkin(type))));
-		}
-
-		void ModsWindow::SetStatus(const std::string& text, bool warning) {
-			statusLabel->text = ElideText(*statusLabel->GetFont(), text, statusLabel->size.x);
-			statusLabel->textColor = warning ? kAccent : MakeVector4(0.8F, 0.8F, 0.8F, 1);
+			grid->ScrollToRow(model->GetSelectedRow());
 		}
 
 		void ModsWindow::OnSkinSelected(SkinType type, const std::string& modName) {
@@ -363,16 +396,14 @@ namespace spades {
 				result = ModApplyResult::Refused;
 				error = ex.what();
 			}
-			if (result == ModApplyResult::Applied)
-				SetStatus(_Tr("Client", "Equipped: {0}", DisplayName(*helper, modName)),
-				          !error.empty());
-			else
-				SetStatus(_Tr("Client", "Skin not applied. Your previous skin is still equipped."),
-				          true);
+			// No success footer or second Apply step. The card's highlight reads
+			// the committed choice, so a refused change never gets a false tick.
+			if (result != ModApplyResult::Applied && error.empty())
+				error = _Tr("Client", "Your previous selection is still active.");
 			if (!error.empty()) {
 				const auto title = result == ModApplyResult::Applied
-				                     ? _Tr("Client", "Skin equipped.")
-				                     : _Tr("Client", "Skin not applied.");
+				                     ? _Tr("Client", "Mod selected.")
+				                     : _Tr("Client", "Mod not applied.");
 				auto alert =
 				  Handle<gui::AlertScreen>::New(this, title + "\n\n" + error, 220.0F, true);
 				alert->Run();
@@ -380,8 +411,7 @@ namespace spades {
 		}
 
 		void ModsWindow::Run() {
-			// Be the active screen, not an untracked sibling of the pause menu.
-			// ClientUI can then close/rebuild it on resize or disconnection too.
+			// ClientUI can close/rebuild this screen on resize/disconnection too.
 			ui->SetActiveUI(this);
 		}
 
@@ -401,13 +431,11 @@ namespace spades {
 
 		void ModsWindow::Render() {
 			auto& r = GetManager().GetRenderer();
-			SetColorNP(r, MakeVector4(0, 0, 0, 0.5F));
+			// Identical overlay/panel colors to ClientMenu, not opaque custom chrome.
+			SetColorNP(r, MakeVector4(0, 0, 0, 0.7F));
 			r.DrawImage(nullptr, GetScreenBounds());
-			SetColorNP(r, MakeVector4(0.035F, 0.035F, 0.035F, 0.98F));
+			SetColorNP(r, MakeVector4(0, 0, 0, 0.5F));
 			r.DrawImage(nullptr, contents);
-			SetColorNP(r, MakeVector4(1, 1, 1, 0.16F));
-			r.DrawOutlinedRect(contents.min.x, contents.min.y, contents.max.x, contents.max.y);
-			r.DrawOutlinedRect(sidebar.min.x, sidebar.min.y, sidebar.max.x, sidebar.max.y);
 			UIElement::Render();
 		}
 	} // namespace client

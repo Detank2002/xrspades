@@ -39,7 +39,8 @@ namespace spades {
 			std::map<std::string, std::vector<std::string>> files;
 
 			std::optional<std::string> ReadModFile(const std::string& modName,
-			                                       const std::string& path) const;
+			                                       const std::string& path,
+			                                       std::size_t maxBytes = 34 * 1024 * 1024) const;
 
 		public:
 			SkinCatalog(ModsScreenHelper& helper, const std::vector<std::string>& enabled);
@@ -52,6 +53,11 @@ namespace spades {
 			 * unmodified base model. Does not mount or execute any preview scripts.
 			 */
 			Handle<VoxelModel> LoadPreview(SkinType type, const std::string& modName) const;
+
+			// Optional TrueType/OpenType face for an independent Aa sample. An
+			// atlas-only language pack has no scalable face; the UI uses its GUI
+			// font for that sample instead. Empty name always reads the stock face.
+			std::optional<std::string> LoadFontPreview(const std::string& modName) const;
 		};
 	} // namespace gui
 } // namespace spades

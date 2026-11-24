@@ -1,9 +1,11 @@
 // Checks the actual voxel mesh/projection without a GPU or a game world.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <string>
 
 #include <Core/MemoryStream.h>
@@ -26,10 +28,7 @@ namespace {
 		for (int i = 0; i < 96; ++i) {
 			const auto quads = preview.Project(bounds, float(i) * kTwoPi / 96);
 			Check(!quads.empty(), "model stays visible throughout rotation");
-			float lastDepth = -1e30F;
 			for (const auto& q : quads) {
-				Check(q.depth >= lastDepth, "faces are sorted from back to front");
-				lastDepth = q.depth;
 				for (const auto& p : {q.origin, q.origin + q.axisU, q.origin + q.axisV,
 				                      q.origin + q.axisU + q.axisV})
 					Check(std::isfinite(p.x) && std::isfinite(p.y) && p.x >= bounds.min.x &&
@@ -83,9 +82,70 @@ int main() {
 			for (int z = 0; z < 32; ++z)
 				if ((x + y + z) % 2 == 0)
 					detailed->SetSolid(x, y, z, 0xFFFFFF);
-	VoxelModelPreview bounded(*detailed);
-	Check(!bounded.IsEmpty() && bounded.GetFaceCount() <= 20000,
-	      "custom model complexity is bounded");
+	bool complexRefused = false;
+	try {
+		VoxelModelPreview bounded(*detailed);
+	} catch (const std::exception&) {
+		complexRefused = true;
+	}
+	Check(complexRefused, "pathological surfaces are bounded without corrupting their geometry");
+
+	// Regression: the old stride=2 simplifier sampled HollowFill's pink
+	// interior sentinels and exposed them instead of the original surface.
+	auto shell = Handle<VoxelModel>::New(8, 104, 10);
+	for (int x = 0; x < 8; ++x)
+		for (int y = 0; y < 104; ++y)
+			for (int z = 0; z < 10; ++z)
+				if (x == 0 || x == 7 || y == 0 || y == 103 || z == 0 || z == 9)
+					shell->SetSolid(x, y, z, 0x777777);
+	shell->HollowFill();
+	VoxelModelPreview filled(*shell);
+	Check(filled.GetFaceCount() == 6, "coplanar equal-color faces merge without downsampling");
+	for (int angle = 0; angle < 24; ++angle) {
+		const auto pixels = filled.Rasterize(200, 100, float(angle) * kTwoPi / 24);
+		Check(std::any_of(pixels.begin(), pixels.end(), [](auto p) { return (p >> 24) != 0; }),
+		      "rasterized model is visible throughout its turn");
+		for (const auto p : pixels)
+			if (p >> 24)
+				Check((p & 255) == ((p >> 8) & 255) && (p & 255) == ((p >> 16) & 255),
+				      "interior filler colors never reach the preview");
+	}
+
+	auto layers = Handle<VoxelModel>::New(3, 3, 3);
+	for (int x = 0; x < 3; ++x)
+		for (int z = 0; z < 3; ++z) {
+			layers->SetSolid(x, 0, z, 0x0000FF);
+			layers->SetSolid(x, 2, z, 0xFF0000);
+		}
+	VoxelModelPreview overlap(*layers);
+	const auto front = overlap.Rasterize(80, 80, 0)[40 + 40 * 80];
+	const auto back = overlap.Rasterize(80, 80, kPi)[40 + 40 * 80];
+	Check((front & 255) > 0 && (front & 0xFFFF00) == 0 && (back & 0xFF0000) != 0 &&
+	        (back & 0x00FFFF) == 0,
+	      "per-pixel depth hides rear faces regardless of mesh order or viewing side");
+
+	const auto raster = single.Rasterize(80, 60, 0.8F);
+	Check(raster.size() == 80 * 60, "raster size matches the UI upload");
+	Check(std::any_of(raster.begin(), raster.end(),
+	                  [](auto p) { return (p >> 24) > 0 && (p >> 24) < 255; }),
+	      "silhouettes are antialiased on every backend");
+	for (const auto p : raster)
+		if (p >> 24)
+			Check((p & 255) > 0 && (p & 0xFFFF00) == 0,
+			      "RGBA upload has the same RGB order and no dark alpha fringe");
+	Check(single.Rasterize(80, 60, 0.8F) == raster, "rasterization is deterministic");
+	Check(single.Rasterize(80, 60, 1.4F) != raster, "thumbnails really rotate, not static icons");
+	Check(blank.Rasterize(8, 8, 0) == std::vector<std::uint32_t>(64, 0),
+	      "empty thumbnails are transparent");
+	Check(single.Project(AABB2(0, 0, 100, 100), std::numeric_limits<float>::quiet_NaN()).empty(),
+	      "non-finite rotation is safe");
+	bool oversizedRefused = false;
+	try {
+		single.Rasterize(8192, 8192, 0);
+	} catch (const std::exception&) {
+		oversizedRefused = true;
+	}
+	Check(oversizedRefused, "thumbnail allocations are bounded");
 
 #ifdef ZS_TEST_RESOURCE_DIR
 	for (const char* model :

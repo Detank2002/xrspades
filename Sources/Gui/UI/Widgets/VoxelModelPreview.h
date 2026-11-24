@@ -19,27 +19,29 @@
 
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include <Core/Math.h>
 
 namespace spades {
 	class VoxelModel;
-	namespace client {
-		class IRenderer;
-	}
+
 	namespace gui {
 		namespace ui {
 			/**
-			 * A lit, rotating voxel mesh in a 2D UI rectangle. Orthographic face
-			 * projection lets the regular 2D batch draw it on every backend (also
-			 * on the VR menu surface), without starting another world scene or
-			 * touching the game's camera, fog, depth buffer or model cache.
+			 * An exact, lit voxel surface for a rotating thumbnail. Coplanar faces
+			 * of the same color are merged, never downsampled: doing so exposed
+			 * HollowFill's pink interior voxels and erased thin weapon parts.
+			 *
+			 * Rasterize uses its own depth buffer and antialiasing. The UI uploads
+			 * the result as one ordinary image, on all backends and the VR surface,
+			 * without touching the world scene, camera, fog or shared model cache.
 			 */
 			class VoxelModelPreview {
 				struct Face {
-					Vector3 center;
-					Vector3 color;
+					Vector3 origin, axisU, axisV;
+					std::uint32_t color;
 					int direction;
 				};
 				std::vector<Face> faces;
@@ -49,14 +51,15 @@ namespace spades {
 				struct Quad {
 					Vector2 origin, axisU, axisV;
 					Vector4 color;
-					float depth;
+					float depth, depthU, depthV;
 				};
 
 				explicit VoxelModelPreview(const VoxelModel& model);
 				bool IsEmpty() const { return faces.empty(); }
 				std::size_t GetFaceCount() const { return faces.size(); }
 				std::vector<Quad> Project(const AABB2& bounds, float yaw) const;
-				void Render(client::IRenderer& renderer, const AABB2& bounds, float yaw) const;
+				/** Straight-alpha RGBA pixels, top to bottom. Max 512 x 512. */
+				std::vector<std::uint32_t> Rasterize(int width, int height, float yaw) const;
 			};
 		} // namespace ui
 	} // namespace gui

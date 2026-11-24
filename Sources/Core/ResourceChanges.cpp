@@ -72,8 +72,13 @@ namespace spades {
 		return false;
 	}
 
-	ResourceChanges::ReloadTime ResourceChanges::GetReloadTime() const {
+	ResourceChanges::ReloadTime ResourceChanges::GetReloadTime(FontReload fonts) const {
 		for (const std::string& path : paths) {
+			if (fonts == FontReload::Live &&
+			    (StartsWith(path, "fonts/") || StartsWith(path, "gfx/fonts/")) &&
+			    (EndsWith(path, ".ttf") || EndsWith(path, ".otf") || EndsWith(path, ".ttc") ||
+			     EndsWith(path, ".ospfont") || EndsWith(path, ".png") || EndsWith(path, ".tga")))
+				continue;
 			if (GetReloadTime(path) == ReloadTime::Restart)
 				return ReloadTime::Restart;
 		}
@@ -83,7 +88,7 @@ namespace spades {
 	ResourceChanges::ReloadTime ResourceChanges::GetReloadTime(const std::string& path) {
 		std::string p = Normalize(path);
 
-		// Fonts measure and lay out text once, so even their atlas images wait.
+		// The home screen keeps its existing font/layout restart behavior.
 		if (StartsWith(p, "gfx/fonts/") || StartsWith(p, "fonts/"))
 			return ReloadTime::Restart;
 

@@ -46,6 +46,61 @@ namespace spades {
 				       text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
 			}
 
+			std::vector<std::string> RegisteredModelPaths(const std::string& source) {
+				std::vector<std::string> result;
+				for (std::size_t i = 0; i < source.size() && result.size() < 32;) {
+					// Skip comments/strings, rather than mistaking an example or an
+					// unused registration in a comment for the displayed body.
+					if (source.compare(i, 2, "//") == 0) {
+						i = source.find('\n', i + 2);
+						if (i == std::string::npos)
+							break;
+						continue;
+					}
+					if (source.compare(i, 2, "/*") == 0) {
+						i = source.find("*/", i + 2);
+						if (i == std::string::npos)
+							break;
+						i += 2;
+						continue;
+					}
+					if (source[i] == '"' || source[i] == '\'') {
+						const char quote = source[i++];
+						while (i < source.size()) {
+							const char c = source[i++];
+							if (c == quote)
+								break;
+							if (c == '\\' && i < source.size())
+								++i;
+						}
+						continue;
+					}
+					if (source.compare(i, 13, "RegisterModel") != 0) {
+						++i;
+						continue;
+					}
+					i += 13;
+					auto space = [&] {
+						while (i < source.size() &&
+						       std::isspace(static_cast<unsigned char>(source[i])))
+							++i;
+					};
+					space();
+					if (i == source.size() || source[i++] != '(')
+						continue;
+					space();
+					if (i == source.size() || source[i++] != '"')
+						continue;
+					const auto end = source.find('"', i);
+					if (end == std::string::npos)
+						break;
+					if (end - i <= 512)
+						result.push_back(Lower(source.substr(i, end - i)));
+					i = end + 1;
+				}
+				return result;
+			}
+
 			Handle<VoxelModel> LoadPreviewBytes(const std::string& bytes) {
 				// Browsing a custom pak must not allocate an arbitrarily large model.
 				// Check the KV6 header before LoadKV6 allocates its block/offset arrays.
@@ -113,7 +168,8 @@ namespace spades {
 		}
 
 		std::optional<std::string> SkinCatalog::ReadModFile(const std::string& modName,
-		                                                    const std::string& path) const {
+		                                                    const std::string& path,
+		                                                    std::size_t maxBytes) const {
 			const auto& paths = GetPakPaths(modName);
 			// Like FileManager: real files beat .weak files, then the last pak wins.
 			for (const std::string& candidate : {path, path + ".weak"}) {
@@ -123,7 +179,6 @@ namespace spades {
 					if (fs.FileExists(candidate.c_str())) {
 						// Bound the decompressed payload too, before ZipFileSystem
 						// buffers it. Four million KV6 blocks plus offset tables.
-						constexpr std::size_t maxBytes = 34 * 1024 * 1024;
 						return fs.OpenForReading(candidate.c_str(), maxBytes)->ReadAllBytes();
 					}
 				}
@@ -133,23 +188,36 @@ namespace spades {
 
 		Handle<VoxelModel> SkinCatalog::LoadPreview(SkinType type,
 		                                            const std::string& modName) const {
+			if (!IsWeaponSkin(type))
+				SPRaise("This category has no voxel preview");
 			if (!modName.empty()) {
+				// Some skins leave a placeholder at Weapon.kv6 but register a
+				// differently named display body in ThirdPerson.as. Read that
+				// literal, without compiling/executing or mounting its scripts.
+				const std::string dir = Lower(SkinModelDirectory(type));
+				const std::string script =
+				  "Scripts/Skin/" + std::string(SkinTypeKey(type)) + "/ThirdPerson.as";
+				if (auto source = ReadModFile(modName, script, 512 * 1024)) {
+					for (const std::string& path : RegisteredModelPaths(*source))
+						if (path.compare(0, dir.size(), dir) == 0 && EndsWith(path, ".kv6"))
+							if (auto bytes = ReadModFile(modName, path))
+								return LoadPreviewBytes(*bytes);
+				}
 				if (auto bytes = ReadModFile(modName, SkinPreviewPath(type)))
 					return LoadPreviewBytes(*bytes);
 
-				// Some custom skins rename their main model. Prefer a body, never a
-				// loose magazine, sight or casing as the skin's only display model.
+				// For model-only packs, prefer a body, never a loose magazine,
+				// scope, casing, etc. as the skin's only display model.
 				auto it = files.find(modName);
 				if (it != files.end()) {
-					const std::string dir = Lower(SkinModelDirectory(type));
 					for (const std::string& file : it->second) {
 						if (file.compare(0, dir.size(), dir) != 0 ||
 						    (!EndsWith(file, ".kv6") && !EndsWith(file, ".kv6.weak")))
 							continue;
 						const std::string base = file.substr(dir.size());
 						bool part = false;
-						for (const char* fragment :
-						     {"magazine", "sight", "casing", "bolt", "pump", "shell"})
+						for (const char* fragment : {"magazine", "sight", "scope", "casing", "bolt",
+						                             "pump", "shell", "rail"})
 							part = part || base.find(fragment) != std::string::npos;
 						if (!part) {
 							if (auto bytes = ReadModFile(modName, file))
@@ -162,6 +230,25 @@ namespace spades {
 			// Default must not accidentally preview the currently equipped mod.
 			return LoadPreviewBytes(
 			  ModOverlay::OpenBaseResource(SkinPreviewPath(type))->ReadAllBytes());
+		}
+
+		std::optional<std::string> SkinCatalog::LoadFontPreview(const std::string& modName) const {
+			constexpr const char* path = "Gfx/Fonts/OpenSans.ttf";
+			if (modName.empty())
+				return ModOverlay::OpenBaseResource(path)->ReadAllBytes();
+			if (auto bytes = ReadModFile(modName, path))
+				return bytes;
+			const auto it = files.find(modName);
+			if (it != files.end())
+				for (std::string file : it->second) {
+					if (EndsWith(file, ".weak"))
+						file.resize(file.size() - 5);
+					if (SkinTypeForPath(file) == SkinType::Font &&
+					    (EndsWith(file, ".ttf") || EndsWith(file, ".otf") ||
+					     EndsWith(file, ".ttc")))
+						return ReadModFile(modName, file);
+				}
+			return std::nullopt;
 		}
 	} // namespace gui
 } // namespace spades

@@ -37,6 +37,7 @@
 #include "ModOverlay.h"
 #include "ModsScreenHelper.h"
 #include "SkinCatalog.h"
+#include <Client/Fonts.h>
 #include <Client/IAudioDevice.h>
 #include <Client/IRenderer.h>
 #include <Core/Debug.h>
@@ -443,6 +444,7 @@ namespace spades {
 			MountTransaction previousMount;
 			ResourceChanges changes;
 			bool scriptsReloaded = false;
+			bool fontsTouched = false;
 			bool resourcesTouched = false;
 			auto rollback = [&] {
 				previousMount.Restore();
@@ -452,6 +454,8 @@ namespace spades {
 					renderer.ReloadResources(changes);
 					audio.ReloadResources(changes);
 				}
+				if (fontsTouched)
+					client::FontManager::ReloadFonts();
 			};
 			try {
 				const bool complete = MountSet(enabled, selection);
@@ -461,7 +465,8 @@ namespace spades {
 					error = "Could not read the selected skin's pak files.";
 					return ModApplyResult::Refused;
 				}
-				if (changes.GetReloadTime() != ResourceChanges::ReloadTime::Live) {
+				if (changes.GetReloadTime(ResourceChanges::FontReload::Live) !=
+				    ResourceChanges::ReloadTime::Live) {
 					rollback();
 					error = "These resources need a restart. Apply pending mod changes from the "
 					        "main menu first.";
@@ -480,6 +485,10 @@ namespace spades {
 				resourcesTouched = true;
 				renderer.ReloadResources(changes);
 				audio.ReloadResources(changes);
+				if (changes.ContainsUnder("Fonts") || changes.ContainsUnder("Gfx/Fonts")) {
+					fontsTouched = true;
+					client::FontManager::ReloadFonts();
+				}
 			} catch (const std::exception& ex) {
 				error = ex.what();
 				try {
