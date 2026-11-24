@@ -20,13 +20,18 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 
+#include "SkinSelection.h"
+
 namespace spades {
+	class IStream;
+
 	namespace client {
 		class IAudioDevice;
 		class IRenderer;
-	}
+	} // namespace client
 	namespace gui {
 		/** What applying the enabled mods took. */
 		enum class ModApplyResult {
@@ -36,8 +41,9 @@ namespace spades {
 		};
 
 		/**
-		 * The enabled mods' paks, mounted over the base paks: the last enabled mod is
-		 * on top and wins conflicts. A --try-mod run mounts none of them.
+		 * The enabled collection's active resources, mounted over the base paks.
+		 * Each weapon contributes only its equipped skin; other mods keep their
+		 * normal last-enabled-wins order. A --try-mod run mounts none of them.
 		 */
 		class ModOverlay {
 		public:
@@ -53,6 +59,21 @@ namespace spades {
 			 */
 			static ModApplyResult Apply(client::IRenderer&, client::IAudioDevice&,
 			                            std::string& error);
+
+			/**
+			 * Equips one enabled skin (empty name = Default) immediately, and saves
+			 * it separately from EnabledMods.txt. Never edits the enabled collection
+			 * or drops broken mods. A failed/restart-only change keeps the previous
+			 * loadout, including its highlight. An Applied result with an error means
+			 * the skin is equipped but its preference could not be saved to disk.
+			 */
+			static ModApplyResult ApplySkin(SkinType, const std::string& modName,
+			                                client::IRenderer&, client::IAudioDevice&,
+			                                std::string& error);
+			static std::string GetEquippedSkin(SkinType);
+
+			/** Read a stock resource without temporarily changing the live overlay. */
+			static std::unique_ptr<IStream> OpenBaseResource(const char* path);
 		};
 	} // namespace gui
 } // namespace spades

@@ -1,5 +1,6 @@
 /*
  Copyright (c) 2026 ZeroSpades developers.
+ Copyright (c) 2026 XRSpades contributors
 
  This file is part of ZeroSpades, a fork of OpenSpades.
 
@@ -10,24 +11,27 @@
 
  ZeroSpades is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  GNU General Public License for more details.
 
  You should have received a copy of the GNU General Public License
- along with ZeroSpades.	 If not, see <http://www.gnu.org/licenses/>.
-
+ along with ZeroSpades. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
 
+#include <array>
 #include <string>
 
+#include <Gui/SkinSelection.h>
 #include <Gui/UI/Framework/UIElement.h>
 
 namespace spades {
 	namespace gui {
 		class ModsScreenHelper;
+		class SkinCatalog;
 		namespace ui {
+			class Button;
 			class Label;
 			class ListView;
 		} // namespace ui
@@ -36,30 +40,31 @@ namespace spades {
 		class ClientUI;
 
 		/**
-		 * The Mods page of the in-game escape menu: the main menu's mod list, and
-		 * Apply, which applies the change to the game in progress when it can.
-		 * Shown over its owner, which it disables meanwhile.
+		 * The Escape menu's skin selector. The main menu still manages which
+		 * mods are enabled; this page only equips one of those skins per weapon.
 		 */
 		class ModsWindow : public gui::ui::UIElement {
-			ClientUI* ui;                 // weak
-			gui::ui::UIElement* owner;    // weak
+			ClientUI* ui; // weak
+			Handle<gui::ui::UIElement> owner;
 			Handle<gui::ModsScreenHelper> helper;
-			gui::ui::ListView* list;      // weak
-			gui::ui::Label* statusLabel;  // weak
-			bool downloading = false;
+			Handle<gui::SkinCatalog> catalog;
+			gui::ui::ListView* grid; // weak; owned as children
+			gui::ui::Label* statusLabel;
+			gui::ui::Label* categoryTitle;
+			std::array<gui::ui::Button*, gui::kSkinTypeCount> categoryButtons{};
+			AABB2 contents;
+			AABB2 sidebar;
+			int columns;
 
-			void LoadModList();
-			void OnModToggle(const std::string& modName);
-			void OnApply(gui::ui::UIElement& sender);
-			void OnDisableAll(gui::ui::UIElement& sender);
-			void OnDownload(gui::ui::UIElement& sender);
-			void OnDownloadConfirmed(gui::ui::UIElement& sender);
-			void CheckDownload();
+			void ShowCategory(gui::SkinType type);
+			void OnSkinSelected(gui::SkinType type, const std::string& modName);
+			void SetStatus(const std::string& text, bool warning = false);
 
 		public:
 			gui::ui::EventHandler closed;
 
 			ModsWindow(gui::ui::UIElement* owner, ClientUI* ui);
+			~ModsWindow() override;
 			void Run();
 			void Close();
 			void HotKey(const std::string& key) override;

@@ -91,6 +91,9 @@ namespace spades {
 			// Replace the enabled set, e.g. to go back to the one last mounted.
 			void SetEnabledMods(const std::vector<std::string>& modNames);
 
+			// Pak paths for one installed mod, using this helper's cached scan.
+			std::vector<std::string> GetModPakPaths(const std::string& modName);
+
 			// The ordered pak paths of `modNames` to mount as an overlay, relative
 			// to the resource root (e.g. "Mods/<folder>/<x>.pak"). In the given
 			// order so the caller can prepend each in turn — the last one ends up

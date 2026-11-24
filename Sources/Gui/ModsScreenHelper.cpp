@@ -921,6 +921,16 @@ namespace spades {
 			WriteEnabled(modNames);
 		}
 
+		std::vector<std::string> ModsScreenHelper::GetModPakPaths(const std::string& modName) {
+			if (!modsCached)
+				RebuildModsCache();
+			std::vector<std::string> out;
+			if (const ModEntry* m = FindMod(modName))
+				for (const std::string& pak : m->paks)
+					out.push_back(std::string(kModsDir) + "/" + pak);
+			return out;
+		}
+
 		std::vector<std::string>
 		ModsScreenHelper::GetModPakPaths(const std::vector<std::string>& modNames) {
 			// Resolve the names to pak paths relative to the resource root, in

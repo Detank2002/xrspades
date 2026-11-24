@@ -1,4 +1,4 @@
-# The client's VR unit tests and the pose fixture, built on request
+# The client's headless tests and the pose fixture, built on request
 # (`cmake --build . --target zs_tests`, which also builds the training server's)
 # and run by CTest. Each compiles the one client source it checks, so none of
 # them needs the game, a GPU or an OpenXR runtime.
@@ -48,6 +48,51 @@ zs_test_executable(server_extension_key_test
 	"${ZS_TEST_SOURCES}/Client/ServerExtensionKey.cpp")
 add_test(NAME server_extension_key COMMAND server_extension_key_test)
 
+# The enabled collection vs. equipped skin, and the backend-independent 3D
+# thumbnail mesh. No SDL window, GPU, game world or script engine is needed.
+zs_test_executable(skin_selection_test
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_selection_test.cpp"
+	"${ZS_TEST_SOURCES}/Gui/SkinSelection.cpp")
+add_test(NAME skin_selection COMMAND skin_selection_test)
+
+zs_test_executable(voxel_model_preview_test
+	"${CMAKE_CURRENT_SOURCE_DIR}/voxel_model_preview_test.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_core_test_support.cpp"
+	"${ZS_TEST_SOURCES}/Gui/UI/Widgets/VoxelModelPreview.cpp"
+	"${ZS_TEST_SOURCES}/Client/IRenderer.cpp"
+	"${ZS_TEST_SOURCES}/Core/VoxelModel.cpp"
+	"${ZS_TEST_SOURCES}/Core/MemoryStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/IStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/RefCountedObject.cpp")
+target_compile_definitions(voxel_model_preview_test PRIVATE
+	ZS_TEST_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/Resources")
+add_test(NAME voxel_model_preview COMMAND voxel_model_preview_test)
+
+# Exercise real pak mounting, independent previews and failed-selection rollback
+# with headless devices and a script-build failure marker.
+find_package(ZLIB REQUIRED)
+zs_test_executable(skin_overlay_test
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_overlay_test.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_overlay_test_runtime.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_core_test_support.cpp"
+	"${ZS_TEST_SOURCES}/Gui/ModOverlay.cpp"
+	"${ZS_TEST_SOURCES}/Gui/SkinCatalog.cpp"
+	"${ZS_TEST_SOURCES}/Gui/SkinSelection.cpp"
+	"${ZS_TEST_SOURCES}/Core/FileManager.cpp"
+	"${ZS_TEST_SOURCES}/Core/ZipFileSystem.cpp"
+	"${ZS_TEST_SOURCES}/Core/MemoryStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/DynamicMemoryStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/IStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/StdStream.cpp"
+	"${ZS_TEST_SOURCES}/Core/VoxelModel.cpp"
+	"${ZS_TEST_SOURCES}/Core/RefCountedObject.cpp"
+	"${ZS_TEST_SOURCES}/Core/ResourceChanges.cpp"
+	"${ZS_TEST_SOURCES}/Client/IRenderer.cpp"
+	"${ZS_TEST_SOURCES}/unzip/unzip.c"
+	"${ZS_TEST_SOURCES}/unzip/ioapi.c")
+target_link_libraries(skin_overlay_test PRIVATE ZLIB::ZLIB)
+add_test(NAME skin_overlay COMMAND skin_overlay_test)
+
 # A VR player's pose, as a client without a headset decodes it (what a macOS
 # build draws other players' VR from)
 find_package(Python3 COMPONENTS Interpreter)
@@ -59,4 +104,4 @@ endif()
 
 add_custom_target(zs_tests DEPENDS
 	vr_state_test xr_caps_test vr_pose_fixture update_package_test training_server_test
-	server_extension_key_test)
+	server_extension_key_test skin_selection_test voxel_model_preview_test skin_overlay_test)

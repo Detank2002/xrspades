@@ -18,6 +18,7 @@
 
  */
 
+#include <algorithm>
 #include <list>
 #include <set>
 
@@ -30,6 +31,11 @@
 namespace spades {
 	static std::list<IFileSystem*> g_fileSystems;
 	std::unique_ptr<IStream> FileManager::OpenForReading(const char* fn) {
+		return OpenForReading(fn, {});
+	}
+
+	std::unique_ptr<IStream>
+	FileManager::OpenForReading(const char* fn, const std::vector<IFileSystem*>& excluded) {
 		SPADES_MARK_FUNCTION();
 		if (!fn)
 			SPInvalidArgument("fn");
@@ -37,15 +43,18 @@ namespace spades {
 			SPFileNotFound(fn);
 
 		// check each file system
+		auto included = [&excluded](IFileSystem* fs) {
+			return std::find(excluded.begin(), excluded.end(), fs) == excluded.end();
+		};
 		for (auto* fs : g_fileSystems) {
-			if (fs->FileExists(fn))
+			if (included(fs) && fs->FileExists(fn))
 				return fs->OpenForReading(fn);
 		}
 
 		// check weak files, too
 		auto weak_fn = std::string(fn) + ".weak";
 		for (auto* fs : g_fileSystems) {
-			if (fs->FileExists(weak_fn.c_str()))
+			if (included(fs) && fs->FileExists(weak_fn.c_str()))
 				return fs->OpenForReading(weak_fn.c_str());
 		}
 

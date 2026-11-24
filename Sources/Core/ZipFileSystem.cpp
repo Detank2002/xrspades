@@ -364,6 +364,20 @@ namespace spades {
 		}
 	}
 
+	std::unique_ptr<IStream> ZipFileSystem::OpenForReading(const char* fn, std::size_t maxBytes) {
+		SPADES_MARK_FUNCTION();
+		if (currentStream)
+			currentStream->ForceCloseUnzipFile();
+		if (!MoveToFile(fn))
+			SPFileNotFound(fn);
+		unz_file_info info{};
+		if (unzGetCurrentFileInfo(zip, &info, nullptr, 0, nullptr, 0, nullptr, 0) != UNZ_OK)
+			SPRaise("Cannot read ZIP entry size");
+		if (info.uncompressed_size > maxBytes)
+			SPRaise("ZIP entry is too large: %s", fn);
+		return OpenForReading(fn);
+	}
+
 	std::unique_ptr<IStream> ZipFileSystem::OpenForWriting(const char* fn) {
 		SPADES_MARK_FUNCTION();
 		SPRaise("ZIP file system doesn't support writing");
