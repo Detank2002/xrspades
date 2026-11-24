@@ -206,8 +206,11 @@ namespace spades {
 			SPLog("Reflected program '%s': %zu uniform blocks, %zu textures, %zu push constant ranges",
 			      name.c_str(), uniformBlocks.size(), textureBindings.size(), pushConstantRanges.size());
 #else
-			// Fallback: No reflection available
-			SPLog("Shader reflection not available for program '%s' (SPIRV-Cross not found)", name.c_str());
+			// CMake always supplies the installed or bundled reflection core.
+			// Refuse an unsupported external build before it reaches the driver
+			// with empty descriptor layouts and missing push constant ranges.
+			SPRaise("Vulkan program '%s' requires shader reflection. Rebuild with the "
+			        "installed or bundled SPIRV-Cross core enabled.", name.c_str());
 #endif
 		}
 

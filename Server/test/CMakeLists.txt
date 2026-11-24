@@ -122,6 +122,48 @@ target_include_directories(font_reload_test PRIVATE ${FREETYPE_INCLUDE_DIRS})
 target_link_libraries(font_reload_test PRIVATE ${FREETYPE_LIBRARIES} Threads::Threads)
 add_test(NAME font_reload COMMAND font_reload_test)
 
+# Exercise actual shader reflection even without a window/GPU. A Vulkan build
+# must never substitute empty layouts for the title screen's water shaders.
+set(ZS_VULKAN_TEST_TARGETS)
+if(USE_VULKAN)
+	set(ZS_TEST_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/water-shaders")
+	file(GLOB_RECURSE ZS_WATER_INCLUDES "${CMAKE_SOURCE_DIR}/Resources/Shaders/Vulkan/*.glsl")
+	set(ZS_WATER_SPIRV)
+	foreach(SHADER Water.vk.vs Water2.vk.vs Water3.vk.vs
+	               Water.vk.fs WaterInPass.vk.fs Water2.vk.fs Water3.vk.fs)
+		set(SHADER_SOURCE "${CMAKE_SOURCE_DIR}/Resources/Shaders/Vulkan/${SHADER}")
+		if(SHADER MATCHES "\\.vs$")
+			set(SHADER_STAGE vert)
+		else()
+			set(SHADER_STAGE frag)
+		endif()
+		foreach(VARIANT flat multiview)
+			set(SHADER_FLAGS)
+			set(SHADER_SUFFIX .spv)
+			if(VARIANT STREQUAL multiview)
+				set(SHADER_FLAGS -DZS_MULTIVIEW=1)
+				set(SHADER_SUFFIX .mv.spv)
+			endif()
+			set(SHADER_OUTPUT "${ZS_TEST_SHADER_DIR}/${SHADER}${SHADER_SUFFIX}")
+			add_custom_command(OUTPUT "${SHADER_OUTPUT}"
+				COMMAND ${CMAKE_COMMAND} -E make_directory "${ZS_TEST_SHADER_DIR}"
+				COMMAND "${GLSLANG_VALIDATOR}" -V -S ${SHADER_STAGE} ${SHADER_FLAGS}
+				        -o "${SHADER_OUTPUT}" "${SHADER_SOURCE}"
+				DEPENDS "${SHADER_SOURCE}" ${ZS_WATER_INCLUDES}
+				VERBATIM)
+			list(APPEND ZS_WATER_SPIRV "${SHADER_OUTPUT}")
+		endforeach()
+	endforeach()
+	add_custom_target(zs_vulkan_test_shaders DEPENDS ${ZS_WATER_SPIRV})
+	zs_test_executable(vulkan_reflection_test "${CMAKE_CURRENT_SOURCE_DIR}/vulkan_reflection_test.cpp")
+	add_dependencies(vulkan_reflection_test zs_vulkan_test_shaders)
+	target_compile_definitions(vulkan_reflection_test PRIVATE ZS_TEST_SHADER_DIR="${ZS_TEST_SHADER_DIR}")
+	target_include_directories(vulkan_reflection_test PRIVATE ${SPIRV_CROSS_INCLUDE_DIR})
+	target_link_libraries(vulkan_reflection_test PRIVATE ${SPIRV_CROSS_LIBRARIES})
+	add_test(NAME vulkan_reflection COMMAND vulkan_reflection_test)
+	list(APPEND ZS_VULKAN_TEST_TARGETS vulkan_reflection_test)
+endif()
+
 # A VR player's pose, as a client without a headset decodes it (what a macOS
 # build draws other players' VR from)
 find_package(Python3 COMPONENTS Interpreter)
@@ -134,4 +176,4 @@ endif()
 add_custom_target(zs_tests DEPENDS
 	vr_state_test xr_caps_test vr_pose_fixture update_package_test training_server_test
 	server_extension_key_test skin_selection_test voxel_model_preview_test skin_overlay_test
-	font_reload_test)
+	font_reload_test ${ZS_VULKAN_TEST_TARGETS})
