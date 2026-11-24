@@ -4125,3 +4125,71 @@ msgstr ""
 msgctxt "StartupScreen"
 msgid "Display {0}"
 msgstr ""
+
+#: Sources/Gui/UI/MainScreen/MainMenu.cpp:912
+#, c++-format
+msgctxt "MainScreen"
+msgid ""
+"A newer nightly ({0}) is out: update the game first to get the newest mods."
+msgstr ""
+
+#: Sources/Gui/UI/Components/UpdateNotice.cpp:108
+#, c++-format
+msgctxt "MainScreen"
+msgid ""
+"A newer nightly is out ({1}, {0} new commit; you have {2}). Click to open "
+"the release page."
+msgid_plural ""
+"A newer nightly is out ({1}, {0} new commits; you have {2}). Click to open "
+"the release page."
+msgstr[0] ""
+msgstr[1] ""
+
+#: Sources/Gui/UI/Components/UpdateNotice.cpp:116
+#, c++-format
+msgctxt "MainScreen"
+msgid ""
+"A newer nightly is out ({0}; you have {1}). Click to open the release page."
+msgstr ""
+
+#: Sources/Gui/UI/Components/UpdateNotice.cpp:146
+#, c++-format
+msgctxt "MainScreen"
+msgid "Up to date (nightly {0})"
+msgstr ""
+
+#: Sources/Gui/UI/Components/UpdateNotice.cpp:228
+#, c++-format
+msgctxt "MainScreen"
+msgid ""
+"A newer ZeroSpades nightly is available!\n"
+"\n"
+"Installed nightly: {0}\n"
+"Latest nightly: {1}\n"
+"\n"
+"Open the release page to download it? ZeroSpades will close so the update "
+"can be installed."
+msgstr ""
+
+#: Sources/Gui/UI/Settings/PreferencePanels.cpp:537
+msgctxt "Preferences"
+msgid "Your Server Lists"
+msgstr ""
+
+#: Sources/Gui/UI/Settings/PreferencePanels.cpp:540
+msgctxt "Preferences"
+msgid ""
+"Server lists to add to the known ones, separated by spaces. Every list is "
+"downloaded and merged into one. When lists disagree on a server's player "
+"count or capacity, the highest wins."
+msgstr ""
+
+#: Sources/Gui/UI/Settings/PreferencePanels.cpp:543
+msgctxt "Preferences"
+msgid "Excluded Server Lists"
+msgstr ""
+
+#: Sources/Gui/UI/Settings/PreferencePanels.cpp:546
+msgctxt "Preferences"
+msgid "Server lists not to download, known ones included, separated by spaces."
+msgstr ""
