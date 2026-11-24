@@ -116,6 +116,9 @@ repair a failure. A preference-write failure is reported as session-only.
 
 ## Verification
 
+The [audit record](testing/skin-selector-audit.md) distinguishes executed
+headless/native checks from remaining device checks and static-analysis limits.
+
 In a normally configured build:
 
 ```sh

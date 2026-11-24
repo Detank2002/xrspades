@@ -67,6 +67,8 @@ namespace spades {
 		 * under it) is closed with this; otherwise its owner keeps it.
 		 */
 		ZipFileSystem(IStream* stream, bool ownsStream = false);
+		ZipFileSystem(const ZipFileSystem&) = delete;
+		ZipFileSystem& operator=(const ZipFileSystem&) = delete;
 		~ZipFileSystem();
 
 		std::vector<std::string> EnumFiles(const char*) override;

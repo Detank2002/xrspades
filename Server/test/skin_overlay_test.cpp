@@ -18,6 +18,7 @@
 #include <Core/DynamicMemoryStream.h>
 #include <Core/FileManager.h>
 #include <Core/IStream.h>
+#include <Core/MemoryStream.h>
 #include <Core/VoxelModel.h>
 #include <Core/ZipFileSystem.h>
 #include <Gui/Main.h>
@@ -42,6 +43,21 @@ namespace {
 		if (!ok)
 			throw std::runtime_error(what);
 	}
+	class FailingZipStream : public MemoryStream {
+	public:
+		using MemoryStream::MemoryStream;
+		bool fail = false;
+		int failures = 0;
+		std::size_t Read(void* out, std::size_t size) override {
+			// Fail on the first stored entry's payload, after ZIP/local headers
+			// have succeeded and an internal streaming reader has been created.
+			if (fail && GetPosition() == 30 + std::string(kRifle).size()) {
+				++failures;
+				throw std::runtime_error("injected ZIP backing-stream failure");
+			}
+			return MemoryStream::Read(out, size);
+		}
+	};
 	void Write(const std::string& relative, const std::string& bytes) {
 		const auto path = std::filesystem::path(g_userResourceDirectory) / relative;
 		std::filesystem::create_directories(path.parent_path());
@@ -196,6 +212,25 @@ int main() {
 			Check(oversizedRefused, "preview size limit checked before decompression");
 			Check(zip.OpenForReading(kRifle)->ReadAllBytes() == Model(0x0000FF),
 			      "refusing an oversized entry leaves the archive usable");
+		}
+
+		{
+			const auto bytes = ModOverlay::OpenBaseResource("Mods/SEMI-A-.pak")->ReadAllBytes();
+			FailingZipStream stream(bytes.data(), bytes.size());
+			bool refused = false;
+			{
+				ZipFileSystem zip(&stream);
+				stream.fail = true;
+				try {
+					zip.OpenForReading(kRifle);
+				} catch (const std::exception&) {
+					refused = true;
+				}
+				// The internal reader is still present after the I/O exception.
+				// Destruction must not terminate on a second close error.
+			}
+			Check(refused && stream.failures == 1,
+			      "failed ZIP reads unwind and destroy the archive without terminating");
 		}
 
 		TestRenderer renderer;

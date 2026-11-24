@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch the real Linux client through the title-map/water frame and exit.
+"""Launch the real Linux client through a rendered startup frame and exit.
 
 Run under Xvfb with a software Vulkan ICD (Mesa lavapipe), for example:
     xvfb-run -a python3 Server/test/native_startup_test.py build/bin/zerospades build/startup-artifacts
@@ -32,6 +32,8 @@ def launch(executable: Path, artifacts: Path, renderer: str) -> None:
     args = [str(executable), "--debug-tools", "--screenshot-quit", "2"]
     for setting in (
         "cl_showStartupWindow=0",
+        "cg_playerName=StartupCheck",
+        "cg_playerNameIsSet=1",
         f"r_renderer={renderer}",
         f"r_vulkan={int(renderer == 'vulkan')}",
         "r_allowSoftwareRendering=1",
@@ -76,7 +78,7 @@ def launch(executable: Path, artifacts: Path, renderer: str) -> None:
         raise RuntimeError(f"{renderer} startup produced no screenshot")
     if "Validation Error:" in text:
         raise RuntimeError(f"{renderer} startup reported Vulkan validation errors; see {output}")
-    print(f"PASS: native {renderer} title map, fonts, screenshot and clean shutdown", flush=True)
+    print(f"PASS: native {renderer} startup, fonts, screenshot and clean shutdown", flush=True)
 
 
 def main() -> None:

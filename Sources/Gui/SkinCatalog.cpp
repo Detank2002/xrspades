@@ -281,8 +281,11 @@ namespace spades {
 			}
 			// Sound/script-only skins still have the stock body. In particular,
 			// Default must not accidentally preview the currently equipped mod.
-			return LoadSkinPreviewModel(
-			  ModOverlay::OpenBaseResource(SkinPreviewPath(type))->ReadAllBytes());
+			constexpr std::size_t limit = 34 * 1024 * 1024;
+			auto stream = ModOverlay::OpenBaseResource(SkinPreviewPath(type));
+			if (stream->GetLength() > limit)
+				SPRaise("Base preview model is too large");
+			return LoadSkinPreviewModel(stream->Read(limit + 1));
 		}
 
 		std::optional<std::string> SkinCatalog::LoadFontPreview(const std::string& modName) const {

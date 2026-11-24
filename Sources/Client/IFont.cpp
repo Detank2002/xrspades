@@ -54,6 +54,7 @@ namespace spades {
 				int offX, offY;
 				FindResult()
 					: img(nullptr),
+					  size(0.0F),
 					  sizeInverse(0.0F),
 					  advance(0.0F),
 					  x(0),
