@@ -10,6 +10,7 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "skin_test_devices.h"
 #include <Client/Fonts.h>
@@ -124,15 +125,16 @@ namespace {
 		U16(out, v);
 		U16(out, v >> 16);
 	}
-	std::string Fallback(unsigned advance, unsigned x = 0) {
+	std::string Fallback(unsigned advance, unsigned x = 0, unsigned y = 0, unsigned w = 2,
+	                     unsigned h = 2) {
 		std::string result = "OpenSpadesFontFl";
 		U32(result, 1);
 		U32(result, 16);
 		U32(result, 0xF0000);
 		U16(result, x);
-		U16(result, 0);
-		result.push_back(2);
-		result.push_back(2);
+		U16(result, y);
+		result.push_back(static_cast<char>(w));
+		result.push_back(static_cast<char>(h));
 		U16(result, advance);
 		U16(result, 0);
 		U16(result, 0);
@@ -159,11 +161,25 @@ int main() {
 		disk->files["gfx/fonts/opensans.ttf"] = a;
 		disk->files["gfx/fonts/squarefont.ttf"] = b;
 
+		// The real 100-unifont.ospfont encodes blank glyphs (e.g. U+0020 and
+		// U+3000) with x=y=65535 and w=h=0. Those coordinates are never sampled.
+		// Use a private-use code point absent from both bundled scalable faces
+		// here to force fallback measurement/drawing, not OpenSans's space.
+		const std::string glyph = "\xF3\xB0\x80\x80";
+		disk->files["gfx/fonts/test.ospfont"] = Fallback(8, 0xFFFF, 0xFFFF, 0, 0);
+		disk->files["gfx/fonts/test.png"] = std::string(16, '\xFF');
 		auto r1 = Handle<Renderer>::New(), r2 = Handle<Renderer>::New();
 		auto manager1 = Handle<FontManager>::New(r1.GetPointerOrNull());
 		auto manager2 = Handle<FontManager>::New(r2.GetPointerOrNull());
 		Handle<IFont> held(&manager1->GetGuiFont());
 		auto* identity = held.GetPointerOrNull();
+		Check(held->Measure(glyph).x == 8 && manager2->GetGuiFont().Measure(glyph).x == 8,
+		      "Unifont's empty sentinel glyph loads at startup and retains its advance");
+		held->Draw(glyph, MakeVector2(0, 0), 1, MakeVector4(1, 1, 1, 1));
+		Check(!r1->lastDraw, "empty sentinel glyphs never sample the atlas");
+		disk->files.erase("gfx/fonts/test.ospfont");
+		disk->files.erase("gfx/fonts/test.png");
+		FontManager::ReloadFonts();
 		const std::string text = "iiiiMMMMWW";
 		const auto original = held->Measure(text);
 		held->Draw(text, MakeVector2(0, 0), 1, MakeVector4(1, 1, 1, 1));
@@ -189,8 +205,6 @@ int main() {
 		      "failed face reload does not publish a partial font set");
 		disk->files["gfx/fonts/opensans.ttf"] = a;
 
-		// A private-use glyph absent from both bundled scalable faces.
-		const std::string glyph = "\xF3\xB0\x80\x80";
 		const auto absent = held->Measure(glyph).x;
 		disk->files["gfx/fonts/test.ospfont"] = Fallback(7);
 		disk->files["gfx/fonts/test.png"] = std::string(16, '\xFF');
@@ -215,7 +229,9 @@ int main() {
 		Check(held->Measure(text).x == original.x && held->Measure(glyph).x == 11,
 		      "fallback failure keeps both old scalable and old fallback fonts");
 		disk->files["gfx/fonts/test.ospfont"] = Fallback(15, 2);
-		Check(ReloadFails(), "fallback glyphs outside the image are rejected");
+		Check(ReloadFails(), "fallback glyphs outside the image width are rejected");
+		disk->files["gfx/fonts/test.ospfont"] = Fallback(15, 0, 2);
+		Check(ReloadFails(), "fallback glyphs outside the image height are rejected");
 		disk->files["gfx/fonts/test.ospfont"] = Fallback(15);
 		disk->files["gfx/fonts/test.png"] = std::string(16, '\x44');
 		r2->failNextImage = true;
@@ -226,6 +242,20 @@ int main() {
 		held->Draw(glyph, MakeVector2(0, 0), 1, MakeVector4(1, 1, 1, 1));
 		Check(static_cast<Image&>(*r1->lastDraw).pixels[0] == 0x77777777,
 		      "failed upload retains the old atlas as well as its metrics");
+
+		for (const auto& size :
+		     {std::make_pair(0U, 0U), std::make_pair(0U, 2U), std::make_pair(2U, 0U)}) {
+			disk->files["gfx/fonts/test.ospfont"] =
+			  Fallback(9, 0xFFFF, 0xFFFF, size.first, size.second);
+			FontManager::ReloadFonts();
+			Check(held->Measure(glyph).x == 9 && manager2->GetGuiFont().Measure(glyph).x == 9,
+			      "live reload preserves empty glyph advances on every renderer");
+			r1->lastDraw = {};
+			r2->lastDraw = {};
+			held->Draw(glyph, MakeVector2(0, 0), 1, MakeVector4(1, 1, 1, 1));
+			manager2->GetGuiFont().Draw(glyph, MakeVector2(0, 0), 1, MakeVector4(1, 1, 1, 1));
+			Check(!r1->lastDraw && !r2->lastDraw, "zero-area glyphs never reach the renderer");
+		}
 
 		disk->files["gfx/fonts/opensans.ttf"] = a;
 		disk->files.erase("gfx/fonts/test.ospfont");

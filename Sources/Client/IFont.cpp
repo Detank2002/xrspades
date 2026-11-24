@@ -159,6 +159,10 @@ namespace spades {
 					auto bitmap = Bitmap::Load(fonts.back().imagePath);
 					for (const auto& glyph : fonts.back().glyphs) {
 						const auto& g = glyph.second;
+						// Empty glyphs still carry an advance, but have no atlas
+						// rectangle. Unifont uses x=y=65535 for spaces, for example.
+						if (g.w == 0 || g.h == 0)
+							continue;
 						if (int(g.x) + int(g.w) > bitmap->GetWidth() ||
 						    int(g.y) + int(g.h) > bitmap->GetHeight())
 							SPRaise("Reading %s: glyph outside font atlas", file.c_str());
@@ -274,8 +278,8 @@ namespace spades {
 				return;
 			}
 
-			if (glyph.w == 0)
-				return; // null glyph.
+			if (glyph.w == 0 || glyph.h == 0)
+				return; // Empty glyphs advance the cursor without sampling the atlas.
 
 			float scale = size * glyph.sizeInverse;
 			if (roundSize || scale < 1.0F) {
