@@ -70,6 +70,9 @@ one change, in a player's words.
 - Improved: in VR, a new map stays hidden for a moment until the frame rate settles, instead of juddering while it loads
 - New: in VR, a Hip Height slider moves the grenades and blocks on your belt up or down
 - New: in VR, a body mirror beside the menu shows you your body, belt and shoulder tools as you move, so you can see what the body settings change (Settings, VR)
+- Fixed: in VR, dying and respawning no longer darken just the top of your view
+- Fixed: chipped blocks no longer leave gaps you can see through at their edges; edges open to the air break off instead
+- Changed: in VR, the grenades and blocks sit lower on your hips (Hip Height to move them)
 - Fixed: in VR, a line of blocks drawn quickly starts where you began it
 - Changed: a player's body is removed when they respawn, so heavy fighting keeps a steady frame rate (Options, Effects to change it, and how many bodies stay)
 

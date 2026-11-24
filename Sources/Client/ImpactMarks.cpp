@@ -70,10 +70,12 @@ namespace spades {
 			// side in its own colour, the craters cut out of whichever faces were
 			// hit, and the map leaves all of that block's faces out
 			// (IRenderer::SetMapFaceHidden), so what is seen is the model: real
-			// pits with walls and floors, from any side, on any face. Its twelve
-			// edges are never cut (the block's outline stays, and nothing opens
-			// beside the next block), and no pit goes deeper than kMaxDepth
-			// voxels, so a solid core is always left: nothing is seen through.
+			// pits with walls and floors, from any side, on any face. A face with
+			// a solid block against it is never cut into: the map draws no face
+			// between two solid blocks, so a gap there was a slit through the
+			// wall (testers saw through chipped edges). A face open to the air
+			// is, to its edges, which chip off; the corners stay. No pit goes
+			// deeper than kMaxDepth voxels, so a solid core is always left.
 			constexpr int kCells = 8;
 			constexpr int kMaxDepth = 3; // the spade's; a bullet's is 2
 			constexpr std::size_t kMaxBlocks = 300;
@@ -87,6 +89,9 @@ namespace spades {
 				return ch(0) | ch(8) | ch(16);
 			}
 		} // namespace
+
+		constexpr int kFaces[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+		                              {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
 		struct ImpactMarksImpl {
 			Client& client;
@@ -111,7 +116,31 @@ namespace spades {
 				Matrix4 matrix;
 				float age = 0.0F;
 				uint64_t order = 0;
+				int openFaces = 0; // OpenFaces when last cut
 			};
+
+			/** Which of a block's faces (kFaces) have air against them, a bit
+			 * each: only those may be cut into. */
+			static int OpenFaces(GameMap& map, const IntVector3& b) {
+				int mask = 0;
+				for (int f = 0; f < 6; f++) {
+					const int x = b.x + kFaces[f][0], y = b.y + kFaces[f][1], z = b.z + kFaces[f][2];
+					if (z < 0 || !map.IsSolidWrapped(x, y, z))
+						mask |= 1 << f;
+				}
+				return mask;
+			}
+			/** The faces (kFaces) a cell of the model lies on, a bit each. */
+			static int CellFaces(const int cell[3]) {
+				int mask = 0;
+				for (int q = 0; q < 3; q++) {
+					if (cell[q] == kCells - 1)
+						mask |= 1 << (q * 2);
+					if (cell[q] == 0)
+						mask |= 1 << (q * 2 + 1);
+				}
+				return mask;
+			}
 			std::unordered_map<uint64_t, Damaged> damaged;
 			// Models replaced or dropped, kept a few frames: a frame still in
 			// flight may draw them (every hit rebuilds its block's)
@@ -128,8 +157,7 @@ namespace spades {
 				       static_cast<uint64_t>(b.z & 0xFF);
 			}
 
-			static constexpr int kFaces[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
-			                                     {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+			// +x, -x, +y, -y, +z, -z: face f is axis f / 2, positive if f is even
 			/** All of a block's map faces left out (or put back): the model is
 			 * the whole block, so nothing of it is drawn twice. */
 			bool HideFaces(const IntVector3& block, bool hidden) {
@@ -329,11 +357,20 @@ namespace spades {
 			impl->seed = Hash(impl->seed + 0x9e3779b9U);
 			const float radius = spade ? 2.0F + 0.6F * Noise(impl->seed, 1, 2)
 			                           : 1.15F + 0.45F * Noise(impl->seed, 3, 4);
-			// Kept in from the face's edges, so no pit opens onto the next face
-			const float lo = radius + 0.4F, hi = kCells - radius - 0.4F;
+			// Kept in from an edge whose other face has a block against it, so
+			// no pit opens onto it; up to one open to the air, which chips.
+			const int open = ImpactMarksImpl::OpenFaces(*map, block);
+			d.openFaces = open;
+			auto margin = [&](int q, bool high) {
+				return (open & (1 << (q * 2 + (high ? 0 : 1)))) ? 0.5F : radius + 0.4F;
+			};
 			const Vector3 local = (hitPos - MakeVector3(block)) * static_cast<float>(kCells);
-			const float c1 = std::max(lo, std::min(hi, local[a1]));
-			const float c2 = std::max(lo, std::min(hi, local[a2]));
+			auto centre = [&](int q) {
+				const float lo = margin(q, false), hi = kCells - margin(q, true);
+				return lo <= hi ? std::max(lo, std::min(hi, local[q])) : kCells * 0.5F;
+			};
+			const float c1 = centre(a1);
+			const float c2 = centre(a2);
 			const int deepest = spade ? kMaxDepth - 1 : kMaxDepth - 2; // layers below the face's
 			for (int i = 0; i < kCells; i++)
 				for (int j = 0; j < kCells; j++) {
@@ -347,11 +384,12 @@ namespace spades {
 						cell[axis] = positive ? kCells - 1 - k : k;
 						cell[a1] = i;
 						cell[a2] = j;
-						// Never an edge: two of its coordinates on the block's surface
+						// Never a corner, nor on a face with a block against it
+						const int faces = ImpactMarksImpl::CellFaces(cell);
 						int onSurface = 0;
 						for (int q = 0; q < 3; q++)
 							onSurface += (cell[q] == 0 || cell[q] == kCells - 1) ? 1 : 0;
-						if (onSurface >= 2)
+						if (onSurface >= 3 || (faces & ~open) != 0)
 							continue;
 						d.removed[cell[0]][cell[1]][cell[2]] = true;
 					}
@@ -386,8 +424,26 @@ namespace spades {
 					it = impl->damaged.erase(it);
 					continue;
 				}
-				if (col != d.blockColor)
-					impl->Build(d, col); // its health changed
+				// A block put against a face cut into: that face filled back in,
+				// or it would be a slit through to nothing (the map draws no
+				// face between the two)
+				const int open = ImpactMarksImpl::OpenFaces(*map, b);
+				const int closed = d.openFaces & ~open;
+				d.openFaces = open;
+				bool refilled = false;
+				if (closed) {
+					for (int x = 0; x < kCells; x++)
+						for (int y = 0; y < kCells; y++)
+							for (int z = 0; z < kCells; z++) {
+								const int cell[3] = {x, y, z};
+								if (d.removed[x][y][z] && (ImpactMarksImpl::CellFaces(cell) & closed)) {
+									d.removed[x][y][z] = false;
+									refilled = true;
+								}
+							}
+				}
+				if (col != d.blockColor || refilled)
+					impl->Build(d, col); // its health changed, or a face was filled
 				++it;
 			}
 			auto& marks = impl->marks;

@@ -558,7 +558,7 @@ int main() {
 			VRHolsterFrame hf;
 			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.6F, false);
 			CHECK(hf.valid && hf.forward.z < -0.99F);
-			CHECK(std::fabs(hf.hipDrop - 0.672F) < 1.0E-4F);
+			CHECK(std::fabs(hf.hipDrop - 0.768F) < 1.0E-4F);
 			// 25 degrees to the side for a second: no change
 			bs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), 0.436F);
 			for (int i = 0; i < 72; i++)
@@ -578,9 +578,9 @@ int main() {
 			CHECK(Vector3::Dot(hf.forward, hh) > 0.999F);
 			// A tall player's hips are lower, within reason
 			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.9F, false);
-			CHECK(hf.hipDrop > 0.79F && hf.hipDrop < 0.81F);
+			CHECK(hf.hipDrop > 0.90F && hf.hipDrop < 0.92F);
 			VRHolsterFrameUpdate(hf, bs, 0.01F, 3.0F, false);
-			CHECK(hf.hipDrop <= 0.9F);
+			CHECK(hf.hipDrop <= 1.0F);
 			// The slots face the frame's way, not the head's
 			bs.hands[VRHandRight].grip.valid = true;
 			Vector3 at, f, r;

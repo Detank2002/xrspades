@@ -342,8 +342,10 @@ namespace spades {
 			const float side = VRToolHand() == VRHandRight ? -1.0F : 1.0F;
 			const float a = DEG2RAD(Clamp((float)vr_bodyMirrorAngle, 0.0F, 120.0F));
 			const Vector3 n = (fwd * std::cos(a) + right * (side * std::sin(a))).Normalize();
-			// The plane 0.9 m away: the reflection stands 1.8 m off, whole in view
-			const Vector3 at = vrRig.camera + n * (0.9F * vrRig.scale);
+			// The plane 1.2 m away: the reflection stands 2.4 m off, whole in view.
+			// What it costs is the screen it covers (Quest 3: 0.8 ms at 1.8 m,
+			// looked straight at; nothing looking away), so not nearer.
+			const Vector3 at = vrRig.camera + n * (1.2F * vrRig.scale);
 			// x - 2 n (n . (x - at)): columns of I - 2 n n^T, then 2 (n . at) n
 			const float d = Vector3::Dot(n, at);
 			auto col = [&](const Vector3& e) { return e - n * (2.0F * Vector3::Dot(n, e)); };

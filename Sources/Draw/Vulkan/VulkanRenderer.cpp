@@ -2201,16 +2201,24 @@ namespace spades {
 		float VulkanRenderer::ScreenWidth() {
 			if (vrCanvas == 1)
 				return static_cast<float>(client::kVRWristCanvasWidth);
-			if (vrCanvas == 2 || vrCanvas == 3)
-				return static_cast<float>(EyeCanvasLayout(vrCanvas - 2).width);
+			// An eye's overlay (2, 3) or its headset-only layer (4, 5): the
+			// eye's own shape. (The headset-only layer took the panel's, wider
+			// than tall: a fill over the whole eye, the comfort camera's blink,
+			// darkened only the top of it, testers.)
+			if (vrCanvas >= 2 && vrCanvas <= 5)
+				return static_cast<float>(EyeCanvasLayout((vrCanvas - 2) % 2).width);
 			return static_cast<float>(uiWidth);
 		}
 
 		float VulkanRenderer::ScreenHeight() {
 			if (vrCanvas == 1)
 				return static_cast<float>(client::kVRWristCanvasHeight);
-			if (vrCanvas == 2 || vrCanvas == 3)
-				return static_cast<float>(EyeCanvasLayout(vrCanvas - 2).height);
+			// An eye's overlay (2, 3) or its headset-only layer (4, 5): the
+			// eye's own shape. (The headset-only layer took the panel's, wider
+			// than tall: a fill over the whole eye, the comfort camera's blink,
+			// darkened only the top of it, testers.)
+			if (vrCanvas >= 2 && vrCanvas <= 5)
+				return static_cast<float>(EyeCanvasLayout((vrCanvas - 2) % 2).height);
 			return static_cast<float>(uiHeight);
 		}
 
