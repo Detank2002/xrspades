@@ -1,7 +1,7 @@
 name: Release
 # Started by hand (Actions tab -> Release -> Run workflow) with a version, e.g.
 # v0.3.0: builds every platform through ci.yml (the Quest APK signed with the
-# release key), then tags the commit and publishes "XRSpades 0.4.0" with
+# release key), then tags the commit and publishes "XRSpades 0.5.0" with
 # every package and their SHA256SUMS. The version must be CMakeLists.txt's
 # ZEROSPADES_VERSION_*: the game and its update checker read that one.
 on:

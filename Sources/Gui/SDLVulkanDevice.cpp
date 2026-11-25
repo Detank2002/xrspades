@@ -38,6 +38,7 @@
 
 SPADES_SETTING(r_multisamples);
 SPADES_SETTING(r_vsync);
+SPADES_SETTING(vr_foveation);
 
 #if defined(__APPLE__) && defined(__x86_64__)
 // MoltenVK global-configuration API, used to disable MTLHeap on Intel Macs.
@@ -668,16 +669,16 @@ namespace spades {
 					extensions.push_back(VK_KHR_MULTIVIEW_EXTENSION_NAME);
 					multiviewSupported = true;
 				}
-				// Foveated rendering (vr_foveation): the outer parts of each eye
-				// shaded at lower density, into ordinary (non-subsampled) targets,
-				// which the post chain then reads as it always does. A standalone
-				// headset's GPU has it (Adreno); the desktop ones mostly do not.
-				// Its features and texel size are asked for through the
-				// properties2 queries (core in 1.1, or the instance extension).
-				// Not asked for, for now: foveation is off (VulkanRenderer), and
-				// builds without the extension never crashed a Quest 2's driver.
-				constexpr bool kUseDensityMap = false;
-				if (kUseDensityMap && hasDensityMap) {
+				// Foveated rendering (vr_foveation): the headset's runtime makes
+				// a fragment density map for each eye image, which the scene's
+				// passes read, so the outer parts of each eye are shaded at lower
+				// density. A standalone headset's GPU has it (Adreno); the desktop
+				// ones mostly do not. Its features and texel size are asked for
+				// through the properties2 queries (core in 1.1, or the instance
+				// extension). Only asked for when foveation is on at start: a
+				// Quest 2's driver crashed with our own density maps (October),
+				// and never without the extension.
+				if ((int)vr_foveation > 0 && hasDensityMap) {
 					auto getFeatures2 = reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2KHR>(
 					  vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceFeatures2KHR"));
 					if (!getFeatures2)
@@ -807,9 +808,10 @@ namespace spades {
 
 		void SDLVulkanDevice::CreateSwapchain(VkSwapchainKHR oldSwapchain) {
 			if (headless) {
-				// What a desktop swapchain usually gives, and what the VR path
-				// copies its panels and eyes in.
-				swapchainImageFormat = VK_FORMAT_B8G8R8A8_SRGB;
+				// The headset's eye images' format (OpenXRSystem::
+				// GetPlannedEyeFormat, a Quest's first): the eyes' labels are drawn
+				// straight into those with the UI's pipelines, made for this.
+				swapchainImageFormat = VK_FORMAT_R8G8B8A8_SRGB;
 				swapchainExtent = {static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
 				const uint32_t count = 3;
 				swapchainImages.assign(count, VK_NULL_HANDLE);

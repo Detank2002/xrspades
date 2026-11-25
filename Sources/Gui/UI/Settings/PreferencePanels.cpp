@@ -776,6 +776,15 @@ namespace spades {
 				"and the headset gets warmer."));
 			l.AddToggleField(_Tr("Preferences", "Hold The Frame Rate"), "vr_dynamicResolution");
 			l.AddToggleField(_Tr("Preferences", "Both Eyes In One Pass (Next Start)"), "vr_multiview");
+			l.AddChoiceField(_Tr("Preferences", "Foveated Rendering"), "vr_foveation",
+			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "LOW"),
+			                  _Tr("Preferences", "MEDIUM"), _Tr("Preferences", "HIGH")},
+			                 {0, 1, 2, 3});
+			l.AddHelp(_Tr("Preferences",
+				"Draws the edges of each eye in less detail, where the lenses blur "
+				"anyway, so the headset has more time for the rest. Turning it on or "
+				"off takes effect at the next start; the level changes at once. Needs "
+				"both eyes in one pass, and not the Quality preset."));
 			l.AddSliderField(_Tr("Preferences", "Eye Resolution"), "vr_renderScale", 0.5F, 1.5F,
 			                 0.05F, NumberFormatter(0, "%" + restart, "", 100));
 			l.AddSliderField(_Tr("Preferences", "Text Sharpness"), "vr_uiSupersample", 1, 3, 1,

@@ -137,7 +137,7 @@ namespace spades {
 		}
 
 		VulkanImage::VulkanImage(Handle<gui::SDLVulkanDevice> dev, VkImage existingImage,
-		                         uint32_t w, uint32_t h, VkFormat fmt)
+		                         uint32_t w, uint32_t h, VkFormat fmt, uint32_t layers)
 		: device(std::move(dev)),
 		  image(existingImage),
 		  allocation(VK_NULL_HANDLE),
@@ -147,7 +147,7 @@ namespace spades {
 		  sampler(VK_NULL_HANDLE),
 		  width(w),
 		  height(h),
-		  arrayLayers(1),
+		  arrayLayers(layers),
 		  mipLevels(1),
 		  format(fmt),
 		  samples(VK_SAMPLE_COUNT_1_BIT),

@@ -94,12 +94,13 @@ namespace spades {
 			}
 
 			void Blit(VkCommandBuffer cmd, VkImage src, int32_t sx0, int32_t sy0, int32_t sx1,
-			          int32_t sy1, VkImage dst, int32_t dw, int32_t dh, uint32_t srcLayer = 0) {
+			          int32_t sy1, VkImage dst, int32_t dw, int32_t dh, uint32_t srcLayer = 0,
+			          uint32_t dstLayer = 0) {
 				VkImageBlit r{};
 				r.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, srcLayer, 1};
 				r.srcOffsets[0] = {sx0, sy0, 0};
 				r.srcOffsets[1] = {sx1, sy1, 1};
-				r.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+				r.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, dstLayer, 1};
 				r.dstOffsets[0] = {0, 0, 0};
 				r.dstOffsets[1] = {dw, dh, 1};
 				vkCmdBlitImage(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst,
@@ -214,7 +215,8 @@ namespace spades {
 			// Foveated as the eyes' are: the two render passes must match for the
 			// eyes' pipelines to draw the scope
 			scopeFramebufferManager = stmp::make_unique<VulkanFramebufferManager>(
-			  device, settings, size, size, multiview ? 2 : 1, foveation, SceneResolvesInPass());
+			  device, settings, size, size, multiview ? 2 : 1, foveation, SceneResolvesInPass(),
+			  directEyeFormat);
 			// Sampled too, though it is only copied: every VulkanImage gets a view,
 			// and a view needs a usage beyond the transfers (validation)
 			scopeSrgbImage = Handle<VulkanImage>(
@@ -387,6 +389,184 @@ namespace spades {
 			if (eyeOverlayRenderPass != VK_NULL_HANDLE)
 				vkDestroyRenderPass(dev, eyeOverlayRenderPass, nullptr);
 			eyeOverlayRenderPass = VK_NULL_HANDLE;
+			DestroyDirectEyeFramebuffers();
+			if (eyeDirectRenderPass != VK_NULL_HANDLE)
+				vkDestroyRenderPass(dev, eyeDirectRenderPass, nullptr);
+			eyeDirectRenderPass = VK_NULL_HANDLE;
+		}
+
+		void VulkanRenderer::DestroyDirectEyeFramebuffers() {
+			VkDevice dev = device->GetDevice();
+			for (VkFramebuffer f : eyeDirectFramebuffers)
+				if (f != VK_NULL_HANDLE)
+					vkDestroyFramebuffer(dev, f, nullptr);
+			for (VkImageView v : eyeDirectViews)
+				if (v != VK_NULL_HANDLE)
+					vkDestroyImageView(dev, v, nullptr);
+			eyeDirectFramebuffers.clear();
+			eyeDirectViews.clear();
+			eyeDirectGeneration = 0;
+		}
+
+		bool VulkanRenderer::PrepareDirectEyes() {
+#if USE_OPENXR
+			framebufferManager->SelectDirectTarget(-1);
+			vr::OpenXRSystem* xr = vr::GetOpenXRSystem();
+			if (!directEyes || !xr)
+				return false;
+			const vr::XRSwapchain& sc = xr->GetEyeSwapchain();
+			const char* why = nullptr;
+			if (sc.layers != 2 || sc.images.empty())
+				why = "no two-layer headset images";
+			else if (sc.width != static_cast<uint32_t>(renderWidth) ||
+			         sc.height != static_cast<uint32_t>(renderHeight))
+				why = "the eyes drawn smaller than the headset's images";
+			else if (!BuildPostSteps(true).empty())
+				why = "a filter after the scene";
+			else if (!framebufferManager->ResolvesInPass())
+				why = "the scene pass does not resolve itself";
+			if (!why) {
+				const uint32_t gen = xr->GetEyeSwapchainGeneration();
+				if (framebufferManager->GetDirectTargetsGeneration() != gen) {
+					// New images, or new targets: nothing in flight may use the old
+					vkDeviceWaitIdle(device->GetDevice());
+					framebufferManager->SetDirectTargets(sc.images, sc.densityImages, sc.width,
+					                                     sc.height, gen);
+				}
+				VkImage image = VK_NULL_HANDLE;
+				if (!framebufferManager->HasDirectTargets())
+					why = "no framebuffer onto the headset's images";
+				else if (!xr->AcquireEyeImage(0, image) || sc.acquired == UINT32_MAX)
+					why = "the headset gave no image";
+				else
+					framebufferManager->SelectDirectTarget(static_cast<int>(sc.acquired));
+			}
+			const int way = why ? 0 : 1;
+			if (way != vrDirectLogged) {
+				vrDirectLogged = way;
+				if (why)
+					SPLog("Direct eyes: copied this time (%s)", why);
+				else
+					SPLog("Direct eyes: straight into the headset's images");
+			}
+			return !why;
+#else
+			return false;
+#endif
+		}
+
+		bool VulkanRenderer::RecordDirectEyeOverlays(VkCommandBuffer cmd, uint32_t frameIndex) {
+#if USE_OPENXR
+			vr::OpenXRSystem* xr = vr::GetOpenXRSystem();
+			VkImage target = VK_NULL_HANDLE;
+			if (!xr || !xr->AcquireEyeImage(0, target))
+				return false;
+			const vr::XRSwapchain& sc = xr->GetEyeSwapchain();
+			VkDevice dev = device->GetDevice();
+			if (eyeDirectRenderPass == VK_NULL_HANDLE) {
+				// Over what the scene's pass resolved, left as the runtime takes
+				// it back. The UI pass's format and samples: its pipelines draw here.
+				VkAttachmentDescription color{};
+				color.format = device->GetSwapchainImageFormat();
+				color.samples = VK_SAMPLE_COUNT_1_BIT;
+				color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+				color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+				color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+				color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+				color.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				color.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				VkAttachmentReference ref{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+				VkSubpassDescription subpass{};
+				subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+				subpass.colorAttachmentCount = 1;
+				subpass.pColorAttachments = &ref;
+				VkSubpassDependency deps[2]{};
+				deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+				deps[0].dstSubpass = 0;
+				deps[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+				deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+				deps[0].dstAccessMask =
+				  VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				deps[1].srcSubpass = 0;
+				deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+				deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+				deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				deps[1].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+				deps[1].dstAccessMask = 0;
+				VkRenderPassCreateInfo rpi{};
+				rpi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+				rpi.attachmentCount = 1;
+				rpi.pAttachments = &color;
+				rpi.subpassCount = 1;
+				rpi.pSubpasses = &subpass;
+				rpi.dependencyCount = 2;
+				rpi.pDependencies = deps;
+				if (vkCreateRenderPass(dev, &rpi, nullptr, &eyeDirectRenderPass) != VK_SUCCESS)
+					SPRaise("Failed to create the direct eyes' overlay render pass");
+			}
+			if (eyeDirectGeneration != xr->GetEyeSwapchainGeneration()) {
+				vkDeviceWaitIdle(dev);
+				DestroyDirectEyeFramebuffers();
+				for (VkImage image : sc.images)
+					for (uint32_t layer = 0; layer < 2; layer++) {
+						VkImageViewCreateInfo vi{};
+						vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+						vi.image = image;
+						vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+						vi.format = device->GetSwapchainImageFormat();
+						vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, layer, 1};
+						VkImageView view = VK_NULL_HANDLE;
+						VkFramebuffer fb = VK_NULL_HANDLE;
+						if (vkCreateImageView(dev, &vi, nullptr, &view) == VK_SUCCESS) {
+							VkFramebufferCreateInfo fi{};
+							fi.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+							fi.renderPass = eyeDirectRenderPass;
+							fi.attachmentCount = 1;
+							fi.pAttachments = &view;
+							fi.width = sc.width;
+							fi.height = sc.height;
+							fi.layers = 1;
+							vkCreateFramebuffer(dev, &fi, nullptr, &fb);
+						}
+						eyeDirectViews.push_back(view);
+						eyeDirectFramebuffers.push_back(fb);
+					}
+				eyeDirectGeneration = xr->GetEyeSwapchainGeneration();
+			}
+
+			// The scene's pass left it SHADER_READ_ONLY (its resolve's final
+			// layout), in the eyes' command buffer, earlier on the queue
+			ImageBarrier(cmd, target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			             VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+			const VkExtent2D size{sc.width, sc.height};
+			for (int e = 0; e < 2; e++) {
+				const bool labels = eyeCanvasUsed[e] && eyeImageRenderers[e];
+				const bool comfort = eyeComfortUsed[e] && eyeComfortRenderers[e];
+				const size_t i = static_cast<size_t>(sc.acquired) * 2 + static_cast<size_t>(e);
+				if ((!labels && !comfort) || i >= eyeDirectFramebuffers.size() ||
+				    eyeDirectFramebuffers[i] == VK_NULL_HANDLE)
+					continue;
+				VkRenderPassBeginInfo rp{};
+				rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+				rp.renderPass = eyeDirectRenderPass;
+				rp.framebuffer = eyeDirectFramebuffers[i];
+				rp.renderArea.extent = size;
+				vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+				if (labels)
+					eyeImageRenderers[e]->Flush(cmd, frameIndex, size);
+				if (comfort)
+					eyeComfortRenderers[e]->Flush(cmd, frameIndex, size);
+				vkCmdEndRenderPass(cmd);
+			}
+			return true;
+#else
+			return false;
+#endif
 		}
 
 		void VulkanRenderer::EnsureRenderSize(int width, int height) {
@@ -1048,6 +1228,7 @@ namespace spades {
 			vrScopeRendered = false;
 
 			bool ok = true;
+			vrDirectFrame = false;
 			// Multiview: one recording, one submit. The scene is drawn from the
 			// left eye's matrices, culled for both eyes, and each vertex moved into
 			// its eye by the view set's correction; the post chain then runs for
@@ -1069,6 +1250,7 @@ namespace spades {
 					d.tangents = e.tangents;
 				}
 				currentFrameSlot = 0;
+				vrDirectFrame = PrepareDirectEyes();
 				WriteViewSet(vrMultiviewEyes[0], vrMultiviewEyes[1]);
 				sceneDef = vrMultiviewEyes[0];
 				BuildProjectionMatrix();
@@ -1079,6 +1261,8 @@ namespace spades {
 				vrEyeIndex = 0;
 				RecordCommandBuffer(0);
 				vrEyeIndex = -1;
+				// Only the eyes' pass draws into the headset's image
+				framebufferManager->SelectDirectTarget(-1);
 
 				VkSubmitInfo si{};
 				si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1399,9 +1583,15 @@ namespace spades {
 			bool eyesOut = false;
 			bool mirrorMade = false;
 			const int mirrorEye = (int)vr_mirrorEye == 1 ? 1 : 0;
-			if (vrEyesRendered && fs.shouldRender && vrEyeImages[0] && vrEyeImages[1]) {
+			if (vrEyesRendered && fs.shouldRender && vrDirectFrame) {
+				eyesOut = RecordDirectEyeOverlays(cmd, cbIndex);
+			} else if (vrEyesRendered && fs.shouldRender && vrEyeImages[0] && vrEyeImages[1]) {
 				VkImage targets[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
 				eyesOut = xr->AcquireEyeImage(0, targets[0]) && xr->AcquireEyeImage(1, targets[1]);
+				// The eyes in one two-layer image: each blitted into its layer,
+				// the image made ready before the first and handed back after
+				// the last
+				const bool layeredOut = eyesOut && targets[0] == targets[1];
 				for (int e = 0; eyesOut && e < 2; e++) {
 					VulkanImage& kept = *vrEyeImages[e];
 					const VkExtent2D size{kept.GetWidth(), kept.GetHeight()};
@@ -1445,17 +1635,22 @@ namespace spades {
 					// Scaled up to the headset's image when drawn smaller.
 					const int32_t tw = fs.eyeWidth > 0 ? fs.eyeWidth : w;
 					const int32_t th = fs.eyeHeight > 0 ? fs.eyeHeight : h;
-					ImageBarrier(cmd, targets[e], VK_IMAGE_LAYOUT_UNDEFINED,
-					             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-					             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-					Blit(cmd, kept.GetImage(), 0, 0, w, h, targets[e], tw, th);
+					if (!layeredOut || e == 0)
+						ImageBarrier(cmd, targets[e], VK_IMAGE_LAYOUT_UNDEFINED,
+						             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
+						             VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+						             VK_PIPELINE_STAGE_TRANSFER_BIT);
+					Blit(cmd, kept.GetImage(), 0, 0, w, h, targets[e], tw, th, 0,
+					     layeredOut ? static_cast<uint32_t>(e) : 0U);
 					// The runtime takes the image back in the layout it gave it out in.
-					ImageBarrier(cmd, targets[e], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
-					             VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-					               VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-					             VK_PIPELINE_STAGE_TRANSFER_BIT,
-					             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+					if (!layeredOut || e == 1)
+						ImageBarrier(cmd, targets[e], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+						             VK_ACCESS_TRANSFER_WRITE_BIT,
+						             VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+						               VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+						             VK_PIPELINE_STAGE_TRANSFER_BIT,
+						             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 				}
 				if (!eyesOut) {
 					xr->ReleaseEyeImage(0);
@@ -1477,7 +1672,7 @@ namespace spades {
 					// to give back but nothing to show.
 					// The crop below would divide 0 by 0, and a NaN aspect made a
 					// blit from y = INT_MIN.
-				} else if (eyesOut) {
+				} else if (eyesOut && !vrDirectFrame) {
 					VulkanImage& mirror = mirrorMade ? *vrMirrorImage : *vrEyeImages[mirrorEye];
 					int32_t w = static_cast<int32_t>(mirror.GetWidth());
 					int32_t h = static_cast<int32_t>(mirror.GetHeight());

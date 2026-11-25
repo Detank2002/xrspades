@@ -4,7 +4,7 @@ XRSpades is [ZeroSpades](https://github.com/Fran6nd/zerospades) with VR:
 play Ace of Spades in a headset on PC (OpenXR) or standalone on a Meta Quest 3,
 on the same servers as everyone else. Everything else is ZeroSpades as Fran6nd
 makes it; XRSpades follows its `vulkan-2` branch. XRSpades was called
-ZeroSpades X until 0.4.0; ZeroSpades X updates itself to XRSpades.
+ZeroSpades X until 0.5.0; ZeroSpades X updates itself to XRSpades.
 
 [Download](https://github.com/Detank2002/xrspades/releases/latest) — Community: [BuildAndShoot](https://buildandshoot.com) - [aloha.pk](https://aloha.pk)
 

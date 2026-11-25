@@ -75,7 +75,7 @@ namespace spades {
 
 			// Wrap existing image (e.g., from swapchain)
 			VulkanImage(Handle<gui::SDLVulkanDevice> device, VkImage existingImage,
-			            uint32_t width, uint32_t height, VkFormat format);
+			            uint32_t width, uint32_t height, VkFormat format, uint32_t layers = 1);
 
 			VkImage GetImage() const { return image; }
 			VkImageView GetImageView() const { return imageView; }

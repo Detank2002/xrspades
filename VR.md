@@ -517,7 +517,29 @@ far as a normal throw.
 | `vr_symmetricFrustum` | 0 | 1: draw each eye with a centred frustum covering the runtime's (10-20% more pixels; the old way) |
 | `r_debugOffCentre` | 0 | a test: draw the monitor's view off-centre, as a headset eye is (1 = its right half, stretched) |
 | `vr_multiview` | 0 | 1: draw both eyes in one pass (VK_KHR_multiview), as a standalone headset needs; read at start |
-| `vr_foveation` | 0 | not used for now (crashed a Quest 2's driver, no gain measured on a Quest 3); was foveated rendering: each eye's edges shaded at half or a quarter density (0 off, 1 low, 2 medium, 3 high), where the GPU has `VK_EXT_fragment_density_map` (a Quest's does); read at start |
+| `vr_foveation` | 0 | foveated rendering by the headset's runtime (`XR_FB_foveation`): each eye's edges shaded at lower density, 0 off, 1 low, 2 medium, 3 high. On or off is read at start (the scene's passes are made with a density map or not, and the device enables `VK_EXT_fragment_density_map` only then); the level applies at once. Only with the direct eyes (below) |
+| `vr_foveationDynamic` | 1 | 1: the runtime takes the foveation below `vr_foveation`'s level while the GPU has time to spare, back up to it when it has not |
+
+**Direct eyes.** With both eyes in one pass and a scene pass that resolves
+itself (`r_resolveInPass`, no depth read after it: the headset's Performance
+and Balanced presets), the eye images are one two-layer OpenXR swapchain, an
+eye a layer, and the scene pass resolves its multisampled colour straight
+into the acquired image (`VulkanFramebufferManager::SetDirectTargets`, a
+framebuffer for each swapchain image). The eyes' labels and comfort layer are
+then drawn onto that image's layers in Flip (`RecordDirectEyeOverlays`), and
+nothing is copied: the eye images and the two full-size blits of the other
+way are gone (about 0.6 ms of a Quest 3's GPU). The scene's colour is then the
+eye images' sRGB format, as is the UI's (`SDLVulkanDevice`'s headless format),
+so the labels draw with the UI's pipelines. A frame that cannot go straight in
+(a filter after the scene, the eyes drawn smaller by Hold The Frame Rate) goes
+the old way, blitted into the layers; the log says which way, each time it
+changes ("Direct eyes: ..."). With foveation on, the swapchain is made with
+`XR_FB_foveation_vulkan`: the runtime gives a fragment density map with each
+image (`R8G8_UNORM`, a layer an eye), the scene pass reads it, and
+`xrUpdateSwapchainFB` sets the level (`OpenXRSystem::ApplyFoveation`). The
+framebuffer manager's own targets read a full-density map of its own, so that
+the passes match. The first try (our own maps into our own targets, October)
+crashed a Quest 2's driver in `vkEndCommandBuffer` on the first frame.
 | `vr_mirrorEye` | 0 | which eye the monitor shows: 0 left, 1 right |
 | `vr_debugFixedLook` | (empty) | for tests: "yaw pitch" in degrees holds the head in that direction |
 | `vr_menuScene` | 1 | the menus stand on a generated map instead of in a void |

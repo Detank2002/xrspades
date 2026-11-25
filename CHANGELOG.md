@@ -5,7 +5,7 @@ version's section at the top of its release notes, under "What's new", and
 the game shows those lines when it offers the update. Keep each line short:
 one change, in a player's words.
 
-## 0.4.0
+## 0.5.0
 
 - New: ZeroSpades X is now XRSpades, same game, new name
 - New: the menu's links take you to XRSpades' releases, code and Discord
@@ -38,6 +38,8 @@ one change, in a player's words.
 - Improved: in VR, spectating and demos start on the table view (Settings, VR to turn it off)
 - Improved: in VR, the Cross sight is now a ring reticle that tilts with the gun, and the sight's frame hides only the part of it behind it
 - Improved: in VR, Quest headsets have a little more headroom for keeping a steady frame rate
+- New: in VR on Quest, Foveated Rendering (Settings, VR) draws the edges of each eye in less detail, where the lenses blur anyway, for a smoother game
+- Improved: in VR on Quest, each frame goes straight to the headset, a little faster with or without foveated rendering
 - Fixed: in VR, striking a block with the spade digs it again
 - Changed: the spade stays a spade when you hit with it, instead of turning into a pickaxe
 - Improved: in VR, tips and in-game popups float in front of you and catch up when you look away, instead of being stuck to your face; the training tips are smaller

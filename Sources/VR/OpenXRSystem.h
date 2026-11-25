@@ -51,6 +51,14 @@ namespace spades {
 			uint32_t width = 0;
 			uint32_t height = 0;
 			std::vector<VkImage> images;
+			/** Image layers: 2 for the eyes drawn at once (an eye a layer), else 1. */
+			uint32_t layers = 1;
+			/** XR_FB_foveation_vulkan: the runtime's fragment density map for each
+			 * image (R8G8_UNORM, a layer an eye), and their size. Empty without
+			 * foveation. */
+			std::vector<VkImage> densityImages;
+			uint32_t densityWidth = 0;
+			uint32_t densityHeight = 0;
 			/** Index of the image acquired this frame, or UINT32_MAX. */
 			uint32_t acquired = UINT32_MAX;
 		};
@@ -122,6 +130,25 @@ namespace spades {
 			void ReleaseEyeImage(int eye);
 			VkFormat GetEyeFormat() const { return eyeSwapchains[0].format; }
 
+			/** How the renderer will draw the eyes, told before the first frame
+			 * makes their images: `layered`, both at once into one two-layer
+			 * swapchain (an eye a layer, for multiview); `foveated`, with the
+			 * runtime's foveation on it (XR_FB_foveation_vulkan), which needs
+			 * layered eyes and the device's VK_EXT_fragment_density_map. Acquiring
+			 * again in a frame gives the image already acquired; layered, both
+			 * eyes get the one image. */
+			void SetEyeLayout(bool layered, bool foveated);
+			/** Whether the runtime can foveate the eye images (its foveation
+			 * extensions are all on). */
+			bool CanFoveate() const;
+			/** The format the eye images get: the first sRGB one the runtime
+			 * offers. Known once the session exists. */
+			VkFormat GetPlannedEyeFormat() const;
+			/** The eye swapchain: with layered eyes, the only one. */
+			const XRSwapchain& GetEyeSwapchain() const { return eyeSwapchains[0]; }
+			/** Counts up each time the eye images are made again. */
+			uint32_t GetEyeSwapchainGeneration() const { return eyeSwapchainGeneration; }
+
 			/** The HUD panel's image, `width` x `height`; the swapchain is
 			 * (re)created to match. Same layout rules as the eye images. */
 			bool AcquireHudImage(uint32_t width, uint32_t height, VkImage& image);
@@ -162,7 +189,11 @@ namespace spades {
 			bool SuggestBindings();
 			void CreateEyeSwapchains();
 			bool CreateSwapchain(XRSwapchain& sc, uint32_t width, uint32_t height,
-			                     const std::vector<int64_t>& preferredFormats);
+			                     const std::vector<int64_t>& preferredFormats,
+			                     uint32_t layers = 1, bool foveated = false);
+			/** vr_foveation and vr_foveationDynamic onto the eye swapchain when they
+			 * change: a new foveation profile, through xrUpdateSwapchainFB. */
+			void ApplyFoveation();
 			void DestroySwapchain(XRSwapchain& sc);
 			bool AcquirePanelImage(XRSwapchain& sc, uint32_t width, uint32_t height,
 			                       VkImage& image, const char* what);
@@ -223,6 +254,15 @@ namespace spades {
 			bool symmetricFrustum = false;
 
 			XRSwapchain eyeSwapchains[2];
+			uint32_t eyeSwapchainGeneration = 0;
+			bool eyesLayered = false;
+			bool eyesFoveated = false;
+			// The level (and 4 if dynamic) last given to the runtime: -1 none yet
+			int appliedFoveation = -1;
+			XrFoveationProfileFB foveationProfile = XR_NULL_HANDLE;
+			PFN_xrCreateFoveationProfileFB pfnCreateFoveationProfile = nullptr;
+			PFN_xrDestroyFoveationProfileFB pfnDestroyFoveationProfile = nullptr;
+			PFN_xrUpdateSwapchainFB pfnUpdateSwapchain = nullptr;
 			XRSwapchain hudSwapchain;
 			XRSwapchain wristSwapchain;
 			std::vector<int64_t> runtimeFormats;

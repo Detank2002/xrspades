@@ -270,9 +270,34 @@ namespace spades {
 
 			// Multiview (vr_multiview): see IsMultiview.
 			bool multiview = false;
-			// Foveated rendering in a headset (vr_foveation), 0 for none: every
-			// scene target set (the eyes', the scope's) is made with it.
+			// Foveated rendering in a headset (vr_foveation on at start), 0 for
+			// none: every scene target set (the eyes', the scope's) is made with
+			// a density map in its passes, the runtime's for the direct eyes.
 			int foveation = 0;
+			// Direct eyes: the scene pass resolves straight into the headset's
+			// eye images (one two-layer swapchain, an eye a layer) and the eyes'
+			// labels are drawn onto them there, with no copies; the runtime's
+			// foveation works only this way. Decided at start (multiview, the
+			// pass resolving itself, the UI's format the eyes'); a frame it cannot
+			// do (a filter after the scene, the eyes scaled down) goes through
+			// the eye images below as before.
+			bool directEyes = false;
+			VkFormat directEyeFormat = VK_FORMAT_UNDEFINED;
+			bool vrDirectFrame = false; // this frame's eyes went straight in
+			int vrDirectLogged = -1;    // the last way logged: 0 copies, 1 direct
+			/** Picks this frame's way for the eyes, and the headset image for
+			 * the direct one (taken here, before the scene is drawn into it). */
+			bool PrepareDirectEyes();
+			/** The direct eyes' labels and comfort layer, onto the headset's
+			 * image (SHADER_READ_ONLY from the scene's pass, left
+			 * COLOR_ATTACHMENT for the runtime). */
+			bool RecordDirectEyeOverlays(VkCommandBuffer cmd, uint32_t frameIndex);
+			void DestroyDirectEyeFramebuffers();
+			VkRenderPass eyeDirectRenderPass = VK_NULL_HANDLE;
+			// A view and framebuffer for each headset image's layer: [image * 2 + eye]
+			std::vector<VkImageView> eyeDirectViews;
+			std::vector<VkFramebuffer> eyeDirectFramebuffers;
+			uint32_t eyeDirectGeneration = 0;
 			VkDescriptorSetLayout viewSetLayout = VK_NULL_HANDLE;
 			VkDescriptorSetLayout emptySetLayout = VK_NULL_HANDLE;
 			VkDescriptorPool viewSetPool = VK_NULL_HANDLE;

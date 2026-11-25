@@ -60,6 +60,15 @@ DEFINE_SPADES_SETTING(vr_refreshRate, "0");
 // before the renderer took off-centre ones (10-20% more pixels). The control for
 // the asymmetric path, and a way back if a runtime mishandles it.
 DEFINE_SPADES_SETTING(vr_symmetricFrustum, "0");
+// Foveated rendering, by the headset's runtime (XR_FB_foveation): each eye's
+// edges shaded at lower density, 0 off, 1 low, 2 medium, 3 high. Whether it is
+// on at all is read at start (the renderer's passes are made for it or not);
+// the level is applied as it changes. Only where the eyes are drawn at once,
+// straight into the headset's images (VulkanRenderer's direct eyes).
+DEFINE_SPADES_SETTING(vr_foveation, "0");
+// 1: the runtime lowers the foveation below vr_foveation's level while the GPU
+// has time to spare, and takes it back up to it when it has not
+DEFINE_SPADES_SETTING(vr_foveationDynamic, "1");
 // For tests: "yaw pitch" in degrees replaces the headset's head direction with a
 // fixed one (pitch below 0 looks down), so every run sees the same picture. The
 // eyes keep their spacing. Empty: the headset's own.
@@ -393,6 +402,10 @@ namespace spades {
 				vkDeviceWaitIdle(vkDevice);
 				vkDevice = VK_NULL_HANDLE;
 			}
+			if (foveationProfile != XR_NULL_HANDLE && pfnDestroyFoveationProfile)
+				pfnDestroyFoveationProfile(foveationProfile);
+			foveationProfile = XR_NULL_HANDLE;
+			appliedFoveation = -1;
 			for (auto& sc : eyeSwapchains)
 				DestroySwapchain(sc);
 			DestroySwapchain(hudSwapchain);
@@ -767,7 +780,8 @@ namespace spades {
 		}
 
 		bool OpenXRSystem::CreateSwapchain(XRSwapchain& sc, uint32_t width, uint32_t height,
-		                                   const std::vector<int64_t>& preferredFormats) {
+		                                   const std::vector<int64_t>& preferredFormats,
+		                                   uint32_t layers, bool foveated) {
 			DestroySwapchain(sc);
 
 			int64_t format = 0;
@@ -790,15 +804,24 @@ namespace spades {
 			XrSwapchainCreateInfo ci{XR_TYPE_SWAPCHAIN_CREATE_INFO};
 			// The renderer finishes each image with a blit, so it needs TRANSFER_DST;
 			// COLOR_ATTACHMENT is what the runtime expects the layout to be in.
+			// Eyes drawn straight into it (layered) have the scene resolved into it,
+			// and it is SHADER_READ_ONLY between their passes, which needs SAMPLED.
 			ci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
-			                XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+			                XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT |
+			                (layers > 1 ? XR_SWAPCHAIN_USAGE_SAMPLED_BIT : 0);
 			ci.format = format;
 			ci.sampleCount = 1;
 			ci.width = width;
 			ci.height = height;
 			ci.faceCount = 1;
-			ci.arraySize = 1;
+			ci.arraySize = layers;
 			ci.mipCount = 1;
+			// A density map with each image, which the runtime fills for the level
+			// ApplyFoveation gives it
+			XrSwapchainCreateInfoFoveationFB fov{XR_TYPE_SWAPCHAIN_CREATE_INFO_FOVEATION_FB};
+			fov.flags = XR_SWAPCHAIN_CREATE_FOVEATION_FRAGMENT_DENSITY_MAP_BIT_FB;
+			if (foveated)
+				ci.next = &fov;
 			if (!Check(xrCreateSwapchain(session, &ci, &sc.handle), "xrCreateSwapchain"))
 				return false;
 
@@ -806,6 +829,10 @@ namespace spades {
 			xrEnumerateSwapchainImages(sc.handle, 0, &count, nullptr);
 			std::vector<XrSwapchainImageVulkan2KHR> images(count,
 			                                               {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN2_KHR});
+			std::vector<XrSwapchainImageFoveationVulkanFB> density(
+			  foveated ? count : 0, {XR_TYPE_SWAPCHAIN_IMAGE_FOVEATION_VULKAN_FB});
+			for (size_t i = 0; i < density.size(); i++)
+				images[i].next = &density[i];
 			if (!Check(xrEnumerateSwapchainImages(
 			             sc.handle, count, &count,
 			             reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())),
@@ -814,6 +841,19 @@ namespace spades {
 			sc.images.clear();
 			for (const auto& img : images)
 				sc.images.push_back(img.image);
+			sc.densityImages.clear();
+			sc.densityWidth = sc.densityHeight = 0;
+			for (const auto& d : density) {
+				if (d.image == VK_NULL_HANDLE || d.width == 0 || d.height == 0) {
+					SPLog("[OpenXR] The runtime gave an eye image no density map");
+					sc.densityImages.clear();
+					break;
+				}
+				sc.densityImages.push_back(d.image);
+				sc.densityWidth = d.width;
+				sc.densityHeight = d.height;
+			}
+			sc.layers = layers;
 			sc.format = static_cast<VkFormat>(format);
 			sc.width = width;
 			sc.height = height;
@@ -855,10 +895,23 @@ namespace spades {
 			                  viewConfigs[0].maxImageRectHeight, growY);
 
 			std::vector<int64_t> formats = {VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_SRGB};
-			for (int i = 0; i < 2; i++) {
-				if (!CreateSwapchain(eyeSwapchains[i], w, h, formats))
+			// Both eyes in one two-layer image when they are drawn at once, else
+			// an image each
+			if (eyesLayered) {
+				DestroySwapchain(eyeSwapchains[1]);
+				if (!CreateSwapchain(eyeSwapchains[0], w, h, formats, 2, eyesFoveated))
 					return;
+			} else {
+				for (int i = 0; i < 2; i++) {
+					if (!CreateSwapchain(eyeSwapchains[i], w, h, formats))
+						return;
+				}
 			}
+			eyeSwapchainGeneration++;
+			appliedFoveation = -1;
+			if (!eyeSwapchains[0].densityImages.empty())
+				SPLog("[OpenXR] Eye density maps %ux%u, from the runtime",
+				      eyeSwapchains[0].densityWidth, eyeSwapchains[0].densityHeight);
 			frameState.eyeWidth = static_cast<int>(w);
 			frameState.eyeHeight = static_cast<int>(h);
 			if (symmetricFrustum)
@@ -1178,6 +1231,8 @@ namespace spades {
 				CreateEyeSwapchains();
 			if (eyeSwapchains[0].handle == XR_NULL_HANDLE)
 				frameState.shouldRender = false;
+			else
+				ApplyFoveation();
 		}
 
 		void OpenXRSystem::PlaceHudPanel() {
@@ -1486,10 +1541,79 @@ namespace spades {
 #endif
 		}
 
+		void OpenXRSystem::SetEyeLayout(bool layered, bool foveated) {
+			eyesLayered = layered;
+			eyesFoveated = layered && foveated && CanFoveate();
+		}
+
+		bool OpenXRSystem::CanFoveate() const {
+			return caps[XrCap::Foveation] && caps[XrCap::FoveationConfiguration] &&
+			       caps[XrCap::FoveationVulkan] && caps[XrCap::SwapchainUpdateState];
+		}
+
+		VkFormat OpenXRSystem::GetPlannedEyeFormat() const {
+			for (int64_t want : {(int64_t)VK_FORMAT_R8G8B8A8_SRGB, (int64_t)VK_FORMAT_B8G8R8A8_SRGB})
+				if (std::find(runtimeFormats.begin(), runtimeFormats.end(), want) !=
+				    runtimeFormats.end())
+					return static_cast<VkFormat>(want);
+			return runtimeFormats.empty() ? VK_FORMAT_R8G8B8A8_SRGB
+			                              : static_cast<VkFormat>(runtimeFormats[0]);
+		}
+
+		void OpenXRSystem::ApplyFoveation() {
+			const XRSwapchain& sc = eyeSwapchains[0];
+			if (sc.handle == XR_NULL_HANDLE || sc.densityImages.empty())
+				return;
+			const int level = std::max(0, std::min(3, (int)vr_foveation));
+			const bool dynamic = level > 0 && (bool)vr_foveationDynamic;
+			const int want = level + (dynamic ? 4 : 0);
+			if (want == appliedFoveation)
+				return;
+			appliedFoveation = want;
+			if (!pfnCreateFoveationProfile) {
+				xrGetInstanceProcAddr(instance, "xrCreateFoveationProfileFB",
+				                      reinterpret_cast<PFN_xrVoidFunction*>(&pfnCreateFoveationProfile));
+				xrGetInstanceProcAddr(instance, "xrDestroyFoveationProfileFB",
+				                      reinterpret_cast<PFN_xrVoidFunction*>(&pfnDestroyFoveationProfile));
+				xrGetInstanceProcAddr(instance, "xrUpdateSwapchainFB",
+				                      reinterpret_cast<PFN_xrVoidFunction*>(&pfnUpdateSwapchain));
+			}
+			if (!pfnCreateFoveationProfile || !pfnDestroyFoveationProfile || !pfnUpdateSwapchain)
+				return;
+			static const XrFoveationLevelFB kLevels[] = {
+			  XR_FOVEATION_LEVEL_NONE_FB, XR_FOVEATION_LEVEL_LOW_FB, XR_FOVEATION_LEVEL_MEDIUM_FB,
+			  XR_FOVEATION_LEVEL_HIGH_FB};
+			XrFoveationLevelProfileCreateInfoFB li{XR_TYPE_FOVEATION_LEVEL_PROFILE_CREATE_INFO_FB};
+			li.level = kLevels[level];
+			li.verticalOffset = 0.0F;
+			li.dynamic = dynamic ? XR_FOVEATION_DYNAMIC_LEVEL_ENABLED_FB
+			                     : XR_FOVEATION_DYNAMIC_DISABLED_FB;
+			XrFoveationProfileCreateInfoFB pi{XR_TYPE_FOVEATION_PROFILE_CREATE_INFO_FB};
+			pi.next = &li;
+			XrFoveationProfileFB profile = XR_NULL_HANDLE;
+			if (!Check(pfnCreateFoveationProfile(session, &pi, &profile),
+			           "xrCreateFoveationProfileFB"))
+				return;
+			XrSwapchainStateFoveationFB state{XR_TYPE_SWAPCHAIN_STATE_FOVEATION_FB};
+			state.profile = profile;
+			Check(pfnUpdateSwapchain(sc.handle,
+			                         reinterpret_cast<const XrSwapchainStateBaseHeaderFB*>(&state)),
+			      "xrUpdateSwapchainFB");
+			// The swapchain keeps what it was given; the old profile can go
+			if (foveationProfile != XR_NULL_HANDLE)
+				pfnDestroyFoveationProfile(foveationProfile);
+			foveationProfile = profile;
+			SPLog("[OpenXR] Foveation level %d%s", level, dynamic ? ", dynamic" : "");
+		}
+
 		bool OpenXRSystem::AcquireEyeImage(int eye, VkImage& image) {
-			XRSwapchain& sc = eyeSwapchains[eye];
+			XRSwapchain& sc = eyeSwapchains[eyeSwapchains[0].layers > 1 ? 0 : eye];
 			if (!frameBegun || sc.handle == XR_NULL_HANDLE)
 				return false;
+			if (sc.acquired != UINT32_MAX) {
+				image = sc.images[sc.acquired];
+				return true;
+			}
 			XrSwapchainImageAcquireInfo ai{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
 			uint32_t index = 0;
 			if (!Check(xrAcquireSwapchainImage(sc.handle, &ai, &index), "xrAcquireSwapchainImage"))
@@ -1585,10 +1709,13 @@ namespace spades {
 					pv[i].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
 					pv[i].pose = views[i].pose;
 					pv[i].fov = renderFov[i];
-					pv[i].subImage.swapchain = eyeSwapchains[i].handle;
+					const bool layered = eyeSwapchains[0].layers > 1;
+					const XRSwapchain& sc = eyeSwapchains[layered ? 0 : i];
+					pv[i].subImage.swapchain = sc.handle;
+					pv[i].subImage.imageArrayIndex = layered ? static_cast<uint32_t>(i) : 0U;
 					pv[i].subImage.imageRect.offset = {0, 0};
-					pv[i].subImage.imageRect.extent = {static_cast<int32_t>(eyeSwapchains[i].width),
-					                                   static_cast<int32_t>(eyeSwapchains[i].height)};
+					pv[i].subImage.imageRect.extent = {static_cast<int32_t>(sc.width),
+					                                   static_cast<int32_t>(sc.height)};
 				}
 				proj.space = appSpace;
 				proj.viewCount = 2;

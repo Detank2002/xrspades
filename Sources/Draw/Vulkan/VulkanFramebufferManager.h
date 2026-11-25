@@ -118,14 +118,29 @@ namespace spades {
 			// What the copies into those pass through, at 1x
 			Handle<VulkanBuffer> depthCopyBuffer;
 
-			// Foveated rendering (vr_foveation): the density each part of the
-			// scene's targets is shaded at, a layer an eye, attached to every scene
-			// render pass; its contents go up on the first frame
+			// Foveated rendering (vr_foveation): every scene render pass reads a
+			// fragment density map. The headset's runtime makes the real ones, a
+			// map for each of its eye images (the direct targets below); the
+			// manager's own targets get this one, full density everywhere, a layer
+			// an eye, whose contents go up on the first frame
 			// (RecordDensityMapUpload). Null without foveation.
 			Handle<VulkanImage> densityMapImage;
 			Handle<VulkanBuffer> densityMapUpload;
 			bool densityMapUploaded = false;
-			void CreateDensityMap(int foveation);
+			void CreateDensityMap(bool foveated);
+
+			// The headset's eye images the scene pass resolves straight into
+			// (SetDirectTargets): each wrapped, with the runtime's density map's
+			// view and the scene pass's framebuffer onto both
+			struct DirectTarget {
+				Handle<VulkanImage> color;
+				VkImageView density = VK_NULL_HANDLE;
+				VkFramebuffer framebuffer = VK_NULL_HANDLE;
+			};
+			std::vector<DirectTarget> directTargets;
+			uint32_t directGeneration = 0;
+			int directIndex = -1;
+			void DestroyDirectTargets();
 
 			// Single-sample resolve targets for the scene attachments. Only created
 			// when useMSAA; the post-process chain and any code that *reads* the
@@ -191,7 +206,8 @@ namespace spades {
 			 * images for the post-process chain. */
 			VulkanFramebufferManager(Handle<gui::SDLVulkanDevice> device, VulkanSettings& settings,
 			                         int renderWidth, int renderHeight, int viewCount = 1,
-			                         int foveation = 0, bool resolveInPass = false);
+			                         int foveation = 0, bool resolveInPass = false,
+			                         VkFormat colorFormat = VK_FORMAT_UNDEFINED);
 			~VulkanFramebufferManager();
 
 			/** Sets up for scene rendering. */
@@ -213,8 +229,29 @@ namespace spades {
 			Handle<VulkanImage> GetResolvedColorImage() {
 				if (extractedView >= 0)
 					return postColorImage;
+				if (directIndex >= 0)
+					return directTargets[directIndex].color;
 				return useMSAA ? renderColorResolveImage : renderColorImage;
 			}
+
+			/** The headset's eye images (two layers, the scene's colour format,
+			 * each `width` x `height`), for the scene pass to resolve straight
+			 * into, with the runtime's density map for each when foveated (the
+			 * pass reads a density map, IsFoveated). Only where the pass resolves
+			 * itself and the images are the targets' size; false otherwise, and
+			 * there are none. `generation` tells a new set of images from the
+			 * last (GetDirectTargetsGeneration). */
+			bool SetDirectTargets(const std::vector<VkImage>& images,
+			                      const std::vector<VkImage>& densityImages, uint32_t width,
+			                      uint32_t height, uint32_t generation);
+			bool HasDirectTargets() const { return !directTargets.empty(); }
+			uint32_t GetDirectTargetsGeneration() const { return directGeneration; }
+			/** This frame's scene into direct target `index` (GetRenderFramebuffer,
+			 * GetResolvedColorImage), or -1 into the manager's own targets. */
+			void SelectDirectTarget(int index) {
+				directIndex = index >= 0 && index < static_cast<int>(directTargets.size()) ? index : -1;
+			}
+			int GetDirectTarget() const { return directIndex; }
 			Handle<VulkanImage> GetResolvedDepthImage() {
 				if (extractedView >= 0)
 					return postDepthImage;
@@ -288,7 +325,9 @@ namespace spades {
 				return continuePrepass ? mirrorContinueRenderPass : mirrorRenderPass;
 			}
 			VkRenderPass GetSpriteRenderPass() { return spriteRenderPass; }
-			VkFramebuffer GetRenderFramebuffer() { return renderFramebuffer; }
+			VkFramebuffer GetRenderFramebuffer() {
+				return directIndex >= 0 ? directTargets[directIndex].framebuffer : renderFramebuffer;
+			}
 			VkFramebuffer GetSpriteFramebuffer() { return spriteFramebuffer; }
 
 			/**

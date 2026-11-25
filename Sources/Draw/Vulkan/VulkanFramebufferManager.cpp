@@ -36,7 +36,7 @@ namespace spades {
 		                                                   VulkanSettings& settings,
 		                                                   int renderWidth, int renderHeight,
 		                                                   int views, int foveation,
-		                                                   bool inPassResolve)
+		                                                   bool inPassResolve, VkFormat colorFormat)
 		    : device(dev),
 		      doingPostProcessing(false),
 		      renderWidth(renderWidth),
@@ -67,7 +67,13 @@ namespace spades {
 			resolveInPass = inPassResolve && useMSAA;
 
 			// Determine color format
-			if (useSRGB) {
+			if (colorFormat != VK_FORMAT_UNDEFINED) {
+				// The headset's eye images', for the scene to resolve into them
+				// (an sRGB one, which encodes the linear output as it is written)
+				SPLog("Using the headset's eye format (%d)", static_cast<int>(colorFormat));
+				fbColorFormat = colorFormat;
+				useHighPrec = false;
+			} else if (useSRGB) {
 				SPLog("Using SRGB color format");
 				fbColorFormat = VK_FORMAT_R8G8B8A8_SRGB;
 				useHighPrec = false;
@@ -128,10 +134,7 @@ namespace spades {
 				}
 			}
 
-			CreateDensityMap(foveation);
-			// The resolve takes the density map's place in the pass
-			if (densityMapImage)
-				resolveInPass = false;
+			CreateDensityMap(foveation > 0);
 			if (resolveInPass)
 				SPLog("The scene pass resolves its colour itself and keeps no depth");
 			CreateRenderPass((int)settings.r_water >= 3);
@@ -256,21 +259,23 @@ namespace spades {
 				                                         VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 			}
 
-			// Every scene pass's framebuffer has the density map last, when there is one
+			// Every scene pass's framebuffer has the density map last, when there is
+			// one: after the pass's resolve, when it has one
 			const VkImageView densityView =
 			  densityMapImage ? densityMapImage->GetImageView() : VK_NULL_HANDLE;
 			const uint32_t densityCount = densityMapImage ? 1 : 0;
-			// or the pass's resolve, which takes its place (there is never both)
-			VkImageView attachments[] = {
-			    renderColorImage->GetImageView(),
-			    renderDepthImage->GetAttachmentImageView(),
-			    resolveInPass ? renderColorResolveImage->GetImageView() : densityView
-			};
+			VkImageView attachments[4] = {renderColorImage->GetImageView(),
+			                              renderDepthImage->GetAttachmentImageView()};
+			uint32_t attachmentCount = 2;
+			if (resolveInPass)
+				attachments[attachmentCount++] = renderColorResolveImage->GetImageView();
+			if (densityMapImage)
+				attachments[attachmentCount++] = densityView;
 
 			VkFramebufferCreateInfo fbInfo = {};
 			fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 			fbInfo.renderPass = renderPass;
-			fbInfo.attachmentCount = 2 + densityCount + (resolveInPass ? 1 : 0);
+			fbInfo.attachmentCount = attachmentCount;
 			fbInfo.pAttachments = attachments;
 			fbInfo.width = renderWidth;
 			fbInfo.height = renderHeight;
@@ -471,6 +476,7 @@ namespace spades {
 			if (renderFramebuffer != VK_NULL_HANDLE) {
 				vkDestroyFramebuffer(vkDevice, renderFramebuffer, nullptr);
 			}
+			DestroyDirectTargets();
 
 			if (mirrorFramebuffer != VK_NULL_HANDLE) {
 				vkDestroyFramebuffer(vkDevice, mirrorFramebuffer, nullptr);
@@ -603,12 +609,14 @@ namespace spades {
 			densityAttachment.initialLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT;
 			densityAttachment.finalLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT;
 			const uint32_t densityCount = densityMapImage ? 1 : 0;
-			// The third attachment: the density map's or the resolve's, never both
-			const VkAttachmentDescription& thirdAttachment =
-			  resolveInPass ? resolveAttachment : densityAttachment;
-
-			VkAttachmentDescription attachments[] = {colorAttachment, depthAttachment,
-			                                         thirdAttachment};
+			// Then the resolve, when the pass has one, and the density map last
+			VkAttachmentDescription attachments[4] = {colorAttachment, depthAttachment};
+			uint32_t attachmentCount = 2;
+			if (resolveInPass)
+				attachments[attachmentCount++] = resolveAttachment;
+			const uint32_t densityIndex = attachmentCount;
+			if (densityMapImage)
+				attachments[attachmentCount++] = densityAttachment;
 
 			// Multiview: both eyes in each subpass, drawn from one set of commands;
 			// the shaders pick their eye with gl_ViewIndex. The correlation mask
@@ -625,7 +633,7 @@ namespace spades {
 			densityInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT;
 			densityInfo.pNext = viewCount > 1 ? &multiviewInfo : nullptr;
 			densityInfo.fragmentDensityMapAttachment = {
-			  2, VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT};
+			  densityIndex, VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT};
 			const void* passNext = densityMapImage ? static_cast<const void*>(&densityInfo)
 			                       : viewCount > 1 ? static_cast<const void*>(&multiviewInfo)
 			                                       : nullptr;
@@ -633,7 +641,7 @@ namespace spades {
 			VkRenderPassCreateInfo renderPassInfo = {};
 			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 			renderPassInfo.pNext = passNext;
-			renderPassInfo.attachmentCount = 2 + densityCount + (resolveInPass ? 1 : 0);
+			renderPassInfo.attachmentCount = attachmentCount;
 			renderPassInfo.pAttachments = attachments;
 			renderPassInfo.subpassCount = 1;
 			renderPassInfo.pSubpasses = &subpass;
@@ -659,9 +667,8 @@ namespace spades {
 			continueDepthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 			continueDepthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-			VkAttachmentDescription continueAttachments[] = {continueColorAttachment,
-			                                                 continueDepthAttachment,
-			                                                 thirdAttachment};
+			VkAttachmentDescription continueAttachments[4] = {
+			  continueColorAttachment, continueDepthAttachment, attachments[2], attachments[3]};
 
 			VkRenderPassCreateInfo continueRenderPassInfo = renderPassInfo;
 			continueRenderPassInfo.pAttachments = continueAttachments;
@@ -680,8 +687,9 @@ namespace spades {
 			const VkAttachmentStoreOp mirrorDepthStore =
 			  mirrorDepthRead ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			VkRenderPassCreateInfo mirrorRenderPassInfo = renderPassInfo;
-			VkAttachmentDescription mirrorAttachments[3];
-			mirrorAttachments[2] = thirdAttachment;
+			VkAttachmentDescription mirrorAttachments[4];
+			mirrorAttachments[2] = attachments[2];
+			mirrorAttachments[3] = attachments[3];
 			mirrorRenderPassInfo.pAttachments = mirrorAttachments;
 			const VkAttachmentDescription* sources[3] = {attachments, attachments,
 			                                             continueAttachments};
@@ -741,8 +749,80 @@ namespace spades {
 			}
 		}
 
-		void VulkanFramebufferManager::CreateDensityMap(int foveation) {
-			if (foveation <= 0 || !device->HasFragmentDensityMap())
+		void VulkanFramebufferManager::DestroyDirectTargets() {
+			VkDevice vkDevice = device->GetDevice();
+			for (DirectTarget& t : directTargets) {
+				if (t.framebuffer != VK_NULL_HANDLE)
+					vkDestroyFramebuffer(vkDevice, t.framebuffer, nullptr);
+				if (t.density != VK_NULL_HANDLE)
+					vkDestroyImageView(vkDevice, t.density, nullptr);
+			}
+			directTargets.clear();
+			directIndex = -1;
+		}
+
+		bool VulkanFramebufferManager::SetDirectTargets(const std::vector<VkImage>& images,
+		                                                const std::vector<VkImage>& densityImages,
+		                                                uint32_t width, uint32_t height,
+		                                                uint32_t generation) {
+			SPADES_MARK_FUNCTION();
+			DestroyDirectTargets();
+			directGeneration = generation;
+			const bool foveated = densityMapImage;
+			if (!resolveInPass || viewCount != 2 || images.empty() ||
+			    width != static_cast<uint32_t>(renderWidth) ||
+			    height != static_cast<uint32_t>(renderHeight) ||
+			    (foveated && densityImages.size() != images.size()))
+				return false;
+			VkDevice vkDevice = device->GetDevice();
+			for (size_t i = 0; i < images.size(); i++) {
+				DirectTarget t;
+				t.color = Handle<VulkanImage>(
+				  new VulkanImage(device, images[i], width, height, fbColorFormat, viewCount), false);
+				VkImageView views[4] = {renderColorImage->GetImageView(),
+				                        renderDepthImage->GetAttachmentImageView(),
+				                        t.color->GetImageView()};
+				uint32_t count = 3;
+				if (foveated) {
+					// The runtime's map, a layer an eye as the image is
+					VkImageViewCreateInfo vi{};
+					vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+					vi.image = densityImages[i];
+					vi.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+					vi.format = VK_FORMAT_R8G8_UNORM;
+					vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, viewCount};
+					if (vkCreateImageView(vkDevice, &vi, nullptr, &t.density) != VK_SUCCESS) {
+						SPLog("Direct eyes: the runtime's density map has no view; not used");
+						directTargets.push_back(t);
+						DestroyDirectTargets();
+						return false;
+					}
+					views[count++] = t.density;
+				}
+				VkFramebufferCreateInfo fi{};
+				fi.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+				fi.renderPass = renderPass;
+				fi.attachmentCount = count;
+				fi.pAttachments = views;
+				fi.width = width;
+				fi.height = height;
+				fi.layers = 1;
+				const VkResult r = vkCreateFramebuffer(vkDevice, &fi, nullptr, &t.framebuffer);
+				directTargets.push_back(t);
+				if (r != VK_SUCCESS) {
+					SPLog("Direct eyes: no framebuffer onto an eye image (%d); not used",
+					      static_cast<int>(r));
+					DestroyDirectTargets();
+					return false;
+				}
+			}
+			SPLog("Direct eyes: the scene resolves into the headset's %zu eye images%s",
+			      directTargets.size(), foveated ? ", foveated by the runtime" : "");
+			return true;
+		}
+
+		void VulkanFramebufferManager::CreateDensityMap(bool foveated) {
+			if (!foveated || !device->HasFragmentDensityMap())
 				return;
 			const VkExtent2D texel = device->GetFragmentDensityTexelSize();
 			if (texel.width == 0 || texel.height == 0)
@@ -758,30 +838,17 @@ namespace spades {
 			  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, viewCount);
 			densityMapImage->CreateImageView(VK_IMAGE_ASPECT_COLOR_BIT);
 
-			// Full density in the middle of each eye, then half (2x2 pixels a
-			// shade), then a quarter (4x4) toward the edges, which a headset's
-			// lenses blur anyway. Measured from the middle of the image, the
-			// height counting a little more, in rings set by the level.
-			static const float kRings[3][2] = {{0.70F, 2.0F}, {0.50F, 0.80F}, {0.38F, 0.65F}};
-			const float* ring = kRings[std::min(foveation, 3) - 1];
-			std::vector<uint8_t> texels(static_cast<size_t>(w) * h * 2 * viewCount);
-			for (uint32_t layer = 0; layer < viewCount; layer++)
-				for (uint32_t y = 0; y < h; y++)
-					for (uint32_t x = 0; x < w; x++) {
-						const float u = ((x + 0.5F) / w) * 2.0F - 1.0F;
-						const float v = (((y + 0.5F) / h) * 2.0F - 1.0F) * 1.15F;
-						const float r = std::sqrt(u * u + v * v);
-						const uint8_t d = r < ring[0] ? 255 : r < ring[1] ? 128 : 64;
-						uint8_t* t = &texels[((static_cast<size_t>(layer) * h + y) * w + x) * 2];
-						t[0] = d; // across
-						t[1] = d; // down
-					}
+			// Full density everywhere: the manager's own targets are drawn into
+			// only when the headset's images cannot be (the eyes scaled down, or a
+			// filter after the scene), and are not foveated
+			std::vector<uint8_t> texels(static_cast<size_t>(w) * h * 2 * viewCount, 255);
 			densityMapUpload = Handle<VulkanBuffer>::New(
 			  device, texels.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 			densityMapUpload->UpdateData(texels.data(), texels.size());
-			SPLog("Foveation %d: a %ux%u density map, %ux%u pixels a texel", foveation, w, h,
-			      texel.width, texel.height);
+			SPLog("Foveation: the scene passes read a density map (own: %ux%u, %ux%u pixels a "
+			      "texel)",
+			      w, h, texel.width, texel.height);
 		}
 
 		void VulkanFramebufferManager::RecordDensityMapUpload(VkCommandBuffer commandBuffer) {
@@ -943,7 +1010,7 @@ namespace spades {
 				return; // single-sample: post-process reads renderColorImage directly
 
 			VkImage msColor = renderColorImage->GetImage();
-			VkImage resolved = renderColorResolveImage->GetImage();
+			VkImage resolved = GetResolvedColorImage()->GetImage();
 
 			if (resolveInPass) {
 				// The pass resolved it, leaving it SHADER_READ_ONLY: only make the

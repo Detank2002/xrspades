@@ -89,11 +89,8 @@ DEFINE_SPADES_SETTING(r_multiviewFilters, "1");
 // Both eyes in one render pass (VK_KHR_multiview), as a standalone headset needs.
 // Read when the renderer starts.
 DEFINE_SPADES_SETTING(vr_multiview, "0");
-// Foveated rendering in a headset: the edges of each eye shaded at lower
-// density (0 off, 1 low, 2 medium, 3 high). Read when the renderer starts; only
-// where the GPU has VK_EXT_fragment_density_map (a Quest's does). Not used for
-// now (see the renderer's constructor): kept for when it is made to pay.
-DEFINE_SPADES_SETTING(vr_foveation, "0");
+// Foveated rendering in a headset, by its runtime (OpenXRSystem.cpp)
+SPADES_SETTING(vr_foveation);
 SPADES_SETTING(r_hdr);
 SPADES_SETTING(r_bloom);
 SPADES_SETTING(r_fogShadow);
@@ -203,13 +200,34 @@ namespace spades {
 				if ((bool)vr_multiview && headset && !device->HasMultiview())
 					SPLog("Multiview: not supported by this GPU; each eye drawn on its own");
 				multiview = (bool)vr_multiview && headset && device->HasMultiview();
-				// Foveation is off whatever vr_foveation says, for now: it crashed a
-				// Quest 2's driver (Adreno 650) at the end of each eye frame, and a
-				// Quest 3 measured no faster with it. Into non-subsampled targets
-				// the driver fills the coarse areas back in at every store; the
-				// saving needs subsampled targets, read by the post chain with
-				// subsampled samplers. A config that saved it on is ignored.
-				foveation = 0;
+				// The eyes straight into the headset's images: both at once, by a
+				// pass that resolves itself, into images of the UI's format (the
+				// labels are drawn into them with its pipelines)
+				if (multiview && SceneResolvesInPass()) {
+					directEyeFormat = xr->GetPlannedEyeFormat();
+					directEyes = directEyeFormat == device->GetSwapchainImageFormat();
+					if (!directEyes)
+						SPLog("Direct eyes: no; the headset's format (%d) is not the UI's (%d)",
+						      static_cast<int>(directEyeFormat),
+						      static_cast<int>(device->GetSwapchainImageFormat()));
+				}
+				// Foveation by the runtime, onto the direct eyes' images: its
+				// density maps go into the scene's passes. A Quest 2's driver
+				// crashed (Adreno 650, October) with our own maps and our own
+				// copies; this is the way Meta's runtime does it.
+				foveation = directEyes && (int)vr_foveation > 0 &&
+				                device->HasFragmentDensityMap() && xr->CanFoveate()
+				              ? 1
+				              : 0;
+				if (!directEyes)
+					directEyeFormat = VK_FORMAT_UNDEFINED;
+				if (headset)
+					xr->SetEyeLayout(multiview, foveation > 0);
+				if ((int)vr_foveation > 0 && headset && !foveation)
+					SPLog("Foveation: not here (%s)",
+					      !directEyes ? "the eyes are not drawn straight into the headset's images"
+					      : !device->HasFragmentDensityMap() ? "no VK_EXT_fragment_density_map"
+					                                         : "the runtime has no XR_FB_foveation");
 			}
 #endif
 			SpirvCache::SetMultiview(multiview);
@@ -228,7 +246,7 @@ namespace spades {
 			// Create framebuffer manager for offscreen rendering
 			framebufferManager = stmp::make_unique<VulkanFramebufferManager>(
 			  device, settings, renderWidth, renderHeight, multiview ? 2 : 1, foveation,
-			  SceneResolvesInPass());
+			  SceneResolvesInPass(), directEyeFormat);
 
 			CreateRenderPass();  // Must create render pass before framebuffers
 			CreateFramebuffers();
@@ -713,7 +731,7 @@ namespace spades {
 		framebufferManager =
 		  stmp::make_unique<VulkanFramebufferManager>(device, settings, renderWidth, renderHeight,
 		                                              multiview ? 2 : 1, foveation,
-		                                              SceneResolvesInPass());
+		                                              SceneResolvesInPass(), directEyeFormat);
 		waterRenderer = stmp::make_unique<VulkanWaterRenderer>(*this, map);
 		ConfigureAmbientOcclusion();
 
@@ -1263,8 +1281,7 @@ namespace spades {
 			// Asked for (r_resolveInPass), multisampled, and no depth read after the
 			// scene pass: no water drawn after it, no soft particles, no depth
 			// pre-pass, and no filter that reads the depth.
-			if (!(int)r_resolveInPass || device->GetSampleCount() == VK_SAMPLE_COUNT_1_BIT ||
-			    foveation > 0)
+			if (!(int)r_resolveInPass || device->GetSampleCount() == VK_SAMPLE_COUNT_1_BIT)
 				return false;
 			const int water = (int)settings.r_water;
 			if (water >= 2 || (water == 1 && !(int)r_waterInScene))
@@ -2229,9 +2246,11 @@ namespace spades {
 			}
 			if (canvas >= 2 && canvas <= 5) {
 				// An eye's overlay, or its headset-only layer (4, 5): only once that
-				// eye's picture exists this frame.
+				// eye's picture exists this frame (in the headset's image, for the
+				// direct eyes)
 				const int e = (canvas - 2) % 2;
-				if (!inited || !IsHeadsetFrame() || !vrEyesRendered || !vrEyeImages[e])
+				if (!inited || !IsHeadsetFrame() || !vrEyesRendered ||
+				    (!vrEyeImages[e] && !vrDirectFrame))
 					return false;
 				auto& r = canvas < 4 ? eyeImageRenderers[e] : eyeComfortRenderers[e];
 				if (!r)
@@ -3711,6 +3730,11 @@ namespace spades {
 					framebufferManager->EndExtractedView();
 				}
 				i = j;
+			}
+			// The direct eyes: the scene is already in the headset's image
+			if (framebufferManager->GetDirectTarget() >= 0) {
+				RecordVRTimestamp(cmd, false);
+				return;
 			}
 			// Each eye's picture goes on from where the chain left it: a layer of
 			// the two-layer image is blitted out as it is (with the headset's
