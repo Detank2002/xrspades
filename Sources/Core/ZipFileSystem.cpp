@@ -36,7 +36,7 @@ namespace spades {
 	class ZipFileSystem::ZipFileInputStream : public IStream {
 		ZipFileSystem* fs;
 		unzFile zip;
-		uint64_t pos;
+		uint64_t pos = 0;
 
 		bool streaming;
 
@@ -47,7 +47,7 @@ namespace spades {
 		// read contents are stored in remainingData.
 		// streaming becomes false.
 		std::vector<unsigned char> remainingData;
-		size_t remDataPos;
+		size_t remDataPos = 0;
 
 	public:
 		ZipFileInputStream(ZipFileSystem* fs, unzFile zf) : fs(fs), zip(zf), streaming(true) {
@@ -322,8 +322,14 @@ namespace spades {
 
 	ZipFileSystem::~ZipFileSystem() {
 		SPADES_MARK_FUNCTION();
-		if (currentStream)
-			currentStream->ForceCloseUnzipFile();
+		try {
+			if (currentStream)
+				currentStream->ForceCloseUnzipFile();
+		} catch (const std::exception& ex) {
+			// A corrupt/failed read must not terminate while a preview or live
+			// selection error is already unwinding. Still close the archive.
+			SPLog("Cannot finish closing ZIP stream: %s", ex.what());
+		}
 
 		unzClose(zip);
 		// Else the pak stayed open until the process ended, and an update could
@@ -362,6 +368,20 @@ namespace spades {
 			unzCloseCurrentFile(zip);
 			throw;
 		}
+	}
+
+	std::unique_ptr<IStream> ZipFileSystem::OpenForReading(const char* fn, std::size_t maxBytes) {
+		SPADES_MARK_FUNCTION();
+		if (currentStream)
+			currentStream->ForceCloseUnzipFile();
+		if (!MoveToFile(fn))
+			SPFileNotFound(fn);
+		unz_file_info info{};
+		if (unzGetCurrentFileInfo(zip, &info, nullptr, 0, nullptr, 0, nullptr, 0) != UNZ_OK)
+			SPRaise("Cannot read ZIP entry size");
+		if (info.uncompressed_size > maxBytes)
+			SPRaise("ZIP entry is too large: %s", fn);
+		return OpenForReading(fn);
 	}
 
 	std::unique_ptr<IStream> ZipFileSystem::OpenForWriting(const char* fn) {

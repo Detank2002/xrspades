@@ -282,14 +282,15 @@ if(USE_VULKAN)
 		target_include_directories(ZeroSpades PRIVATE ${Vulkan_INCLUDE_DIRS})
 	endif()
 
-	# Link spirv-cross if available
-	if(HAVE_SPIRV_CROSS)
-		target_link_libraries(ZeroSpades ${SPIRV_CROSS_LIBRARIES})
-		if(SPIRV_CROSS_INCLUDE_DIR)
-			target_include_directories(ZeroSpades PRIVATE ${SPIRV_CROSS_INCLUDE_DIR})
-		endif()
-		target_compile_definitions(ZeroSpades PRIVATE HAVE_SPIRV_CROSS=1)
+	# Every Vulkan build needs real reflection, never empty shader layouts.
+	if(NOT HAVE_SPIRV_CROSS OR NOT SPIRV_CROSS_LIBRARIES)
+		message(FATAL_ERROR "Vulkan requires the installed or bundled SPIRV-Cross core")
 	endif()
+	target_link_libraries(ZeroSpades ${SPIRV_CROSS_LIBRARIES})
+	if(SPIRV_CROSS_INCLUDE_DIR)
+		target_include_directories(ZeroSpades PRIVATE ${SPIRV_CROSS_INCLUDE_DIR})
+	endif()
+	target_compile_definitions(ZeroSpades PRIVATE HAVE_SPIRV_CROSS=1)
 endif()
 
 if(USE_VCPKG)

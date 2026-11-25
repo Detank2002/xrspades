@@ -41,6 +41,9 @@ namespace spades {
 
 		public:
 			IFont(IRenderer*);
+			// Called by FontManager after staging new FreeType faces. Retains
+			// existing fallback renderers and publishes only a complete new set.
+			static void ReloadFallbackFonts();
 			virtual Vector2 Measure(const std::string&) = 0;
 
 			/**

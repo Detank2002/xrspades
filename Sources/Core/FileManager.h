@@ -32,6 +32,9 @@ namespace spades {
 
 	public:
 		static std::unique_ptr<IStream> OpenForReading(const char*);
+		/** Reads below an overlay without unmounting it, e.g. a stock skin preview. */
+		static std::unique_ptr<IStream>
+		OpenForReading(const char*, const std::vector<IFileSystem*>& excluded);
 		static std::unique_ptr<IStream> OpenForWriting(const char*);
 		static bool FileExists(const char*);
 		static bool RemoveFile(const char*);

@@ -45,12 +45,15 @@ namespace spades {
 		bool ContainsUnder(const std::string& dir) const;
 		bool IsEmpty() const { return paths.empty(); }
 
-		/** The latest time over every changed path. */
-		ReloadTime GetReloadTime() const;
+		/** The latest time over every changed path. Only the in-game selector
+		 *  opts into FontManager's in-place reload; main-menu behavior stays
+		 *  unchanged, including its restart notice for font/layout changes. */
+		enum class FontReload { Restart, Live };
+		ReloadTime GetReloadTime(FontReload fonts = FontReload::Restart) const;
 
 		/**
 		 * When a change to `path` can be picked up. This is the one place that says
-		 * which resource kinds can be reloaded; see MOD-HOT-RELOAD.md.
+		 * which resource kinds can be reloaded; see docs/skin-selector.md.
 		 */
 		static ReloadTime GetReloadTime(const std::string& path);
 	};

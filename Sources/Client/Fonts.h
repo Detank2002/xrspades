@@ -29,6 +29,11 @@ namespace spades {
 		public:
 			FontManager(IRenderer*);
 
+			/** Replaces font data between frames, retaining every existing IFont
+			 *  handle used by UI elements, chat and other FontManagers. Stages and
+			 *  validates faces/fallback atlases before publishing; throws on error. */
+			static void ReloadFonts();
+
 			IFont& GetSquareDesignFont() { return *squareDesignFont; }
 			IFont& GetLargeFont() { return *largeFont; }
 			IFont& GetMediumFont() { return *mediumFont; }

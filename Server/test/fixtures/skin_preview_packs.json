@@ -1,0 +1,207 @@
+{
+  "repository": "zerospades/zerospades-paks",
+  "revision": "367d002311a3e0f29c65e064d0e2c83e6598b51b",
+  "packs": [
+    {
+      "name": "FONT-AlteDIN1451-PeterWiegel.pak",
+      "bytes": 21262,
+      "sha256": "9e985ee69c578adf46b51061c44687baec653f4f58e667840f590e66d4266ef8"
+    },
+    {
+      "name": "FONT-CMUSansCondensed-CMUnicode.pak",
+      "bytes": 183051,
+      "sha256": "f87b92ece28b8ee4799709c44c4037e1fc30e84ad3583f80bdb7cb24b314d79c"
+    },
+    {
+      "name": "FONT-NotoFonts-Google.pak",
+      "bytes": 14241836,
+      "sha256": "55060c64d62a34167dfb4d5809c69baaa21f724fe653f05170564a5e90445f4d"
+    },
+    {
+      "name": "FONT-Unifont-GNU.pak",
+      "bytes": 1277266,
+      "sha256": "d7d6861b474b0cd8d280d7262b331cc193f909b475fa020694053dabd057c2cb"
+    },
+    {
+      "name": "SEMI-AWPtomatic-PTrooper.pak",
+      "bytes": 209822,
+      "sha256": "96d5ab683861986ef6010e7a17efd4c434595086872b1e578355b15b09367577",
+      "type": "rifle",
+      "parts": [
+        "WeaponNoMagazine.kv6",
+        "MagazineFull.kv6",
+        "Bolt.kv6",
+        "BoltHandle.kv6"
+      ]
+    },
+    {
+      "name": "SEMI-Ballista-Twodayudie.pak",
+      "bytes": 140262,
+      "sha256": "d09ef698affcebddc425cc546591ed41e52e7b44d5984e9d9b695f511ef75c83",
+      "type": "rifle",
+      "parts": [
+        "WeaponNoMagazine.kv6",
+        "Barrel.kv6",
+        "Stock.kv6",
+        "ScopeFront.kv6",
+        "ScopeRear.kv6",
+        "Magazine.kv6",
+        "Bolt.kv6"
+      ]
+    },
+    {
+      "name": "SEMI-Kar98k-Nuceto.pak",
+      "bytes": 224412,
+      "sha256": "d120d68c16bce6a54c730bbdb7879227b9a738f314d25e53c00819b90e4c23c4",
+      "type": "rifle",
+      "parts": [
+        "1.kv6",
+        "2.kv6",
+        "Sight.kv6",
+        "BoltHandle.kv6",
+        "Magazine.kv6"
+      ]
+    },
+    {
+      "name": "SEMI-M14-PTrooper.pak",
+      "bytes": 122775,
+      "sha256": "843b8659d7f47977261c4a2617502dbb2389f16b5532965bf1e40ce0927f546c",
+      "type": "rifle",
+      "parts": [
+        "WeaponNoMagazine.kv6",
+        "SightRear.kv6",
+        "SightFront.kv6",
+        "ChargingHandle.kv6",
+        "Magazine.kv6"
+      ]
+    },
+    {
+      "name": "SEMI-Riflolver-Twodayudie.pak",
+      "bytes": 141214,
+      "sha256": "667c366dc15ef4bf5dc8964edf8a63bfc3f87ec438cf31500603485386162c91",
+      "type": "rifle",
+      "parts": [
+        "WeaponNoMagazine.kv6",
+        "BarrelHandle.kv6",
+        "Barrel.kv6",
+        "BulletChamber.kv6",
+        "BulletCylinder.kv6",
+        "Hammer.kv6"
+      ]
+    },
+    {
+      "name": "SEMI-USPTorque-Nuceto.pak",
+      "bytes": 528700,
+      "sha256": "f8f6ce88d218e495455a02414430f8a2ba3c8eb92a9cf958eab50fd340d85c01",
+      "type": "rifle",
+      "parts": [
+        "Bottom.kv6",
+        "Mid.kv6",
+        "Top.kv6",
+        "Supressor.kv6",
+        "ChargingHandle.kv6",
+        "Magazine.kv6"
+      ]
+    },
+    {
+      "name": "SFX-Killsounds-.pak",
+      "bytes": 929424,
+      "sha256": "3339faa8f2a92f04dd3175d7b28da785177a2ebfa1a45bfe06d4b3b9a9acdccc"
+    },
+    {
+      "name": "SHOTGUN-Remington870MSC-PTrooper.pak",
+      "bytes": 25564,
+      "sha256": "fe67c510dfb77c9bcca2f0afc5c8a6a55f5681f910db103bab177a4525bc0956",
+      "type": "shotgun",
+      "parts": [
+        "WeaponNoPump.kv6",
+        "Sight.kv6",
+        "Pump.kv6"
+      ]
+    },
+    {
+      "name": "SMG-AK47-PTrooper.pak",
+      "bytes": 87182,
+      "sha256": "de562dba93b295846f07e7b1f8ca2e667cf88d756f7a0f854ab52f79fb280bcf",
+      "type": "smg",
+      "parts": [
+        "WeaponNoMagazine.kv6",
+        "Scope.kv6",
+        "Rails.kv6",
+        "ChargingHandle.kv6",
+        "Magazine.kv6"
+      ]
+    },
+    {
+      "name": "SMG-BrenGun-Twodayudie.pak",
+      "bytes": 98799,
+      "sha256": "b76a1a4591a7dbb0e25e75b34dcf810575df84086e8feaf8f0a6a9dcd49972bb",
+      "type": "smg",
+      "parts": [
+        "WeaponNoMag.kv6",
+        "barrelNbipod.kv6",
+        "stock.kv6",
+        "magazine.kv6",
+        "Sight1.kv6",
+        "Sight2.kv6"
+      ]
+    },
+    {
+      "name": "SMG-KRISSVector-Nuceto.pak",
+      "bytes": 244097,
+      "sha256": "77ea94818ea02e0de6761802d82c44fb15ab8feb3ecfe30004876bf08a0d27c2",
+      "type": "smg",
+      "parts": [
+        "2.kv6",
+        "1.kv6",
+        "Magazine.kv6"
+      ]
+    },
+    {
+      "name": "SMG-M4Magpul-PTrooper.pak",
+      "bytes": 231130,
+      "sha256": "fb3f99d864a2792e23c06ea00c87f65f641db6bf6d5345866be61d710745c4af",
+      "type": "smg",
+      "parts": [
+        "WeaponNoMagazine.kv6",
+        "SightFront.kv6",
+        "SightPin.kv6",
+        "SightReflex.kv6",
+        "ChargingHandle.kv6",
+        "MagazineEmpty.kv6"
+      ]
+    },
+    {
+      "name": "SMG-MP5K-Nuceto.pak",
+      "bytes": 280738,
+      "sha256": "1751dedb4006d29599fedf199c11799fb9c630bc877e3d72fe7031f295cc0e44",
+      "type": "smg",
+      "parts": [
+        "WeaponFP.kv6",
+        "MagazineFull.kv6",
+        "Suppressor.kv6",
+        "ChargingHandle.kv6",
+        "SightIron.kv6",
+        "SightFront.kv6"
+      ],
+      "reflex_parts": [
+        "WeaponFP.kv6",
+        "MagazineFull.kv6",
+        "Suppressor.kv6",
+        "ChargingHandle.kv6",
+        "SightDot.kv6",
+        "SightFront.kv6"
+      ]
+    },
+    {
+      "name": "SPADE-Lightsaber-ZeroG.pak",
+      "bytes": 74503,
+      "sha256": "2d2a025259721af74695472e991e5ae449527f714673bd7b88777094f6097ccc",
+      "type": "spade",
+      "parts": [
+        "Saber.kv6"
+      ],
+      "beams": 4
+    }
+  ]
+}

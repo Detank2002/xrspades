@@ -18,12 +18,15 @@
 
  */
 
+#include <cctype>
 #include <cstring>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "IFont.h"
 #include "IRenderer.h"
+#include <Core/Bitmap.h>
 #include <Core/Exception.h>
 #include <Core/FileManager.h>
 #include <Core/IStream.h>
@@ -33,15 +36,13 @@ namespace spades {
 
 		class IImage;
 
-		class FallbackFontManager;
-		struct FallbackFont;
+		struct FallbackFontState;
 
-		// FallbackFontManager cannot save IImage because multiple images
-		// come from different renderers.
+		// Font descriptions are shared globally, but atlas images belong to
+		// a particular renderer. Its fonts share one refreshable image set.
 		class FallbackFontRenderer : public RefCountedObject {
-			std::vector<IImage*> images;
 			IRenderer* renderer;
-			FallbackFontManager* manager;
+			std::shared_ptr<FallbackFontState> state;
 			bool roundSize;
 
 			struct FindResult {
@@ -53,6 +54,7 @@ namespace spades {
 				int offX, offY;
 				FindResult()
 					: img(nullptr),
+					  size(0.0F),
 					  sizeInverse(0.0F),
 					  advance(0.0F),
 					  x(0),
@@ -68,15 +70,13 @@ namespace spades {
 			~FallbackFontRenderer();
 
 		public:
-			FallbackFontRenderer(IRenderer* renderer, FallbackFontManager* manager);
+			FallbackFontRenderer(IRenderer* renderer, std::shared_ptr<FallbackFontState> state);
 
 			void Draw(uint32_t unicode, Vector2 offset, float size, Vector4 color);
 			float Measure(uint32_t unicode, float size);
 		};
 
 		struct FallbackFont {
-		private:
-		public:
 			struct GlyphInfo {
 				uint32_t unicode;
 				uint16_t x, y;
@@ -106,6 +106,8 @@ namespace spades {
 				if (s->Read(&fontSize, 4) < 4)
 					SPRaise("Reading %s: file truncated", path.c_str());
 
+				if (numGlyphs > 0x110000 || fontSize == 0 || fontSize > 4096)
+					SPRaise("Reading %s: invalid font dimensions", path.c_str());
 				this->fontSize = static_cast<float>(fontSize);
 				fontSizeInverse = 1.0F / fontSize;
 
@@ -133,60 +135,120 @@ namespace spades {
 			}
 		};
 
-		class FallbackFontManager {
-			FallbackFontManager() {
+		// One immutable description/bitmap snapshot and one set of GPU images
+		// per renderer, shared by its fonts. Reload builds all replacements
+		// before changing anything the current UI can still be drawing with.
+		struct FallbackFontData {
+			std::vector<FallbackFont> fonts;
+			std::vector<Handle<Bitmap>> atlases;
+
+			FallbackFontData() {
 				auto files = FileManager::EnumFiles("Gfx/Fonts");
-				for (const auto& file : files) {
-					if (file.rfind(".ospfont") != file.size() - 8)
+				std::unordered_set<std::string> seen;
+				for (std::string file : files) {
+					std::string key = file;
+					for (char& c : key)
+						c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+					if (key.size() >= 5 && key.compare(key.size() - 5, 5, ".weak") == 0) {
+						file.resize(file.size() - 5);
+						key.resize(key.size() - 5);
+					}
+					if (key.size() < 8 || key.compare(key.size() - 8, 8, ".ospfont") != 0 ||
+					    !seen.insert(key).second)
 						continue;
-					auto path = "Gfx/Fonts/" + file;
-					auto fnt = new FallbackFont(path);
-					fonts.push_back(fnt);
+					fonts.emplace_back("Gfx/Fonts/" + file);
+					auto bitmap = Bitmap::Load(fonts.back().imagePath);
+					for (const auto& glyph : fonts.back().glyphs) {
+						const auto& g = glyph.second;
+						// Empty glyphs still carry an advance, but have no atlas
+						// rectangle. Unifont uses x=y=65535 for spaces, for example.
+						if (g.w == 0 || g.h == 0)
+							continue;
+						if (int(g.x) + int(g.w) > bitmap->GetWidth() ||
+						    int(g.y) + int(g.h) > bitmap->GetHeight())
+							SPRaise("Reading %s: glyph outside font atlas", file.c_str());
+					}
+					atlases.push_back(std::move(bitmap));
 				}
 			}
 
-		public:
-			std::vector<FallbackFont*> fonts;
-
-			static FallbackFontManager* GetInstance() {
-				static FallbackFontManager* inst = nullptr;
-				if (inst == nullptr)
-					inst = new FallbackFontManager();
-				return inst;
-			}
-			FallbackFontRenderer* CreateRenderer(IRenderer* r) {
-				return new FallbackFontRenderer(r, this);
+			std::vector<Handle<IImage>> CreateImages(IRenderer& renderer) const {
+				std::vector<Handle<IImage>> images;
+				for (const auto& bitmap : atlases) {
+					auto image = renderer.CreateImage(*bitmap);
+					if (!image)
+						SPRaise("Cannot create fallback font atlas");
+					images.push_back(std::move(image));
+				}
+				return images;
 			}
 		};
 
-		FallbackFontRenderer::FallbackFontRenderer(IRenderer* renderer, FallbackFontManager* manager)
-			: renderer(renderer), manager(manager) {
-			for (const auto& font : manager->fonts) {
-				const auto& imgPath = font->imagePath;
-				auto img = renderer->RegisterImage(imgPath.c_str()).Unmanage();
-				images.push_back(img);
+		struct FallbackFontState {
+			std::shared_ptr<FallbackFontData> data;
+			std::vector<Handle<IImage>> images;
+		};
+
+		class FallbackFontManager {
+			std::shared_ptr<FallbackFontData> data = std::make_shared<FallbackFontData>();
+			std::unordered_map<IRenderer*, std::weak_ptr<FallbackFontState>> renderers;
+
+		public:
+			static FallbackFontManager* GetInstance() {
+				static auto* instance = new FallbackFontManager();
+				return instance;
 			}
 
-			// SW renderer doesn't perform linear interpolation on
-			// rendering images, so size rounding must be done to
-			// avoid unreadable texts.
-			roundSize = renderer->IsRendererSW();
-		}
+			void Reload() {
+				auto next = std::make_shared<FallbackFontData>();
+				struct Staged {
+					std::shared_ptr<FallbackFontState> state;
+					std::vector<Handle<IImage>> images;
+				};
+				std::vector<Staged> staged;
+				for (auto it = renderers.begin(); it != renderers.end();) {
+					if (auto state = it->second.lock()) {
+						staged.push_back({std::move(state), next->CreateImages(*it->first)});
+						++it;
+					} else {
+						it = renderers.erase(it);
+					}
+				}
+				// No I/O or allocations after this point.
+				for (auto& entry : staged) {
+					entry.state->images.swap(entry.images);
+					entry.state->data = next;
+				}
+				data.swap(next);
+			}
 
-		FallbackFontRenderer::~FallbackFontRenderer() {
-			for (const auto& img : images)
-				img->Release();
-			images.clear();
-		}
+			FallbackFontRenderer* CreateRenderer(IRenderer* renderer) {
+				auto& weak = renderers[renderer];
+				auto state = weak.lock();
+				if (!state) {
+					state = std::make_shared<FallbackFontState>();
+					state->data = data;
+					state->images = data->CreateImages(*renderer);
+					weak = state;
+				}
+				return new FallbackFontRenderer(renderer, std::move(state));
+			}
+		};
+
+		FallbackFontRenderer::FallbackFontRenderer(IRenderer* renderer,
+		                                           std::shared_ptr<FallbackFontState> state)
+		    : renderer(renderer), state(std::move(state)), roundSize(renderer->IsRendererSW()) {}
+
+		FallbackFontRenderer::~FallbackFontRenderer() = default;
 
 		FallbackFontRenderer::FindResult FallbackFontRenderer::FindGlyph(uint32_t unicode) {
 			FindResult result;
-			for (size_t i = 0; i < manager->fonts.size(); i++) {
-				auto* font = manager->fonts[i];
+			for (size_t i = 0; i < state->data->fonts.size(); i++) {
+				const auto* font = &state->data->fonts[i];
 				const auto& it = font->glyphs.find(unicode);
 				if (it == font->glyphs.end())
 					continue;
-				result.img = images[i];
+				result.img = state->images[i].GetPointerOrNull();
 				result.size = font->fontSize;
 				result.sizeInverse = font->fontSizeInverse;
 				result.advance = it->second.advance;
@@ -217,8 +279,8 @@ namespace spades {
 				return;
 			}
 
-			if (glyph.w == 0)
-				return; // null glyph.
+			if (glyph.w == 0 || glyph.h == 0)
+				return; // Empty glyphs advance the cursor without sampling the atlas.
 
 			float scale = size * glyph.sizeInverse;
 			if (roundSize || scale < 1.0F) {
@@ -277,6 +339,10 @@ namespace spades {
 
 		IFont::IFont(IRenderer* r) {
 			fallback.Set(FallbackFontManager::GetInstance()->CreateRenderer(r), false);
+		}
+
+		void IFont::ReloadFallbackFonts() {
+			FallbackFontManager::GetInstance()->Reload();
 		}
 
 		IFont::~IFont() {} //---

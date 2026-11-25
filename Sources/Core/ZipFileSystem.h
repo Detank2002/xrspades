@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -66,6 +67,8 @@ namespace spades {
 		 * under it) is closed with this; otherwise its owner keeps it.
 		 */
 		ZipFileSystem(IStream* stream, bool ownsStream = false);
+		ZipFileSystem(const ZipFileSystem&) = delete;
+		ZipFileSystem& operator=(const ZipFileSystem&) = delete;
 		~ZipFileSystem();
 
 		std::vector<std::string> EnumFiles(const char*) override;
@@ -76,6 +79,8 @@ namespace spades {
 		std::vector<std::string> GetAllFiles();
 
 		std::unique_ptr<IStream> OpenForReading(const char*) override;
+		/** Reject an oversized entry before decompressing it into memory. */
+		std::unique_ptr<IStream> OpenForReading(const char*, std::size_t maxBytes);
 		std::unique_ptr<IStream> OpenForWriting(const char*) override;
 		bool FileExists(const char*) override;
 	};

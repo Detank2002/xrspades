@@ -45,6 +45,7 @@ namespace spades {
 		class ClientUI : public gui::IGameModeUI {
 			friend class ClientUIHelper;
 			friend class ClientMenu;
+			friend class ModsWindow;
 			friend class ChatLogWindow;
 			friend class ClientChatWindow;
 

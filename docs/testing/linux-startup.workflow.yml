@@ -1,0 +1,76 @@
+name: Linux startup
+
+on:
+  push:
+    branches: [zerospadesx, 'arena/**']
+    paths:
+      - 'CMakeLists.txt'
+      - 'Sources/**'
+      - 'Resources/**'
+      - 'Server/test/**'
+      - '.github/workflows/linux-startup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  startup:
+    name: Native Vulkan and OpenGL launch (bundled reflection, Unifont)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize bundled OpenAL
+        run: git submodule update --init --depth 1 openal-soft
+
+      # Use the distro Vulkan packages, not LunarG's SDK (which can hide a
+      # missing SPIRV-Cross dependency on developers' machines).
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build \
+            libsdl2-dev libsdl2-image-dev libglew-dev libfreetype6-dev \
+            libcurl4-openssl-dev libogg-dev libopus-dev libopusfile-dev \
+            zlib1g-dev libvulkan-dev glslang-tools libopenxr-dev libjsoncpp-dev \
+            mesa-vulkan-drivers vulkan-validationlayers xvfb xauth zip curl
+
+      - name: Configure and build the real client and tests
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 \
+            -DUSE_VULKAN=ON -DUSE_OPENXR=ON -DUSE_OPENGL=ON \
+            -DUSE_INTERNAL_SPIRV_CROSS=ON -DZEROSPADES_NONFREE_RESOURCES=OFF
+          cmake --build build --parallel 2
+          cmake --build build --target zs_tests --parallel 2
+          ctest --test-dir build --output-on-failure
+
+      - name: Prepare game resources and the real Unifont fixture
+        run: |
+          mkdir -p build/bin/Resources
+          cp build/Resources/*.pak build/bin/Resources/
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/zerospades/zerospades-paks/42cb5ec91e15883a1d4e6c4b9c7acdaf3cef1807/FONT-Unifont-GNU.pak \
+            -o build/bin/Resources/font-unifont.pak
+          echo 'd7d6861b474b0cd8d280d7262b331cc193f909b475fa020694053dabd057c2cb  build/bin/Resources/font-unifont.pak' | sha256sum -c -
+
+      - name: Launch through the actual title-map frame and save screenshots
+        run: |
+          export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -name '*lvp*.json' -print -quit)"
+          test -f "$VK_ICD_FILENAMES"
+          if ! xvfb-run -a -s '-screen 0 1024x768x24' \
+            python3 Server/test/native_startup_test.py build/bin/zerospades build/startup-artifacts; then
+            find build/startup-artifacts -name '*.log' -exec tail -n 100 {} \;
+            exit 1
+          fi
+
+      - name: Upload startup logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-startup
+          path: |
+            build/startup-artifacts/
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn

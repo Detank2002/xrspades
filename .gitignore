@@ -80,6 +80,10 @@ Sources/Gui/MainWindow.txt
 # Log files
 *.log
 
+# Python test bytecode
+__pycache__/
+*.py[cod]
+
 
 #################
 # Visual Studio #
