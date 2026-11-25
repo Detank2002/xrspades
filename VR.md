@@ -1646,3 +1646,36 @@ keyboard and wrist, all used by testers.
   (`vkCmdDrawIndexed-renderPass-02684`), and SPIR-V capabilities the device
   does not declare (`VkShaderModuleCreateInfo-pCode-08740/08742`). Not
   rechecked since.
+
+## What makes a map slow on a Quest (measured, November 2026)
+
+Measured on a Quest 3 in a training game (`cg_debugTrainingMap` plays a .vxl,
+`vr_debugEyeSize 1680x1760` pins the eye size, `vr_traceReplay` the head), with
+the GPU's own counters (`ovrgpuprofiler`):
+
+- **Triangles, not pixels.** Loose voxels (a single block with air all round,
+  six faces) are what costs: a generated map with one in half the columns took
+  the scene from 3.3 to 6.5-8 ms, three a column 10-11 ms (4.5x the triangles
+  at a fifth the size; GPU 32% -> 80% busy; fragments +15%). Clumped islands,
+  towers, a sky ceiling, bumpy ground and hidden pockets cost 3.5-5 ms.
+- **Lost Valley** (forest) 6.2 ms against Babel's 3.3: 3.4x the triangles, a
+  quarter their size. From a spot facing a tree, 97% of the chunks drawn were
+  wholly hidden (behind leaf canopies of loose voxels).
+- **Tried and not kept**, each measured on that set of maps:
+  - leaving out a chunk's faces turned from the eye: within the noise (the GPU
+    drops back faces cheaply);
+  - greedy meshing (like faces merged): no gain on real maps, whose colours
+    vary voxel to voxel and whose corners are mostly darkened (Hallway -8%);
+  - occlusion culling by GPU occlusion queries: skipped 89% of Lost Valley's
+    triangles but the queries cost ~40 us each on the tiled GPU (+10 ms);
+  - occlusion culling on the CPU (solid boxes of nearby chunks drawn into a
+    96x96 depth picture an eye): 0.6-1 ms of CPU for 20-34% of chunks left
+    out and no measurable GPU saving: the hidden chunks' pixels were already
+    rejected by the early depth test, and a forest's canopies have no solid
+    boxes to hide anything with.
+- The early depth test (LRZ) works: billions of hidden pixels a second
+  rejected on Lost Valley. The floating-block search on a broken block is
+  cheap (worst 1.4 ms on a lattice hung in the sky); joining a map is quick.
+- What would still help a forest map: drawing less of it (a shorter draw
+  distance in a headset) or fewer triangles for its leaves.
+
