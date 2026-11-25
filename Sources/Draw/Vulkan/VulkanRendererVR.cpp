@@ -301,8 +301,11 @@ namespace spades {
 				}
 			}
 
-			if (!(int)vr_dynamicResolution || !vrTimestampsOk || vrGpuMs <= 0.0F ||
-			    budgetMs <= 0.0F) {
+			// Foveated, the eyes stay the headset's size: drawn smaller they could
+			// not go straight into its images (PrepareDirectEyes), and the
+			// runtime's dynamic foveation holds the frame rate instead
+			if (!(int)vr_dynamicResolution || foveation > 0 || !vrTimestampsOk ||
+			    vrGpuMs <= 0.0F || budgetMs <= 0.0F) {
 				vrResolutionLevel = 0;
 				return;
 			}

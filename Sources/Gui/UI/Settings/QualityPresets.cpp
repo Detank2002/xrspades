@@ -54,25 +54,28 @@ namespace spades {
 			// field, camera blur, HDR and the temporal AA are left as they are.
 			// The colour correction is off at every level: it looked worse.
 			// High is the defaults. MSAA takes effect at the next start, the rest
-			// at the next map.
+			// at the next map. No FXAA: it blurs the whole picture, blocks and all
+			// (testers found the cubes soft beside BetterSpades'); High and Ultra
+			// draw bigger than the screen instead (r_scale), which sharpens.
 			static const std::vector<std::string> keys = {
 			  "r_multisamples", "r_fxaa",     "r_bloom",          "r_lensFlare",
 			  "r_lensFlareDynamic", "r_colorCorrection", "r_softParticles", "r_fogShadow",
 			  "r_ssao",         "r_water",    "r_maxAnisotropy",  "r_shadowMapSize",
-			  "r_dlights",      "r_modelShadows", "r_radiosity",  "r_physicalLighting"};
+			  "r_dlights",      "r_modelShadows", "r_radiosity",  "r_physicalLighting",
+			  "r_scale"};
 			static const std::vector<QualityPreset> presets = {
 			  Level("Low", keys,
 			        {"0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "1", "1024", "0", "0", "0",
-			         "0"}),
+			         "0", "1"}),
 			  Level("Medium", keys,
-			        {"0", "1", "0", "1", "0", "0", "1", "0", "0", "1", "4", "1024", "1", "1", "0",
-			         "0"}),
+			        {"0", "0", "0", "1", "0", "0", "1", "0", "0", "1", "4", "1024", "1", "1", "0",
+			         "0", "1"}),
 			  Level("High", keys,
-			        {"0", "1", "1", "1", "1", "0", "1", "0", "0", "2", "8", "2048", "1", "1", "0",
-			         "0"}),
+			        {"0", "0", "1", "1", "1", "0", "1", "0", "0", "2", "8", "2048", "1", "1", "0",
+			         "0", "1.25"}),
 			  Level("Ultra", keys,
 			        {"4", "0", "1", "1", "1", "0", "1", "1", "1", "3", "16", "4096", "1", "1", "1",
-			         "1"}),
+			         "1", "1.5"}),
 			};
 			return presets;
 		}

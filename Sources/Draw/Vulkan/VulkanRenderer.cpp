@@ -704,8 +704,10 @@ namespace spades {
 
 		// As GL: the framebuffer's size in pixels, which on a high-DPI display is
 		// more than the window's in its own units, scaled by r_scale, kept within
-		// [0.2, 1], and at least a pixel either way
-		const float scale = std::max(0.2F, std::min(1.0F, static_cast<float>(r_scale)));
+		// [0.2, 2], and at least a pixel either way. Above 1 the scene is drawn
+		// bigger than the window and filtered down onto it (supersampling):
+		// sharper, at the cost of its pixels (2 is four times the work).
+		const float scale = std::max(0.2F, std::min(2.0F, static_cast<float>(r_scale)));
 		const VkExtent2D pixels = device->GetSwapchainExtent();
 		const int width = std::max(1, static_cast<int>(pixels.width * scale));
 		const int height = std::max(1, static_cast<int>(pixels.height * scale));
@@ -3492,6 +3494,13 @@ namespace spades {
 
 		std::vector<VulkanRenderer::PostStep> VulkanRenderer::BuildPostSteps(bool eyePass) {
 			std::vector<PostStep> steps;
+			// Foveated eyes always go straight into the headset's images, with
+			// the runtime's density maps: a filter after the scene would send
+			// them the copied way, through the manager's own density map, which
+			// a Quest 2's driver crashes on (October; colour correction on, in
+			// November). The headset's presets have none of these on anyway.
+			if (eyePass && foveation > 0 && !vrScopePass)
+				return steps;
 			auto add = [&](VulkanPostProcessFilter* f,
 			               std::function<bool(VkCommandBuffer, VulkanImage*, VulkanImage*)> run) {
 				steps.push_back({f && f->SupportsLayers(), std::move(run)});

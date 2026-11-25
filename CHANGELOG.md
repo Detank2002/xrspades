@@ -40,6 +40,7 @@ one change, in a player's words.
 - Improved: in VR, Quest headsets have a little more headroom for keeping a steady frame rate
 - New: in VR on Quest, Foveated Rendering (Settings, VR) draws the edges of each eye in less detail, where the lenses blur anyway, for a smoother game
 - Improved: in VR on Quest, each frame goes straight to the headset, a little faster with or without foveated rendering
+- Improved: a sharper picture on a monitor: High draws the game at 125% and Ultra at 150% instead of blurring it with FXAA, and Render Scale goes up to 200%
 - Fixed: in VR, striking a block with the spade digs it again
 - Changed: the spade stays a spade when you hit with it, instead of turning into a pickaxe
 - Improved: in VR, tips and in-game popups float in front of you and catch up when you look away, instead of being stuck to your face; the training tips are smaller

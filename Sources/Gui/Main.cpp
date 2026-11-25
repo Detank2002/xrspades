@@ -117,6 +117,11 @@ SPADES_SETTING(cg_muzzleFire);
 DEFINE_SPADES_SETTING(cl_zsCorpseDefaulted, "0");
 SPADES_SETTING(cg_corpseClearOnRespawn);
 SPADES_SETTING(r_colorCorrection);
+// Set once a config on 0.4.0's High (the defaults) has had 0.5.0's: no FXAA,
+// which blurred the whole picture, and the scene drawn at 125% instead
+DEFINE_SPADES_SETTING(cl_zsSharpDefaults, "0");
+SPADES_SETTING(r_fxaa);
+SPADES_SETTING(r_scale);
 
 #ifdef WIN32
 // windows.h must be included before DbgHelp.h and shlobj.h.
@@ -1223,6 +1228,32 @@ int main(int argc, char** argv) {
 			cg_corpseClearOnRespawn = 1;
 			cl_zsCorpseDefaulted = 1;
 		}
+#if !defined(__ANDROID__)
+		// 0.4.0's High, the defaults, smoothed edges with FXAA, a blur over the
+		// whole picture (testers: the cubes soft beside BetterSpades'). A config
+		// still exactly on it moves to 0.5.0's High, drawn at 125% instead; one
+		// set by hand keeps what it has.
+		if (!static_cast<bool>(cl_zsSharpDefaults)) {
+			static const char* const kOldHigh[][2] = {
+			  {"r_multisamples", "0"}, {"r_fxaa", "1"},         {"r_bloom", "1"},
+			  {"r_lensFlare", "1"},    {"r_lensFlareDynamic", "1"}, {"r_softParticles", "1"},
+			  {"r_fogShadow", "0"},    {"r_ssao", "0"},          {"r_water", "2"},
+			  {"r_maxAnisotropy", "8"}, {"r_shadowMapSize", "2048"}, {"r_scale", "1"}};
+			bool onOldHigh = true;
+			for (const auto& kv : kOldHigh) {
+				spades::Settings::ItemHandle item(kv[0], nullptr);
+				const std::string v = item;
+				if (std::strtod(v.c_str(), nullptr) != std::strtod(kv[1], nullptr))
+					onOldHigh = false;
+			}
+			if (onOldHigh) {
+				r_fxaa = 0;
+				r_scale = 1.25F;
+				SPLog("0.5.0's High: no FXAA, the scene drawn at 125%%");
+			}
+			cl_zsSharpDefaults = 1;
+		}
+#endif
 
 		// Apply --override-cvar values in memory. The previous value of each
 		// overridden variable is captured here and restored just before the

@@ -157,7 +157,8 @@ namespace spades {
 
 		void GLRenderer::UpdateRenderSize() {
 			float renderScale = settings.r_scale;
-			renderScale = Clamp(renderScale, 0.2F, 1.0F);
+			// Above 1: drawn bigger than the window and filtered down onto it
+			renderScale = Clamp(renderScale, 0.2F, 2.0F);
 
 			int screenWidth = device->ScreenWidth();
 			int screenHeight = device->ScreenHeight();

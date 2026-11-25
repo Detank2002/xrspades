@@ -526,11 +526,13 @@ namespace spades {
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "ON"),
 			                  _Tr("Preferences", "Adaptive")},
 			                 {0, 1, -1});
-			l.AddSliderField(_Tr("Preferences", "Render Scale"), "r_scale", 0.2F, 1, 0.01F,
+			l.AddSliderField(_Tr("Preferences", "Render Scale"), "r_scale", 0.2F, 2, 0.05F,
 			                 NumberFormatter(0, "%", "", 100));
 			l.AddHelp(_Tr("Preferences",
-				"The monitor's picture only. In a headset the eyes' resolution is set "
-				"in the VR tab, Eye Resolution."));
+				"Above 100% the game is drawn bigger than your screen and scaled down "
+				"onto it: sharper edges and detail, at a cost (150% is over twice the "
+				"work, 200% four times). Below 100% it is softer and faster. The "
+				"monitor's picture only; in a headset, see Eye Resolution in the VR tab."));
 			{
 				ConfigSlider* fpsSlider = l.AddSliderField(_Tr("Preferences", "FPS Limit"), "cl_fps",
 				                                           0, 300, 1, FPSFormatter());
@@ -784,7 +786,10 @@ namespace spades {
 				"Draws the edges of each eye in less detail, where the lenses blur "
 				"anyway, so the headset has more time for the rest. Turning it on or "
 				"off takes effect at the next start; the level changes at once. Needs "
-				"both eyes in one pass, and not the Quality preset."));
+				"both eyes in one pass, and not the Quality preset. While it is on, "
+				"the eyes stay at full resolution (Hold The Frame Rate does not lower "
+				"it) and filters such as colour correction and "
+				"FXAA are not used in the headset."));
 			l.AddSliderField(_Tr("Preferences", "Eye Resolution"), "vr_renderScale", 0.5F, 1.5F,
 			                 0.05F, NumberFormatter(0, "%" + restart, "", 100));
 			l.AddSliderField(_Tr("Preferences", "Text Sharpness"), "vr_uiSupersample", 1, 3, 1,

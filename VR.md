@@ -539,7 +539,12 @@ image (`R8G8_UNORM`, a layer an eye), the scene pass reads it, and
 `xrUpdateSwapchainFB` sets the level (`OpenXRSystem::ApplyFoveation`). The
 framebuffer manager's own targets read a full-density map of its own, so that
 the passes match. The first try (our own maps into our own targets, October)
-crashed a Quest 2's driver in `vkEndCommandBuffer` on the first frame.
+crashed a Quest 2's driver in `vkEndCommandBuffer` on the first frame, and so
+did 0.5.0's first build with colour correction on, whose frames went the
+copied way through that own map. So while foveation is on, the eyes always go
+straight in: no filter runs after their scene (`BuildPostSteps`), and Hold The
+Frame Rate never draws them smaller (`UpdateVRResolution`). The scope still
+draws through the own map; it is yet to be tried on a Quest 2.
 | `vr_mirrorEye` | 0 | which eye the monitor shows: 0 left, 1 right |
 | `vr_debugFixedLook` | (empty) | for tests: "yaw pitch" in degrees holds the head in that direction |
 | `vr_menuScene` | 1 | the menus stand on a generated map instead of in a void |
