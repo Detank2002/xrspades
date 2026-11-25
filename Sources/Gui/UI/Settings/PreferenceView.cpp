@@ -417,8 +417,19 @@ namespace spades {
 			button->SetBounds(AABB2(tabLeft, tabTop + static_cast<float>(tabs.size()) * tabRowHeight,
 			                        tabWidth, tabRowHeight));
 			button->activated = [this](UIElement& s) { OnTabButtonActivated(s); };
-			view->SetBounds(AABB2(tabRight, tabTop, contentsRight - tabRight, contentsHeight - 6.0F));
+			// From the tabs' top to the contents' bottom. It was contentsHeight
+			// tall from tabTop, which the search box and the Simple / Advanced
+			// switch moved down: the list's last rows hung below the panel, out
+			// of reach of the scroll bar and drawn over its edge.
+			const float viewHeight = contentsTop + contentsHeight - 6.0F - tabTop;
+			view->SetBounds(AABB2(tabRight, tabTop, contentsRight - tabRight, viewHeight));
 			view->visible = false;
+			// The layouter sized its list from the screen; the list fills the view
+			for (const Handle<UIElement>& child : view->GetChildren())
+				if (ListView* list = dynamic_cast<ListView*>(child.GetPointerOrNull())) {
+					AABB2 lb = list->GetBounds();
+					list->SetBounds(AABB2(lb.GetMinX(), lb.GetMinY(), lb.GetWidth(), viewHeight));
+				}
 
 			Handle<PreferenceTab> tab =
 			    Handle<PreferenceTab>::New(view, button.GetPointerOrNull());

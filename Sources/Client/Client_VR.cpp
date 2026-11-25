@@ -363,6 +363,11 @@ namespace spades {
 			vrMirror.matrix = Matrix4::FromAxis(col(MakeVector3(1, 0, 0)), col(MakeVector3(0, 1, 0)),
 			                                    col(MakeVector3(0, 0, 1)), n * (2.0F * d));
 			vrMirror.shown = true;
+			// In a menu the panel trails the head; turning to the mirror must not
+			// take the panel (and the mirror, placed from it) round too.
+			IVRSystem* vr = GetVRSystem();
+			if (vr && scriptedUI->NeedsInput() && !scriptedUI->IsChatPanelOpen())
+				vr->SetHudLookAside(-side * a);
 		}
 
 		float Client::VRToolReach(Player& p) const {

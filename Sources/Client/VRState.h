@@ -217,6 +217,11 @@ namespace spades {
 			 * frame. Asked for each frame it is wanted: otherwise (any menu, the
 			 * main screen) the panel stands in the room (VRFrameState::hudAnchored). */
 			virtual void SetHudFollowsHead() {}
+			/** Something to look at beside the menu panel, this far round from it
+			 * (radians; + left, - right): turning the head that way, as far as
+			 * it and a little more, does not bring the panel along. For the
+			 * next frame; asked for each frame it is wanted (the body mirror). */
+			virtual void SetHudLookAside(float yaw) { (void)yaw; }
 			/** Rumble with a shape (VRHapticShape); a plain rumble without one. */
 			virtual void Vibrate(int hand, VRHapticShape shape, float amplitude, float seconds) {
 				(void)shape;

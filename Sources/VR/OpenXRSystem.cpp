@@ -1282,6 +1282,8 @@ namespace spades {
 			const client::VRPose& head = frameState.head;
 			const bool game = hudFollowAsked;
 			hudFollowAsked = false;
+			const float aside = hudLookAside;
+			hudLookAside = 0.0F;
 			const float d = frameState.hudDistance;
 			const Vector3 ahead = head.orientation.Rotate(MakeVector3(0.0F, 0.0F, -1.0F));
 			if (!head.valid) {
@@ -1313,7 +1315,17 @@ namespace spades {
 				           frameState.rawHands[i].trigger > 0.5F ||
 				           frameState.handPinch[i] > 0.5F;
 			const float off = std::acos(Clamp(Vector3::Dot(hudTrailDir, level), -1.0F, 1.0F));
-			if (off > dead && !dragging && hasHeading)
+			// Turned towards what stands beside the panel (the body mirror), as
+			// far as it and its width more: the panel waits, so it can be looked
+			// at (testers: the mirror went round with the head, only glimpsed).
+			// The cross product's y is + for a turn to the left.
+			float deadHere = dead;
+			if (aside != 0.0F && !game) {
+				const float turn = hudTrailDir.z * level.x - hudTrailDir.x * level.z;
+				if ((turn > 0.0F) == (aside > 0.0F))
+					deadHere = std::max(dead, std::fabs(aside) + 35.0F * deg);
+			}
+			if (off > deadHere && !dragging && hasHeading)
 				hudTrailMoving = true;
 			if (hudTrailMoving) {
 				const float k = 1.0F - std::exp(-std::max(0.0F, frameState.displayPeriod) * 5.0F);

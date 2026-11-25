@@ -190,6 +190,7 @@ namespace spades {
 			void SetHeldMap(bool held) override;
 			void SetKeyboardPanel(bool wanted, const client::VRPose& pose, float width) override;
 			void SetHudFollowsHead() override { hudFollowAsked = true; }
+			void SetHudLookAside(float yaw) override { hudLookAside = yaw; }
 
 		private:
 			OpenXRSystem() = default;
@@ -290,6 +291,7 @@ namespace spades {
 			// The front panel (PlaceHudPanel): asked to follow the head this frame,
 			// and where it stands in the room otherwise.
 			bool hudFollowAsked = false;
+			float hudLookAside = 0.0F; // SetHudLookAside, this frame
 			// Playing, the panel trails the head (PlaceHudPanel): its direction
 			// from the head, and whether it is catching up.
 			Vector3 hudTrailDir{0.0F, 0.0F, -1.0F};
