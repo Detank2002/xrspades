@@ -73,7 +73,16 @@ namespace spades {
 		private:
 			// A keyboard you point at, as there is no keyboard to look at in a
 			// headset. Clicks on it type into the view instead of reaching it.
-			enum KeyAction { KeyChar, KeyBack, KeyEnter, KeyShift, KeySpace };
+			enum KeyAction {
+				KeyChar,
+				KeyBack,
+				KeyEnter,
+				KeyShift,
+				KeySpace,
+				KeyLeft,  // the text cursor, to mend a typo
+				KeyRight,
+				KeyClose // Escape: puts the keyboard (and the chat) away
+			};
 			struct Key {
 				std::string label;
 				char ch;
@@ -83,8 +92,23 @@ namespace spades {
 			std::vector<Key> keys;
 			bool keyboardVisible = false;
 			// Where it sits: just below eye level unless the text field is there.
-			enum KeyboardPlace { KeyboardTop, KeyboardMiddle, KeyboardBottom, KeyboardAboveField };
+			enum KeyboardPlace {
+				KeyboardTop,
+				KeyboardMiddle,
+				KeyboardBottom,
+				KeyboardAboveField,
+				KeyboardOwnPanel // all of its own panel, under a strip to grab it by
+			};
 			bool shift = false;
+			// Shift twice in quick succession: capitals until Shift again
+			bool capsLock = false;
+			float lastShiftTime = -10.0F;
+			float clock = 0.0F;
+			// Back (and the cursor keys) held: repeat, after half a second
+			int repeatKey = -1;
+			float repeatTimer = 0.0F;
+			float lastDt = 0.0F;
+			void RepeatHeldKey(View&, bool held, bool pressed);
 			int hoverKey = -1;
 			AABB2 keyboardRect;
 			float laidOutW = 0.0F, laidOutH = 0.0F;
@@ -103,10 +127,34 @@ namespace spades {
 			float pressedTime = 0.0F;
 			void KeyFeedback(const Key&, int index);
 
+			// The keyboard standing on its own (vr_keyboardDetached): drawn on the
+			// wrist panel, put where `keyboardPose` says. It is placed in front
+			// of you when it comes up, as it was last left relative to where you
+			// face (`keyboardPlace`, in the head's yaw frame); the grip pressed
+			// while pointing at it picks it up, and it follows that hand until
+			// let go.
+			bool keyboardOwn = false;      // this frame, on its own panel
+			bool keyboardPlaced = false;   // has a pose since it came up
+			client::VRPose keyboardPose;
+			static client::VRPose KeyboardFrame(const client::VRFrameState& fs);
+			client::VRPose keyboardPlace = client::VRDefaultKeyboardPlace();
+			int grabHand = -1;
+			client::VRPose grabRel;
+			bool squeezeHeld[2] = {false, false};
+			bool ownPointer = false; // the pointer is on the keyboard's panel
+			Vector2 ownPointerPos{0.0F, 0.0F};
+			bool grabHover = false;
+			void UpdateOwnKeyboard(View&, const client::VRFrameState&, bool triggerDown[2],
+			                       bool& pointerTaken);
+
 			int hand = client::VRHandRight;
 			bool onPanel = false;
 			Vector2 position{0.0F, 0.0F};
 			bool clickDown = false;
+			// The press now held began on the menu panel, off the keyboard: only
+			// such a press is the view's click (swept onto the panel, a held
+			// trigger clicked whatever it reached)
+			bool pressOnView = false;
 			bool triggerHeld[2] = {false, false};
 			bool menuHeld = false;
 			float wheelTimer = 0.0F;

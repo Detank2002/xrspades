@@ -94,6 +94,18 @@ namespace spades {
 			int selectedTabIndex = 0;
 
 			ui::TextViewer* helpView = nullptr; // weak; owned as a child
+			ui::Field* searchField = nullptr;   // weak; owned as a child
+			std::string searchQuery;            // lower case; empty: no search
+			std::vector<std::string> tabCaptions;
+			ui::Button* simpleButton = nullptr;   // weak
+			ui::Button* advancedButton = nullptr; // weak
+			ui::Button* backButton = nullptr;     // weak
+			float searchHeight = 28.0F;
+			/** Shows only the rows the mode (Simple or Advanced, this screen
+			 * or a headset) and the search box allow, in every tab. `force`:
+			 * even if the search is unchanged. */
+			void ApplySearch(bool force = false);
+			void SetAdvanced(bool advanced);
 			float helpTop = 0.0F;               // help box Y for tabs without nav buttons
 
 			ui::ListView* GetTabList(int idx);
@@ -173,6 +185,24 @@ namespace spades {
 		public:
 			MiscOptionsPanel(ui::UIManager* manager, const PreferenceViewOptions& options,
 			                 client::FontManager* fontManager, HeadingNavIndex* nav = nullptr);
+		};
+
+		/** Every volume and sound setting. */
+		class AudioOptionsPanel : public ui::UIElement {
+			Handle<StandardPreferenceLayouter> layouter;
+
+		public:
+			AudioOptionsPanel(ui::UIManager* manager, const PreferenceViewOptions& options,
+			                  client::FontManager* fontManager, HeadingNavIndex* nav = nullptr);
+		};
+
+		/** Debug overlays and technical switches: shown in Advanced mode only. */
+		class AdvancedOptionsPanel : public ui::UIElement {
+			Handle<StandardPreferenceLayouter> layouter;
+
+		public:
+			AdvancedOptionsPanel(ui::UIManager* manager, const PreferenceViewOptions& options,
+			                     client::FontManager* fontManager, HeadingNavIndex* nav = nullptr);
 		};
 	} // namespace gui
 } // namespace spades

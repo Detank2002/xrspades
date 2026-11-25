@@ -38,6 +38,9 @@ namespace spades {
 			int row = 0;
 		};
 
+		/** Which screen a row is for: Simple mode hides the rows for the other. */
+		enum PreferencePlatform { PlatformBoth = 0, PlatformFlat = 1, PlatformVR = 2 };
+
 		/** Geometry shared by `PreferenceView` and `StandardPreferenceLayouter`. */
 		struct PreferenceMetrics {
 			static constexpr float maxContentsWidth = 800.0F;
@@ -58,6 +61,17 @@ namespace spades {
 		public:
 			std::vector<HeadingNavEntry> entries;
 			ui::ListView* list = nullptr; // weak
+
+			/** Every row of the tab, and what a search matches it by (its labels
+			 * and help, lower case), and whether it is a heading: for the
+			 * Options search (PreferenceView). */
+			std::vector<Handle<ui::UIElement>> rows;
+			std::vector<std::string> rowText;
+			std::vector<bool> rowHeading;
+			/** Per row: shown in Advanced only, and on which screens (Simple mode
+			 * hides the other kind's rows). */
+			std::vector<bool> rowAdvanced;
+			std::vector<int> rowPlatform; // PreferencePlatform
 
 			/** Set by PreferenceView; called with the hovered row's help, or "" on leave. */
 			std::function<void(const std::string&)> helpHandler;
@@ -88,6 +102,11 @@ namespace spades {
 			client::FontManager* fontManager; // weak
 
 			std::vector<HeadingNavEntry> headings;
+			// The tags the next rows get (Simple, Advanced, SetPlatform)
+			bool tierAdvanced = false;
+			int platform = PlatformBoth;
+			std::vector<bool> itemAdvanced;
+			std::vector<int> itemPlatform;
 			std::vector<std::string> rowHelp; // help text per row; empty = row clears the help box
 
 			void OnKeyBound(ui::UIElement& sender);
@@ -142,6 +161,12 @@ namespace spades {
 			                    ui::EventHandler handler, bool enabled = true);
 			void AddTargetPreview();
 			void AddScopePreview();
+
+			/** The rows added from here on: in Simple mode too, or only in Advanced. */
+			void Simple() { tierAdvanced = false; }
+			void Advanced() { tierAdvanced = true; }
+			/** The rows added from here on are for this screen (PreferencePlatform). */
+			void SetPlatform(int p) { platform = p; }
 
 			void AddBadge(const std::string& text, const Vector4& textColor, const Vector4& outlineColor);
 			void AddBadgeNew();

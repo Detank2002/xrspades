@@ -32,6 +32,7 @@
 #include <Gui/UI/InGame/ChatLogWindow.h>
 #include <Gui/UI/InGame/ChatWindow.h>
 #include <Gui/UI/InGame/VRControlsWindow.h>
+#include <Gui/UI/InGame/VRBindingsWindow.h>
 #include <Gui/UI/InGame/ClientMenu.h>
 
 namespace spades {
@@ -216,6 +217,11 @@ namespace spades {
 			// Made each time: it opens on the slide for the controllers in use.
 			vrControlsWindow = Handle<VRControlsWindow>::New(this);
 			SetActiveUI(vrControlsWindow.GetPointerOrNull());
+		}
+
+		void ClientUI::EnterVRBindingsWindow() {
+			vrBindingsWindow = Handle<VRBindingsWindow>::New(this);
+			SetActiveUI(vrBindingsWindow.GetPointerOrNull());
 		}
 
 		void ClientUI::EnterChatLogWindow() {

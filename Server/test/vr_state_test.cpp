@@ -131,7 +131,7 @@ int main() {
 		CHECK(at(VRHandLeft, h + MakeVector3(0.22F, -0.60F, 0.0F)) == VRHolsterGrenades);
 		// Hysteresis: 1.1 radii out is outside a slot, unless the hand was in it.
 		const Vector3 gunSlot = h + MakeVector3(0.20F, -0.10F, 0.15F);
-		const Vector3 justOut = gunSlot + MakeVector3(0.0F, 0.18F * 1.1F, 0.0F);
+		const Vector3 justOut = gunSlot + MakeVector3(0.0F, 0.22F * 1.1F, 0.0F);
 		CHECK(at(VRHandRight, justOut) == VRHolsterNone);
 		CHECK(at(VRHandRight, justOut, VRHolsterGun) == VRHolsterGun);
 		// Turned 90 degrees to the right (now looking down +X, right is +Z): the
@@ -139,6 +139,29 @@ int main() {
 		hs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), -1.5707963F);
 		CHECK(at(VRHandRight, h + MakeVector3(-0.15F, -0.10F, 0.20F)) == VRHolsterGun);
 		CHECK(at(VRHandRight, h + MakeVector3(0.20F, -0.10F, 0.15F)) == VRHolsterNone);
+		// What is drawn on the body sits where it is grabbed: each slot's centre
+		// is that slot, for either hand, turned or not.
+		for (int turn = 0; turn < 2; turn++) {
+			hs.head.orientation =
+			  VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), turn ? 0.7F : 0.0F);
+			for (int hand = 0; hand < 2; hand++)
+				for (int slot = 0; slot < 4; slot++) {
+					Vector3 p, f, r;
+					float radius = 0.0F;
+					CHECK(VRHolsterPlace(hs, hand, slot, p, radius, f, r));
+					CHECK(radius > 0.1F);
+					CHECK(std::fabs(f.y) < 1.0E-5F && std::fabs(Vector3::Dot(f, r)) < 1.0E-5F);
+					CHECK(at(hand, p) == slot);
+				}
+		}
+		hs.head.orientation = VRQuat();
+		{
+			// The forward is level and the way the head looks
+			Vector3 p, f, r;
+			float radius;
+			CHECK(VRHolsterPlace(hs, VRHandRight, VRHolsterBlocks, p, radius, f, r));
+			CHECK(f.z < -0.99F && r.x > 0.99F);
+		}
 		// Looking straight down gives no heading, and no holsters.
 		hs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(1, 0, 0), -1.5707963F);
 		CHECK(at(VRHandRight, h + MakeVector3(0.20F, -0.10F, 0.15F)) == VRHolsterNone);
@@ -385,6 +408,21 @@ int main() {
 		CHECK(VRHapticEnvelope(VRHapticShape::Kick, 2.0F, 0.001F, e, 4000) == 2);
 		CHECK(e[0] == 1.0F); // amplitude clamped
 		CHECK(VRHapticEnvelope(VRHapticShape::Flat, 1.0F, 100.0F, e, 4000) == 4000);
+		// A thump swells to its peak, then dies away
+		n = VRHapticEnvelope(VRHapticShape::Thump, 1.0F, 0.2F, e, 4000);
+		CHECK(n == 100);
+		CHECK(e[0] == 0.0F && e[n - 1] < 0.15F);
+		float peak = 0.0F;
+		int peakAt = 0;
+		for (int i = 0; i < n; i++)
+			if (e[i] > peak)
+				peak = e[i], peakAt = i;
+		CHECK(peak > 0.95F && peakAt > 5 && peakAt < 25);
+		// A crumble is grainy (strong and weak by turns) and dies away
+		n = VRHapticEnvelope(VRHapticShape::Crumble, 1.0F, 0.12F, e, 4000);
+		CHECK(n == 60);
+		CHECK(e[0] == 1.0F && e[6] < e[5] * 0.5F && e[12] > e[11]);
+		CHECK(e[n - 1] < 0.3F);
 	}
 
 	// An input trace line reads back as the frame it was written from, and a
@@ -472,6 +510,88 @@ int main() {
 		CHECK(VRGripUpdate(h, true, VRHolsterSpade) == VRHolsterNone); // not again while held
 		CHECK(VRGripUpdate(h, false, VRHolsterNone) == VRHolsterNone && !h.fromHolster);
 		// No holster with the gun in both hands, nor while a block is in reach.
+		// The grace: a squeeze a moment late (after the hand left a slot) or
+		// early (before it reached one) still takes; a longer miss does not
+		{
+			const float dt = 1.0F / 72.0F;
+			VRGripState late;
+			VRGripUpdate(late, false, VRHolsterBlocks, dt);
+			for (int i = 0; i < 7; i++) // ~0.1 s out of the slot
+				VRGripUpdate(late, false, VRHolsterNone, dt);
+			CHECK(VRGripUpdate(late, true, VRHolsterNone, dt) == VRHolsterBlocks);
+			VRGripState tooLate;
+			VRGripUpdate(tooLate, false, VRHolsterBlocks, dt);
+			for (int i = 0; i < 30; i++) // ~0.4 s
+				VRGripUpdate(tooLate, false, VRHolsterNone, dt);
+			CHECK(VRGripUpdate(tooLate, true, VRHolsterNone, dt) == VRHolsterNone);
+			CHECK(tooLate.action && !VRGripActionArmed(tooLate));
+
+			VRGripState early;
+			CHECK(VRGripUpdate(early, true, VRHolsterNone, dt) == VRHolsterNone);
+			CHECK(VRGripMayHolster(early, false, false)); // still looking
+			for (int i = 0; i < 5; i++)
+				VRGripUpdate(early, true, VRHolsterNone, dt);
+			CHECK(VRGripUpdate(early, true, VRHolsterGrenades, dt) == VRHolsterGrenades);
+			CHECK(!early.action && early.fromHolster);
+
+			VRGripState tooEarly;
+			VRGripUpdate(tooEarly, true, VRHolsterNone, dt);
+			for (int i = 0; i < 30; i++)
+				VRGripUpdate(tooEarly, true, VRHolsterNone, dt);
+			CHECK(VRGripActionArmed(tooEarly)); // the dig or line it was meant as
+			CHECK(!VRGripMayHolster(tooEarly, false, false));
+			CHECK(VRGripUpdate(tooEarly, true, VRHolsterGrenades, dt) == VRHolsterNone);
+
+			// No holster may count (a block in reach): the action at once
+			VRGripState reachG;
+			VRGripUpdate(reachG, true, VRHolsterNone, dt, false);
+			CHECK(VRGripActionArmed(reachG));
+		}
+
+		// The body's heading: a glance aside leaves the holsters where they
+		// are; a turn of the whole body brings them round; the hips are a
+		// share of the eye height
+		{
+			VRFrameState bs;
+			bs.head.valid = true;
+			bs.head.position = MakeVector3(0, 1.6F, 0);
+			VRHolsterFrame hf;
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.6F, false);
+			CHECK(hf.valid && hf.forward.z < -0.99F);
+			CHECK(std::fabs(hf.hipDrop - 0.672F) < 1.0E-4F);
+			// 25 degrees to the side for a second: no change
+			bs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), 0.436F);
+			for (int i = 0; i < 72; i++)
+				VRHolsterFrameUpdate(hf, bs, 1.0F / 72.0F, 1.6F, false);
+			CHECK(hf.forward.z < -0.99F);
+			// 90 degrees for a second: followed to the edge of the dead zone
+			bs.head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), 1.5708F);
+			for (int i = 0; i < 72; i++)
+				VRHolsterFrameUpdate(hf, bs, 1.0F / 72.0F, 1.6F, false);
+			Vector3 hh = bs.head.Axis(2) * -1.0F;
+			hh.y = 0.0F;
+			hh = hh.Normalize();
+			const float gap = std::acos(std::min(1.0F, Vector3::Dot(hf.forward, hh)));
+			CHECK(gap < kVRHolsterDeadZone + 0.05F && gap > kVRHolsterDeadZone - 0.05F);
+			// Following the head: the head's heading at once
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.6F, true);
+			CHECK(Vector3::Dot(hf.forward, hh) > 0.999F);
+			// A tall player's hips are lower, within reason
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 1.9F, false);
+			CHECK(hf.hipDrop > 0.79F && hf.hipDrop < 0.81F);
+			VRHolsterFrameUpdate(hf, bs, 0.01F, 3.0F, false);
+			CHECK(hf.hipDrop <= 0.9F);
+			// The slots face the frame's way, not the head's
+			bs.hands[VRHandRight].grip.valid = true;
+			Vector3 at, f, r;
+			float radius;
+			VRHolsterFrame fixed;
+			fixed.valid = true;
+			fixed.forward = MakeVector3(0, 0, -1);
+			CHECK(VRHolsterPlace(bs, VRHandRight, VRHolsterBlocks, at, radius, f, r, &fixed));
+			CHECK(f.z < -0.99F && r.x > 0.99F && radius >= 0.25F);
+		}
+
 		VRGripState idle;
 		CHECK(VRGripMayHolster(idle, false, false));
 		CHECK(!VRGripMayHolster(idle, true, false));
@@ -585,6 +705,171 @@ int main() {
 		            worstRounded * 57.29578F);
 		CHECK(worst < 1.0F * 3.14159265F / 180.0F);
 		CHECK(worstRounded > 20.0F * 3.14159265F / 180.0F); // the control
+	}
+
+	// Taking damage: harder for bigger hits, and on the side it came from
+	{
+		VRHurtRumble small = VRHurtRumbleFor(10, 0.0F, true);
+		VRHurtRumble big = VRHurtRumbleFor(60, 0.0F, true);
+		CHECK(big.amplitude[VRHandLeft] > small.amplitude[VRHandLeft]);
+		CHECK(big.seconds > small.seconds);
+		CHECK(big.amplitude[VRHandLeft] <= 1.0F);
+		CHECK(small.amplitude[VRHandLeft] == small.amplitude[VRHandRight]);
+		VRHurtRumble right = VRHurtRumbleFor(30, 1.0F, true);
+		CHECK(right.amplitude[VRHandRight] > right.amplitude[VRHandLeft] * 3.5F);
+		VRHurtRumble left = VRHurtRumbleFor(30, -0.7F, true);
+		CHECK(left.amplitude[VRHandLeft] > left.amplitude[VRHandRight]);
+		VRHurtRumble fall = VRHurtRumbleFor(30, 1.0F, false);
+		CHECK(fall.amplitude[VRHandLeft] == fall.amplitude[VRHandRight]);
+
+		CHECK(VRHurtEdgeAmount(20, 0.0F) > 0.3F);
+		CHECK(VRHurtEdgeAmount(80, 0.0F) > VRHurtEdgeAmount(10, 0.0F));
+		CHECK(VRHurtEdgeAmount(20, 0.3F) < VRHurtEdgeAmount(20, 0.0F));
+		CHECK(VRHurtEdgeAmount(20, 2.0F) == 0.0F);
+		CHECK(VRHurtEdgeAmount(0, 0.0F) == 0.0F);
+
+		CHECK(VRLowHealthEdge(31, 0.1F) == 0.0F);
+		CHECK(VRLowHealthEdge(0, 0.1F) == 0.0F);
+		float lo = 0.0F, hi = 0.0F, lo5 = 1.0F;
+		for (int i = 0; i < 200; i++) {
+			const float v = VRLowHealthEdge(20, i * 0.01F);
+			hi = std::max(hi, v);
+			lo5 = std::min(lo5, v);
+			lo = std::max(lo, VRLowHealthEdge(5, i * 0.01F));
+		}
+		CHECK(hi > lo5 * 1.5F); // it beats
+		CHECK(lo > hi);         // and is stronger when lower
+		CHECK(lo <= 0.4F);
+	}
+
+	// The keyboard on its own: pose maths, and where it is first put
+	{
+		VRPose a, b;
+		a.valid = b.valid = true;
+		a.position = MakeVector3(1.0F, 1.5F, -2.0F);
+		a.orientation = VRQuat::FromAxisAngle(MakeVector3(0.3F, 0.9F, 0.1F).Normalize(), 0.8F);
+		b.position = MakeVector3(-0.4F, 1.1F, 0.7F);
+		b.orientation = VRQuat::FromAxisAngle(MakeVector3(-0.5F, 0.2F, 0.8F).Normalize(), -1.3F);
+		const VRPose back = VRPoseCompose(a, VRPoseRelative(a, b));
+		CHECK((back.position - b.position).GetLength() < 1.0E-4F);
+		for (int i = 0; i < 3; i++)
+			CHECK(Vector3::Dot(back.Axis(i), b.Axis(i)) > 0.9999F);
+
+		// Looking down and to the left: the yaw frame faces the same way, level
+		VRPose head;
+		head.valid = true;
+		head.position = MakeVector3(0.0F, 1.7F, 0.0F);
+		head.orientation = VRQuat::FromAxisAngle(MakeVector3(0, 1, 0), 0.5F) *
+		                   VRQuat::FromAxisAngle(MakeVector3(1, 0, 0), -0.6F);
+		const VRPose yaw = VRHeadYawFrame(head);
+		Vector3 fh = -head.Axis(2);
+		fh.y = 0.0F;
+		CHECK(Vector3::Dot(-yaw.Axis(2), fh.Normalize()) > 0.9999F);
+		CHECK(std::fabs(yaw.Axis(1).y - 1.0F) < 1.0E-4F);
+
+		// First put: ahead of and below the eyes, its face up and towards you
+		const VRPose kb = VRPoseCompose(yaw, VRDefaultKeyboardPlace());
+		const Vector3 off = kb.position - head.position;
+		CHECK(off.y < -0.3F);
+		CHECK(Vector3::Dot(off, -yaw.Axis(2)) > 0.3F);
+		const Vector3 n = kb.Axis(2);
+		CHECK(n.y > 0.5F);                            // face up...
+		CHECK(Vector3::Dot(n, -yaw.Axis(2)) < -0.5F); // ...and back at you
+	}
+
+	// The table view: what a hand holds stays under it
+	{
+		const Vector3 anchor = MakeVector3(0.1F, 1.0F, -0.5F);
+		VRTablePose t;
+		t.centre = MakeVector3(256.0F, 256.0F, 56.0F);
+		t.scale = 500.0F;
+		t.yaw = 0.7F;
+		// The anchor shows the centre
+		CHECK((VRTableToWorld(t, anchor, anchor) - t.centre).GetLength() < 1.0E-3F);
+
+		// One hand: grab, move 10cm, the point follows
+		const Vector3 p0 = MakeVector3(0.3F, 1.1F, -0.4F);
+		const Vector3 a = VRTableToWorld(t, anchor, p0);
+		const Vector3 p1 = p0 + MakeVector3(0.1F, -0.05F, 0.07F);
+		VRTableHoldOne(t, anchor, a, p1);
+		CHECK((VRTableToWorld(t, anchor, p1) - a).GetLength() < 1.0E-2F);
+
+		// Two hands level: pulled apart and turned, both points stay under them
+		const Vector3 pa = MakeVector3(-0.2F, 1.0F, -0.5F), pb = MakeVector3(0.2F, 1.0F, -0.5F);
+		const Vector3 wa = VRTableToWorld(t, anchor, pa), wb = VRTableToWorld(t, anchor, pb);
+		const Vector3 qa = MakeVector3(-0.3F, 1.0F, -0.35F), qb = MakeVector3(0.25F, 1.0F, -0.7F);
+		VRTableHoldTwo(t, anchor, wa, wb, qa, qb, 10.0F, 5000.0F);
+		CHECK((VRTableToWorld(t, anchor, qa) - wa).GetLength() < 0.05F);
+		CHECK((VRTableToWorld(t, anchor, qb) - wb).GetLength() < 0.05F);
+		CHECK(t.scale < 500.0F); // further apart: bigger model, fewer blocks a metre
+
+		// And never past the limits
+		VRTableHoldTwo(t, anchor, wa, wb, MakeVector3(-1.0F, 1.0F, 0.0F),
+		               MakeVector3(1.0F, 1.0F, 0.0F), 300.0F, 5000.0F);
+		CHECK(t.scale >= 300.0F);
+	}
+
+	// The magazine well: under the front of the gun, however the wrist is rolled
+	{
+		const float s = 1.4F;
+		const Vector3 hand = MakeVector3(10.0F, 10.0F, 30.0F);
+		const Vector3 fwd = MakeVector3(1.0F, 0.0F, 0.0F);
+		// 10cm ahead, 8cm under: in
+		CHECK(VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.10F, 0.0F, 0.08F) * s, s));
+		// a little to the side too (the controllers' rings in the way): in
+		CHECK(VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.12F, 0.09F, 0.10F) * s, s));
+		// above the gun: out
+		CHECK(!VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.10F, 0.0F, -0.10F) * s, s));
+		// behind the grip, or far off: out
+		CHECK(!VRMagazineAtWell(hand, fwd, hand + MakeVector3(-0.15F, 0.0F, 0.08F) * s, s));
+		CHECK(!VRMagazineAtWell(hand, fwd, hand + MakeVector3(0.10F, 0.0F, 0.30F) * s, s));
+		// the gun pointing down a slope: still under its front half
+		const Vector3 slope = MakeVector3(1.0F, 0.0F, 0.5F).Normalize();
+		CHECK(VRMagazineAtWell(hand, slope, hand + slope * (0.12F * s) +
+		                                      MakeVector3(-0.04F, 0.0F, 0.08F) * s, s));
+	}
+
+	// Rebinding: the text round trip, and the buttons moved about
+	{
+		CHECK(VRFormatBindings(VRDefaultBindings()).empty());
+		VRBindings b = VRParseBindings(
+		  " tool.primary = off.secondary ,off.grip=none, bogus=tool.trigger, tool.menu=tool.x");
+		CHECK(b.target[VRRoleTool][(int)VRInput::Primary].role == VRRoleOff);
+		CHECK(b.target[VRRoleTool][(int)VRInput::Primary].input == VRInput::Secondary);
+		CHECK(b.target[VRRoleOff][(int)VRInput::Grip].role < 0);
+		CHECK(b.target[VRRoleTool][(int)VRInput::Menu].role == VRRoleTool); // bad: default
+		CHECK(VRFormatBindings(b) == "tool.primary=off.secondary,off.grip=none");
+		CHECK(VRFormatBindings(VRParseBindings(VRFormatBindings(b))) == VRFormatBindings(b));
+
+		// Right-handed: tool = right. The right A now does what the left Y did
+		// (the big map); the left grip does nothing; a stick click pulls the
+		// trigger fully.
+		b = VRParseBindings("tool.primary=off.secondary,off.grip=none,"
+		                    "off.stickclick=tool.trigger");
+		VRControllerState in[2], out[2];
+		in[VRHandRight].buttonPrimary = true;
+		in[VRHandLeft].squeeze = 0.9F;
+		in[VRHandLeft].thumbstickClick = true;
+		in[VRHandLeft].thumbstick = MakeVector2(0.0F, 1.0F);
+		VRApplyBindings(in, out, VRHandRight, b, false);
+		CHECK(out[VRHandLeft].buttonSecondary);
+		CHECK(!out[VRHandRight].buttonPrimary);
+		CHECK(out[VRHandLeft].squeeze == 0.0F);
+		CHECK(out[VRHandRight].trigger == 1.0F);
+		CHECK(!out[VRHandLeft].thumbstickClick);
+		CHECK(out[VRHandLeft].thumbstick.y == 1.0F);
+		// Left-handed, the same bindings follow the hands
+		VRControllerState inL[2], outL[2];
+		inL[VRHandLeft].buttonPrimary = true;
+		VRApplyBindings(inL, outL, VRHandLeft, b, false);
+		CHECK(outL[VRHandRight].buttonSecondary);
+		// Sticks swapped
+		VRApplyBindings(in, out, VRHandRight, VRDefaultBindings(), true);
+		CHECK(out[VRHandRight].thumbstick.y == 1.0F && out[VRHandLeft].thumbstick.y == 0.0F);
+		// The defaults change nothing
+		VRApplyBindings(in, out, VRHandRight, VRDefaultBindings(), false);
+		CHECK(out[VRHandRight].buttonPrimary && out[VRHandLeft].squeeze == 0.9F &&
+		      out[VRHandLeft].thumbstickClick);
 	}
 
 	std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

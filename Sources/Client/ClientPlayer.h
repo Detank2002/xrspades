@@ -145,6 +145,19 @@ namespace spades {
 			// come out of the gun actually being held.
 			bool IsVRHandsView();
 			void AddToSceneVRHands();
+			/** The grenades and blocks carried on the hips, drawn at the holsters. */
+			void AddVRHolsterItems();
+			/** Your body again, reflected, for the body mirror (Client::vrMirror). */
+			void AddVRMirror(const bool valid[2], const Vector3 pos[2], const Vector3 axes[2][3],
+			                 int toolHand);
+			/** The gun and spade not in the hand, at the shoulder holsters (the
+			 * mirror only). */
+			void AddVRShoulderTools();
+			/** While the mirror is drawn the body goes through the sandbox, which
+			 * reflects it; otherwise straight to the renderer. */
+			bool vrMirrorPass = false;
+			IRenderer& VRBodyRenderer();
+			Handle<IModel> beltModel, loopModel; // made on first use
 			/** Where the held gun's sights are, from its skin (IVRWeaponSkin):
 			 * `valid` false for a skin that does not say. */
 			struct VRGunSights {

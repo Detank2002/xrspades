@@ -195,6 +195,15 @@ namespace spades {
 					continue;
 
 				c.life -= dt;
+				if (c.resting) {
+					// Woken when what it lay on is gone
+					const Vector3 at = c.matrix.GetOrigin();
+					if (map->ClipWorld(at.x, at.y, at.z + 0.5F)) {
+						anyAlive = true;
+						continue;
+					}
+					c.resting = false;
+				}
 
 				Matrix4 lastMat = c.matrix;
 
@@ -243,6 +252,17 @@ namespace spades {
 					c.matrix = lastMat;
 					c.velocity *= CHUNK_RESTITUTION;
 					c.angVel *= CHUNK_RESTITUTION;
+					// Too slow to hop again: it lies still. Left to it, gravity
+					// pulled it into the ground every frame and the bounce put it
+					// back up, and it shook on the spot (testers: the flesh
+					// "vibrating").
+					const Vector3 at = lastMat.GetOrigin();
+					if (c.velocity.GetLength() < 2.0F &&
+					    map->ClipWorld(at.x, at.y, at.z + 0.5F)) { // on the ground
+						c.resting = true;
+						c.velocity = MakeVector3(0, 0, 0);
+						c.angVel = MakeVector3(0, 0, 0);
+					}
 
 					// blood mark where the chunk lands (first impact only)
 					if (!c.splatDone) {

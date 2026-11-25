@@ -90,6 +90,12 @@ namespace spades {
 			if (time > lifetime)
 				return false;
 
+			// Lying still, woken when what it lay on is gone
+			if (resting && map && !map->ClipWorld(position.x, position.y, position.z + 0.5F)) {
+				resting = false;
+				gravityScale = restingGravity;
+			}
+
 			Vector3 lastPos = position; // old position
 
 			position += velocity * dt;
@@ -124,6 +130,17 @@ namespace spades {
 						position = lastPos; // set back to old position
 						velocity *= 0.46F;  // lose some velocity due to friction
 						radius *= 0.75F;
+						// Too slow to hop again: it lies still, not shaken up and
+						// down by gravity and the bounce every frame (testers)
+						if (velocity.GetLength() < 2.0F &&
+						    map->ClipWorld(lastPos.x, lastPos.y, lastPos.z + 0.5F)) { // on the ground
+							velocity = MakeVector3(0, 0, 0);
+							if (!resting)
+								restingGravity = gravityScale;
+							resting = true;
+							gravityScale = 0.0F;
+							rotationVelocity = 0.0F;
+						}
 					}
 				}
 			}

@@ -69,7 +69,13 @@ DEFINE_SPADES_SETTING(r_renderer, "gl");
 #else
 DEFINE_SPADES_SETTING(r_renderer, "vulkan");
 #endif
+// The Vulkan renderer is the default wherever this build has it; the setup
+// window's probe turns it off on a PC without a GPU that can run it.
+#ifdef USE_VULKAN
+DEFINE_SPADES_SETTING(r_vulkan, "1");
+#else
 DEFINE_SPADES_SETTING(r_vulkan, "0");
+#endif
 DEFINE_SPADES_SETTING(s_audioDriver, "openal");
 DEFINE_SPADES_SETTING(cl_fps, "0");
 // Play in a headset through OpenXR. Needs the Vulkan renderer; `--vr` sets both.
@@ -193,7 +199,7 @@ namespace spades {
 					if (!event.key.repeat) {
 						const SDL_Keysym& keysym = event.key.keysym;
 						// Toggle fullscreen mode
-						if (keysym.mod & KMOD_ALT && keysym.sym == SDLK_RETURN) {
+						if (keysym.mod & KMOD_ALT && keysym.sym == SDLK_RETURN && !m_hasSystemMenu) {
 							SDL_Window* window = SDL_GetWindowFromID(event.key.windowID);
 							if (r_fullscreen) {
 								if (!SDL_SetWindowFullscreen(window, 0))
@@ -673,9 +679,18 @@ namespace spades {
 			}
 		}
 
-		void SDLRunner::AutoSizeWindow(int displayIndex, bool fullscreen, int& x, int& y,
-		                               int& width, int& height) {
-			if (fullscreen) {
+		void SDLRunner::AutoSizeWindow(int displayIndex, bool fullscreen, bool coverDisplay,
+		                               int& x, int& y, int& width, int& height) {
+			if (coverDisplay) {
+				// The whole monitor, taskbar included.
+				display::Rect area;
+				if (display::GetBounds(displayIndex, area)) {
+					x = area.x;
+					y = area.y;
+					width = area.width;
+					height = area.height;
+				}
+			} else if (fullscreen) {
 				// The monitor's own mode, so going fullscreen switches no mode.
 				display::Resolution res;
 				if (display::GetDesktopResolution(displayIndex, res)) {
@@ -694,7 +709,7 @@ namespace spades {
 				}
 			}
 			SPLog("Auto resolution: %dx%d on display %d (%s)", width, height, displayIndex,
-			      fullscreen ? "fullscreen" : "windowed");
+			      fullscreen ? "fullscreen" : coverDisplay ? "borderless" : "windowed");
 		}
 
 		void SDLRunner::FitWindowToDisplay(SDL_Window* window, int displayIndex) {
@@ -824,8 +839,18 @@ namespace spades {
 				// The setup window keeps its own size; the game follows its monitor.
 				bool autoSize = !m_hasSystemMenu && display::IsAutoResolution();
 				bool fullscreen = (sdlFlags & SDL_WINDOW_FULLSCREEN) != 0;
+				// On Windows a windowed game at the auto resolution covers the whole
+				// monitor without decorations, as it did when its size was the desktop's
+				// and the title bar ended up off-screen. Its size then matches the
+				// desktop mode, so alt+enter switches to fullscreen without resizing it.
+				bool coverDisplay = false;
+#ifdef _WIN32
+				coverDisplay = autoSize && !fullscreen;
+				if (coverDisplay)
+					sdlFlags |= SDL_WINDOW_BORDERLESS;
+#endif
 				if (autoSize)
-					AutoSizeWindow(displayIndex, fullscreen, x, y, width, height);
+					AutoSizeWindow(displayIndex, fullscreen, coverDisplay, x, y, width, height);
 
 				SDL_Window* window =
 				  SDL_CreateWindow(caption.c_str(), x, y, width, height, sdlFlags);
@@ -835,13 +860,27 @@ namespace spades {
 					SPRaise("Failed to create graphics window: %s", msg.c_str());
 				}
 
-				if (autoSize && !fullscreen)
+				if (autoSize && !fullscreen && !coverDisplay)
 					FitWindowToDisplay(window, displayIndex);
 				if (autoSize) {
 					SDL_GetWindowSize(window, &width, &height);
 					r_videoWidth = width;
 					r_videoHeight = height;
 				}
+
+#ifdef _WIN32
+				{
+					// The horizontal DPI is the monitor's effective one; 100% is 96 DPI.
+					int index = SDL_GetWindowDisplayIndex(window);
+					int w = 0, h = 0;
+					SDL_GetWindowSize(window, &w, &h);
+					float dpi = 0.0F;
+					if (index >= 0 && SDL_GetDisplayDPI(index, nullptr, &dpi, nullptr) == 0 &&
+					    dpi > 0.0F)
+						SPLog("Window is %dx%d on display %d, scaled %.0f%% (%.0f DPI)", w, h,
+						      index, dpi / 96.0F * 100.0F, dpi);
+				}
+#endif
 
 #ifdef __APPLE__
 #elif __unix
@@ -868,7 +907,25 @@ namespace spades {
 				{
 					Handle<client::IRenderer> renderer;
 					Handle<Disposable> windowReference;
-					std::tie(renderer, windowReference) = CreateRenderer(window, rtype);
+					try {
+						std::tie(renderer, windowReference) = CreateRenderer(window, rtype);
+					} catch (const std::exception& ex) {
+#if defined(USE_OPENGL) && !defined(__ANDROID__)
+						// Vulkan is the default, and this PC could not start it: the
+						// next start is with OpenGL rather than this error every time
+						if (rtype == RendererType::Vulkan && !(bool)vr_enable) {
+							SPLog("Vulkan renderer failed to start (%s); switched to OpenGL "
+							      "for the next start",
+							      ex.what());
+							r_vulkan = 0;
+							r_renderer = "gl";
+							SPRaise("The Vulkan renderer could not start on this PC: %s\n\n"
+							        "ZeroSpades will use OpenGL from the next start.",
+							        ex.what());
+						}
+#endif
+						throw;
+					}
 
 					Handle<client::IAudioDevice> audio(CreateAudioDevice(), false);
 

@@ -43,7 +43,7 @@ namespace spades {
 		std::string SelfUpdatePackage() { return ZEROSPADES_UPDATE_PACKAGE; }
 
 		std::string UpdateAssetName(const std::string& tag, const std::string& package) {
-			return "ZeroSpadesX-" + tag + "-" + package + ".zip";
+			return "XRSpades-" + tag + "-" + package + ".zip";
 		}
 
 		bool VerifyUpdateSums(const std::string& sums, const std::string& signature,

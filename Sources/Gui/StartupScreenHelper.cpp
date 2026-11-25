@@ -86,6 +86,10 @@ SPADES_SETTING(r_depthOfField);
 SPADES_SETTING(r_vsync);
 SPADES_SETTING(r_renderer);
 SPADES_SETTING(r_vulkan);
+// Set once a config has been moved to Vulkan, the default since 0.4.0: a config
+// from before that still says OpenGL is moved once, if the GPU can run Vulkan,
+// and a player who picks OpenGL afterwards keeps it
+DEFINE_SPADES_SETTING(r_vulkanDefaulted, "0");
 SPADES_SETTING(r_swUndersampling);
 SPADES_SETTING(r_hdr);
 SPADES_SETTING(r_temporalAA);
@@ -864,6 +868,13 @@ namespace spades {
 				}
 
 				SPLog("Vulkan driver is ZeroSpades capable: %s", vulkanCapable ? "YES" : "NO");
+				if (vulkanCapable && !(bool)r_vulkanDefaulted) {
+					r_vulkanDefaulted = 1;
+					if (!EqualsIgnoringCase(r_renderer, "sw") && (int)r_vulkan == 0) {
+						SPLog("Moved this config to the Vulkan renderer (the default)");
+						r_vulkan = 1;
+					}
+				}
 				if (!vulkanCapable) {
 					if ((int)r_vulkan != 0) {
 						SPLog("Switched off the Vulkan renderer");

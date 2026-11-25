@@ -145,6 +145,22 @@ namespace spades {
 			 * wrist menu. `wristGrow` eases 0..1 as it does. */
 			bool wristExpanded = false;
 			float wristGrow = 0.0F;
+			/** Tracked hands (XR_EXT_hand_tracking, vr_handTracking), for the
+			 * menus only: a hand without its controller points with its aim
+			 * (XR_FB_hand_tracking_aim's, or the palm's), and a pinch of thumb
+			 * and index finger is its trigger, 0..1 (VRMenuPointer). The game
+			 * itself never reads these: a pinch must not fire a gun. */
+			/** The controllers as the runtime gave them, before vr_bindings moved
+			 * their buttons about (`hands` is after). The menus read these: no
+			 * binding can lock anyone out of them. */
+			VRControllerState rawHands[2];
+			bool handTracked[2] = {false, false};
+			VRPose handAim[2];
+			float handPinch[2] = {0.0F, 0.0F};
+			bool handMenu[2] = {false, false};
+			/** The wrist panel is the keyboard this frame, standing on its own
+			 * where VRMenuPointer put it (IVRSystem::SetKeyboardPanel), not the HUD. */
+			bool keyboardPanel = false;
 		};
 
 		/** The wrist panel's 2D canvas, in pixels. The HUD is drawn onto it as
@@ -159,6 +175,8 @@ namespace spades {
 			Flat,      // the same all through
 			Kick,      // full at once, dying away: a shot
 			DoubleTap, // two short knocks: a magazine seating
+			Thump,     // a quick swell, then dying away: a shotgun, a blast
+			Crumble,   // grainy and dying away: a block giving way
 		};
 		/** The shape's amplitudes, evenly spread over its time, into `out` (at
 		 * most `maxSamples`; 500 a second, at least 2). Returns how many. */
@@ -187,6 +205,13 @@ namespace spades {
 			/** The big map is open and wants to be held (vr_heldMap): the wrist
 			 * panel goes into the off hand from the next frame (VRPlaceHeldMap). */
 			virtual void SetHeldMap(bool held) { (void)held; }
+			/** The keyboard stands on its own (vr_keyboardDetached): the wrist
+			 * panel is put at `pose`, `width` metres wide, from the next frame,
+			 * for the keyboard to be drawn on (VRFrameState::keyboardPanel). Asked
+			 * for each frame it is wanted. */
+			virtual void SetKeyboardPanel(bool wanted, const VRPose& pose, float width) {
+				(void)wanted, (void)pose, (void)width;
+			}
 			/** The front panel shows the game's view-following overlays (names,
 			 * markers through the panel) and so follows the head, for the next
 			 * frame. Asked for each frame it is wanted: otherwise (any menu, the
@@ -239,6 +264,84 @@ namespace spades {
 		 * @return false when the ray misses the panel or points away from it */
 		bool VRRayHitsHudPanel(const VRFrameState& fs, int hand, float panelAspect, Vector2& uv,
 		                       float& distance);
+		/** The same for any panel: `panel` (facing +Z), `width` metres wide and
+		 * `aspect` times that high. */
+		bool VRRayHitsPanel(const VRFrameState& fs, int hand, const VRPose& panel, float width,
+		                    float aspect, Vector2& uv, float& distance);
+
+		/** Poses as transforms: `b` seen from `a` (a's inverse times b), and back. */
+		VRPose VRPoseRelative(const VRPose& a, const VRPose& b);
+		VRPose VRPoseCompose(const VRPose& a, const VRPose& rel);
+		/** The head turned only about the vertical: where it is, facing where it
+		 * looks, level. What a thing put down "in front of you" is relative to. */
+		VRPose VRHeadYawFrame(const VRPose& head);
+		/** The keyboard standing on its own, in the head's yaw frame: below and in
+		 * front of the eyes, tipped back like a keyboard on a desk. */
+		VRPose VRDefaultKeyboardPlace();
+		constexpr float kVRKeyboardWidth = 0.5F;
+
+		/** Rebinding the controllers' buttons (vr_bindings, VRBindingsWindow).
+		 * Each physical button of each hand, by its role (the tool hand's or the
+		 * other's, so a left-handed player's bindings follow their hands), does
+		 * what a button of the default layout does: any button, of either hand,
+		 * or nothing. The sticks' moving and turning swap with vr_swapSticks. */
+		enum class VRInput { Trigger, Grip, Primary, Secondary, StickClick, Menu, Count };
+		constexpr int kVRInputCount = static_cast<int>(VRInput::Count);
+		enum VRHandRole { VRRoleTool = 0, VRRoleOff = 1 };
+		struct VRBindTarget {
+			int role = -1; // VRHandRole, -1 for nothing
+			VRInput input = VRInput::Trigger;
+			bool operator==(const VRBindTarget& o) const {
+				return role == o.role && (role < 0 || input == o.input);
+			}
+		};
+		struct VRBindings {
+			VRBindTarget target[2][kVRInputCount]; // [role][physical input]
+		};
+		VRBindings VRDefaultBindings();
+		const char* VRInputName(VRInput); // "trigger", "grip", "primary", ...
+		/** "tool.primary=off.secondary,off.grip=none": only what differs from the
+		 * default. Unknown entries are skipped. */
+		VRBindings VRParseBindings(const std::string&);
+		std::string VRFormatBindings(const VRBindings&);
+		/** `in` (by hand) into `out` (by hand) under `b`: each button's state goes to
+		 * the button it is bound to (several to one: any of them). A button bound
+		 * to a trigger or grip pulls it fully; a trigger or grip bound to a
+		 * button presses it past half. The rest of each controller (poses, stick)
+		 * is copied; `swapSticks` swaps the two sticks' directions. */
+		void VRApplyBindings(const VRControllerState in[2], VRControllerState out[2], int toolHand,
+		                     const VRBindings& b, bool swapSticks);
+
+		/** Physical reloading: whether the off hand, holding a magazine, is at
+		 * the gun's magazine well. Game space (z down), `scale` blocks a metre.
+		 * Anywhere under the front half of the gun, close to its line, counts:
+		 * below in the world, not in the gun hand's own frame, so it does not
+		 * matter how the wrist is rolled (testers had to turn the gun hand over,
+		 * as if to look at a watch, for the off hand's controller to reach a
+		 * point fixed under the grip in the hand's frame). */
+		bool VRMagazineAtWell(const Vector3& gunHand, const Vector3& gunForward,
+		                      const Vector3& offHand, float scale);
+
+		/** The table view: the map as a model in front of you (spectating, dead, a
+		 * demo). A point `p` in tracking space shows the world at
+		 * `centre + turn(yaw) * game(p - anchor) * scale`: `anchor` is where the
+		 * model's centre sits in the room, `scale` blocks per metre, `yaw` its
+		 * turn (radians, as the body's). */
+		struct VRTablePose {
+			Vector3 centre{256.0F, 256.0F, 56.0F};
+			float scale = 500.0F;
+			float yaw = 0.0F;
+		};
+		Vector3 VRTableToWorld(const VRTablePose&, const Vector3& anchor, const Vector3& p);
+		/** One hand holding the world point `a` at `p`: moves the centre so it
+		 * stays under the hand. */
+		void VRTableHoldOne(VRTablePose&, const Vector3& anchor, const Vector3& a,
+		                    const Vector3& p);
+		/** Two hands holding `a` at `pa` and `b` at `pb`: the scale and turn that
+		 * keep both under them across (their height from their middle), within
+		 * `minScale`..`maxScale`. */
+		void VRTableHoldTwo(VRTablePose&, const Vector3& anchor, const Vector3& a, const Vector3& b,
+		                    const Vector3& pa, const Vector3& pb, float minScale, float maxScale);
 
 		/** Places the wrist panel just over the back of `hand`'s wrist, facing
 		 * the eyes and upright as they see it, and says whether it is up: the
@@ -358,6 +461,25 @@ namespace spades {
 		 * of 0.5 closes to 40. */
 		float VRVignetteClearAngle(float amount, float strength);
 
+		/** Taking damage in a headset: the rumble in each hand (amplitude 0 to 1,
+		 * by VRHandIndex) and how long it lasts. A bigger hit is harder and
+		 * longer. `side` is where the hit came from across the head, -1 fully to
+		 * the left to 1 fully to the right; with `known` false (a fall, drowning,
+		 * no source) both hands get it alike. The hand on the hit's side gets it
+		 * all, the other less the more the hit was to one side. */
+		struct VRHurtRumble {
+			float amplitude[2];
+			float seconds;
+		};
+		VRHurtRumble VRHurtRumbleFor(int damage, float side, bool known);
+		/** The red edge of the view after a hit, 0 to 1: `damage` taken
+		 * `age` seconds ago. Shows at once and fades over half a second to a
+		 * second (longer for bigger hits). */
+		float VRHurtEdgeAmount(int damage, float age);
+		/** The low-health edge, 0 to 1: nothing over 30 health, then a slow
+		 * heartbeat (`time` in seconds) that is stronger the lower it gets. */
+		float VRLowHealthEdge(int health, float time);
+
 		/** A held tool is solid against the map. `solid` says whether a point
 		 * (world space) is inside a block. The hand is stopped where the line
 		 * from `anchor` (the eyes: known clear) to it first meets a block, and the
@@ -411,7 +533,35 @@ namespace spades {
 		 * grenades at the other. Placed from the eyes, turned with the head but
 		 * level. `hover` (the holster the hand was at last frame) gets a little
 		 * more room to leave than to enter, so its edge does not flicker. */
-		int VRHolsterAt(const VRFrameState& fs, int hand, int hover);
+		int VRHolsterAt(const VRFrameState& fs, int hand, int hover,
+		                const struct VRHolsterFrame* frame = nullptr);
+		/** Where holster `slot` (VRHolster) is for `hand`, in tracking space, as
+		 * VRHolsterAt places it: its centre, its grab radius, and the body's level
+		 * forward and right there. False without a head, or looking straight up
+		 * or down. */
+		bool VRHolsterPlace(const VRFrameState& fs, int hand, int slot, Vector3& at,
+		                    float& radius, Vector3& forward, Vector3& right,
+		                    const struct VRHolsterFrame* frame = nullptr);
+
+		/** Where the holsters face and how far down the hips are, kept between
+		 * frames (VRHolsterFrameUpdate). Testers missed the holsters often: the
+		 * slots turned with every glance of the head, so a hand reaching for a
+		 * hip while the eyes looked aside found the slot had swung away, and the
+		 * hips were the same 60 cm under the eyes for every height. Here the
+		 * slots face the body's way, a heading that lets the head look up to
+		 * kVRHolsterDeadZone either way and then follows it round, and the hips
+		 * are a share of the standing eye height. Without a frame (or with
+		 * vr_holsterFollow 1) the slots follow the head as before. */
+		struct VRHolsterFrame {
+			bool valid = false;
+			Vector3 forward = MakeVector3(0, 0, -1); // level, tracking space
+			float hipDrop = 0.672F;                  // metres under the eyes
+		};
+		constexpr float kVRHolsterDeadZone = 0.61F; // 35 degrees, in radians
+		/** One frame: `eyeHeight` the standing eye height over the floor (m),
+		 * `followHead` the slots turned with the head as they were. */
+		void VRHolsterFrameUpdate(VRHolsterFrame& f, const VRFrameState& fs, float dt,
+		                          float eyeHeight, bool followHead);
 
 		/** The shoulder stock, between frames (VRStockUpdate). */
 		struct VRStockState {
@@ -434,6 +584,16 @@ namespace spades {
 		/** The gun hand's grip, between frames (VRGripUpdate). */
 		struct VRGripState {
 			bool prev = false;
+			/** The holster the hand was last at, and for how long it has not
+			 * been at one (s): a grip begun just after the hand left a slot
+			 * still takes from it. */
+			int recentSlot = -1;
+			float sinceSlot = 1.0E9F;
+			/** A grip begun outside every slot: how long ago (s), and whether
+			 * it has become the tool's action yet. Until then a slot the hand
+			 * reaches takes from it (a squeeze a moment early). */
+			float actionTime = 0.0F;
+			bool armed = false;
 			/** Held since it took a tool from a holster. */
 			bool fromHolster = false;
 			/** Held since it began as the tool's second action (dig, a line). */
@@ -447,13 +607,23 @@ namespace spades {
 		 * there; a grip that began as the tool's action stays that until let go,
 		 * wherever the hand goes (a hand hanging at the hip while a wall was
 		 * drawn took blocks, and the line stopped). */
-		int VRGripUpdate(VRGripState& s, bool grip, int slot);
+		int VRGripUpdate(VRGripState& s, bool grip, int slot, float dt = 0.0F,
+		                 bool mayHolster = true);
+		/** How early or late a grip may be and still take from a slot (s).
+		 * VRGripUpdate with no `dt` gives none: a grip counts only where it
+		 * begins, as before. */
+		constexpr float kVRGripGrace = 0.2F;
+		/** Whether a grip held as the tool's action is past its grace: the
+		 * action's keys go down only then. */
+		inline bool VRGripActionArmed(const VRGripState& s) { return s.action && s.armed; }
 
 		/** Whether a holster may count now: not while a grip is held (it began
 		 * elsewhere), not with the gun in both hands, not while the spade or
 		 * blocks have a block in reach (`toolHasReach`: the grip is theirs). */
 		inline bool VRGripMayHolster(const VRGripState& s, bool twoHanded, bool toolHasReach) {
-			return !s.action && !s.fromHolster && !twoHanded && !toolHasReach;
+			// A grip begun a moment before reaching a slot may still take from
+			// it, until its grace is over
+			return (!s.action || !s.armed) && !s.fromHolster && !twoHanded && !toolHasReach;
 		}
 
 		/** Tracking axes to the game's axes before the body yaw is applied:

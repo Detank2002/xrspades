@@ -86,6 +86,7 @@ namespace spades {
 		class TCProgressView;
 		class ClientPlayer;
 		class BloodMarks;
+		class ImpactMarks;
 		class ClientUI;
 		class PieMenuView;
 		class Teamplay;
@@ -149,6 +150,14 @@ namespace spades {
 			// unless EnableDemoReplayFollow() has been called.
 			bool demoReplayFollowPending = false;
 			std::string demoReplayFollowSpec; // empty = first player; else id or name
+			// --demo-start: the time (s) the replay jumps to first; 0, none
+			float demoReplayStart = 0.0F;
+			// --demo-third-person: follow from behind, not through their eyes
+			bool demoReplayThirdPerson = false;
+			// --demo-camera: a still camera at `demoCameraAt` looking at
+			// `demoCameraTo` instead of following anybody
+			bool demoCamera = false;
+			Vector3 demoCameraAt, demoCameraTo;
 
 			std::string playerName;
 			std::unique_ptr<IStream> logStream;
@@ -238,6 +247,16 @@ namespace spades {
 			bool lastHitWasScoped;
 			bool lastHitWasAirborne;
 			int damageTaken;
+			// Where the last hit came from (LocalPlayerHurt), for the rumble and
+			// the red edge in a headset: world space, and whether it is known
+			// (not a fall or drowning) and recent enough to be this hit's.
+			Vector3 vrHurtSource{0.0F, 0.0F, 0.0F};
+			bool vrHurtSourceKnown = false;
+			float vrHurtSourceTime = -100.0F;
+			// The hit's side for the red edge (-1 left to 1 right, of the head
+			// when it was taken) and how far behind (0 ahead to 1 behind).
+			float vrHurtSide = 0.0F;
+			float vrHurtBehind = 0.0F;
 			int lastHealth;
 			int lastScore;
 			int curKills;
@@ -579,6 +598,7 @@ namespace spades {
 			void RemoveAllLocalEntities();
 
 			std::unique_ptr<BloodMarks> bloodMarks;
+			std::unique_ptr<ImpactMarks> impactMarks;
 			Handle<IModel> blockCursorModel;
 
 			int nextMapShotIndex;
@@ -824,9 +844,25 @@ namespace spades {
 				// press held a moment so it lands when the spade is ready.
 				bool swingLatched = false;
 				float swingHold = 0.0F;
+				// Striking with the spade (vr_spadeContact): the spade is solid, and
+				// its tip meeting a block at speed is a hit on that block. Whether
+				// it touched last frame, and the last strike's ray (world space),
+				// which the dig acts along while the press is held.
+				bool spadeTouching = false;
+				float spadeStrikeTime = -100.0F;
+				Vector3 spadeStrikeOrigin{0.0F, 0.0F, 0.0F};
+				Vector3 spadeStrikeDir{1.0F, 0.0F, 0.0F};
 				// Holsters: the one the gun hand is at (VRHolster), and whether its
 				// grip is held since it took a tool from one.
 				int holsterHover = -1;
+				// Which way the holsters face and how low the hips are (VRHolsterFrame)
+				VRHolsterFrame holsterFrame;
+				// Each holster in the world, for the tool hand, to draw what is
+				// carried there where it is grabbed (VRHolsterPlace): its
+				// centre and the body's level forward and right there
+				bool holsterValid[4] = {false, false, false, false};
+				Vector3 holsterPos[4];
+				Vector3 holsterForward, holsterRight;
 				VRGripState grip;
 				bool wasReloading = false;
 				// Guns fire from the eye at what the gun points at (VRGunAimPoint);
@@ -879,6 +915,9 @@ namespace spades {
 				bool reflexActive = false;
 				Vector3 reflexCenter, reflexDir;
 				float reflexRadius = 0.0F;
+				// The gun's own right and up there: the reticle cants with the gun.
+				Vector3 reflexRight{1.0F, 0.0F, 0.0F};
+				Vector3 reflexUp{0.0F, 0.0F, -1.0F};
 				// The picture's half-angles (radians): what the centre of the lens
 				// shows at the monitor's magnification, and what its rim reaches.
 				float scopeCentreHalf = 0.05F;
@@ -910,6 +949,13 @@ namespace spades {
 				bool recenterHoldFired = false;
 				// The menu's Reset Height (RequestVRHeightReset), for the next frame.
 				bool heightResetRequested = false;
+				// The headset taken off and put back on (UpdateVR): when the game
+				// last had focus (steady clock, seconds), whether it lost it since,
+				// and when the height is to be reset once it is back on.
+				double lastFocusedAt = 0.0;
+				Vector3 lastFocusedHead{0.0F, 0.0F, 0.0F}; // tracking space
+				bool lostFocus = false;
+				double putOnResetAt = 0.0;
 				bool prevTrigger[2] = {false, false};
 				bool triggerHeld[2] = {false, false};
 				float lastToolUseTime = -100.0F;
@@ -926,6 +972,53 @@ namespace spades {
 				Vector3 throwPeakDir{1.0F, 0.0F, 0.0F};
 			};
 			VRRig vrRig;
+			/** The table view (VRTablePose): spectating, dead or watching a demo
+			 * in a headset, the map as a model in front of you. The off hand's
+			 * stick click (or the wrist menu) turns it on and off; a grip holds
+			 * the model where it is gripped, both grips turn and size it, and the
+			 * off hand's stick zooms and turns it. */
+			struct VRTableView {
+				bool active = false;
+				VRTablePose pose;
+				Vector3 anchor{0.0F, 0.0F, 0.0F}; // tracking space
+				bool held[2] = {false, false};
+				Vector3 heldWorld[2];
+				bool toggleLatched = false;
+				bool fogFar = false;
+				// Spectating (or a demo) last frame: the table comes up by itself
+				// when that starts (vr_tableWhenSpectating)
+				bool wasSpectating = false;
+			};
+			VRTableView vrTable;
+			/** Not in your own body: spectating, dead, or a demo. */
+			bool VRTableAllowed();
+			void SetVRTable(bool on);
+			/** Your hands, drawn at the table's scale while it is up: no player
+			 * draws them there (a spectator has no body). */
+			void AddVRTableHandsToScene();
+			/** The table view's map: a coarse copy (vr_tableDetail blocks to a
+			 * voxel), drawn in place of the map itself (AddVRTableMapToScene). */
+			void AddVRTableMapToScene();
+			Handle<IModel> vrTableModel;
+			Handle<IModel> vrTableModelPrev;
+			// A map just arrived, in a headset: the world is kept out of sight
+			// until frames come steadily (UpdateVRSettle)
+			// The body mirror (vr_bodyMirror): a vertical plane beside the menu
+			// panel your body is drawn reflected in (ClientPlayer::AddVRMirror)
+			struct {
+				bool shown = false;
+				Matrix4 matrix = Matrix4::Identity();
+			} vrMirror;
+			void UpdateVRMirror(const VRFrameState& fs);
+			bool vrSettling = false;
+			float vrSettleTime = 0.0F, vrSettleSteady = 0.0F, vrSettleWorst = 0.0F;
+			int vrSettleFrames = 0, vrSettleSlow = 0;
+			void UpdateVRSettle(float dt, float framePeriod);
+			std::vector<uint32_t> vrTableCells; // last built: colour, 0 for air
+			int vrTableFactor = 0;
+			float vrTableBuiltAt = -100.0F;
+			GameMap* vrTableBuiltFor = nullptr;
+			void UpdateVRTable(const VRFrameState&, float dt);
 			/** Synthetic keys the controllers are holding down, by key name. */
 			std::unordered_map<std::string, bool> vrHeldKeys;
 
@@ -1006,6 +1099,14 @@ namespace spades {
 			/** The in-eye tip box (the training course's tips, the no-vr_presence
 			 * notice), drawn in the eye being drawn. */
 			void DrawVRTutorial();
+			/** Where the tip box floats (DrawVRTutorial): trailing the view, once
+			 * a frame, before the eyes draw it. */
+			void UpdateVRTipAnchor();
+			Vector3 vrTipDir{1.0F, 0.0F, 0.0F}; // from the head, world space
+			Vector3 vrTipAt{0.0F, 0.0F, 0.0F};
+			bool vrTipValid = false;
+			bool vrTipMoving = false;
+			float vrTipTime = 0.0F;
 			/** Until when (Client::time) the no-vr_presence notice shows in a headset. */
 			float vrPresenceNoticeUntil = -1.0F;
 			/** When to decide whether to show it (the server's extensions have had
@@ -1061,6 +1162,11 @@ namespace spades {
 		private:
 			/** The comfort vignette, drawn in the eye being drawn. */
 			void DrawVRVignette();
+			/** A hit taken in a headset: rumble from its side, scaled by `damage`. */
+			void VRHurtFeedback(int damage);
+			/** The red edge after a hit and at low health, in each eye. */
+			void DrawVRHurtEdge();
+			Handle<IImage> vrHurtEdgeImage;
 			Handle<IImage> vrVignetteImage;
 			/** The physical reload (vr_reloadGesture); true to press reload now. */
 			bool UpdateVRReload(Player&, const VRFrameState&);
@@ -1101,6 +1207,15 @@ namespace spades {
 
 			// Demo helpers (see EnableDemoReplayFollow).
 			void UpdateDemoReplayFollow();
+		public:
+			/** --demo-camera: replay seen from `at`, looking at `to`. */
+			void SetDemoReplayCamera(const Vector3& at, const Vector3& to) {
+				demoCamera = true;
+				demoCameraAt = at;
+				demoCameraTo = to;
+			}
+
+		private:
 			int ResolveDemoPlayer(const std::string& spec);
 
 			std::string BuildDemoContext();
@@ -1143,7 +1258,8 @@ namespace spades {
 			 * running. Used by menuless demo replay (--replay-demo). Only
 			 * meaningful when the client was created with a demo path.
 			 */
-			void EnableDemoReplayFollow(const std::string& playerSpec);
+			void EnableDemoReplayFollow(const std::string& playerSpec, float startTime = 0.0F,
+			                            bool thirdPerson = false);
 
 			void RunFrame(float dt) override;
 
@@ -1272,6 +1388,9 @@ namespace spades {
 			void PlayerCreatedBlock(Player&);
 			void PlayBlockDestroySound(Vector3);
 			void PlayerDestroyedBlockWithWeaponOrTool(IntVector3);
+			/** The local player's spade took a block out (a strike or a dig): the
+			 * crumble in the hand, in a headset. */
+			void LocalPlayerBrokeBlock();
 			void PlayerDiggedBlock(IntVector3);
 			void GrenadeDestroyedBlock(IntVector3);
 			void PlayerLeaving(Player&);
@@ -1322,6 +1441,8 @@ namespace spades {
 			void LocalPlayerBlockAction(IntVector3, BlockActionType type) override;
 			void LocalPlayerCreatedLineBlock(IntVector3, IntVector3) override;
 			void LocalPlayerHurt(HurtType type, Vector3 source) override;
+			/** The server turned Edit Mode on or off for us (NetClient). */
+			void LocalPlayerEditModeChanged(bool on);
 			void LocalPlayerBuildError(BuildFailureReason reason) override;
 			// IWorldListener end
 		};

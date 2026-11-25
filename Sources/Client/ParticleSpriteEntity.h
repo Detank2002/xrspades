@@ -47,6 +47,8 @@ namespace spades {
 			float velocityDamp;
 			float radiusDamp;
 			float gravityScale;
+			bool resting = false;      // lying on the ground (Update)
+			float restingGravity = 1.0F; // its gravity, for when that goes
 
 			float lifetime, time;
 			float fadeInDuration;

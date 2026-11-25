@@ -2313,6 +2313,20 @@ namespace spades {
 			return info;
 		}
 
+		bool VulkanRenderer::SetMapFaceHidden(const IntVector3& block, const IntVector3& normal,
+		                                      bool hidden) {
+			if (!mapRenderer)
+				return false;
+			const int face = normal.x > 0   ? 0
+			                 : normal.x < 0 ? 1
+			                 : normal.y > 0 ? 2
+			                 : normal.y < 0 ? 3
+			                 : normal.z > 0 ? 4
+			                                : 5;
+			mapRenderer->SetFaceHidden(block.x, block.y, block.z, face, hidden);
+			return true;
+		}
+
 		void VulkanRenderer::GameMapChanged(int x, int y, int z, client::GameMap* map) {
 			SPADES_MARK_FUNCTION();
 			if (mapRenderer)
@@ -3690,10 +3704,17 @@ namespace spades {
 				}
 				i = j;
 			}
-			toEyes();
+			// Each eye's picture goes on from where the chain left it: a layer of
+			// the two-layer image is blitted out as it is (with the headset's
+			// settings, no filter runs, and that is the resolved scene), rather
+			// than first copied into an image of its own (two full-size copies a
+			// frame, for nothing).
 			for (int e = 0; e < 2; e++) {
 				SetMultiviewEye(e);
-				RecordVREyeOutput(cmd, eyeCur[e]);
+				if (perEye)
+					RecordVREyeOutput(cmd, eyeCur[e]);
+				else
+					RecordVREyeOutput(cmd, layered, static_cast<uint32_t>(e));
 			}
 		}
 

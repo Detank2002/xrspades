@@ -89,6 +89,8 @@ namespace spades {
 			Handle<UIElement> elem = Handle<UIElement>::New(&parent->GetManager());
 			elem->size = MakeVector2(fieldWidth, 32.0F);
 			items.push_back(elem);
+			itemAdvanced.push_back(tierAdvanced);
+			itemPlatform.push_back(platform);
 			return elem.GetPointerOrNull();
 		}
 
@@ -436,6 +438,34 @@ namespace spades {
 			if (headingNav && headings.size() >= 2) {
 				headingNav->entries = headings;
 				headingNav->list = list.GetPointerOrNull();
+			}
+			// What the Options search finds each row by: its captions and help
+			if (headingNav) {
+				headingNav->list = list.GetPointerOrNull();
+				headingNav->rows = items;
+				headingNav->rowText.assign(items.size(), std::string());
+				headingNav->rowAdvanced = itemAdvanced;
+				headingNav->rowPlatform = itemPlatform;
+				headingNav->rowHeading.assign(items.size(), false);
+				for (const HeadingNavEntry& h : headings)
+					if (h.row >= 0 && h.row < static_cast<int>(items.size()))
+						headingNav->rowHeading[h.row] = true;
+				std::function<void(UIElement*, std::string&)> gather = [&](UIElement* e,
+				                                                           std::string& out) {
+					if (Label* l = dynamic_cast<Label*>(e))
+						out += l->text + " ";
+					for (const Handle<UIElement>& c : e->GetChildren())
+						gather(c.GetPointerOrNull(), out);
+				};
+				for (size_t i = 0; i < items.size(); i++) {
+					std::string t;
+					gather(items[i].GetPointerOrNull(), t);
+					if (i < rowHelp.size())
+						t += rowHelp[i];
+					for (char& c : t)
+						c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+					headingNav->rowText[i] = t;
+				}
 			}
 
 			// Hook every row, including those without help, so that entering a row

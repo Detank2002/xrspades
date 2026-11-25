@@ -143,6 +143,9 @@ namespace spades {
 			TabPanel* homePanel = nullptr;
 			ui::Button* trainingButton = nullptr; // says so while the course starts
 			bool trainingStarting = false;
+			// The first-time VR setup (VRSetupScreen), checked once
+			bool vrSetupChecked = false;
+			ui::UIElement* vrSetup = nullptr; // weak: a child
 			/** When the course's server was started, to give up on it in time. */
 			double trainingStartedAt = 0.0;
 			/** Starts the tutorial, or an aim scenario. */

@@ -168,6 +168,10 @@ namespace spades {
 			int GetTeamId() { return teamId; }
 			bool IsTeammate(Player& p) { return teamId == p.teamId; }
 			bool IsSpectator() { return teamId >= 2; }
+			/** Edit Mode (extension 0x36): the server lifted this player's building
+			 * limits. See `editMode`. */
+			bool IsEditing() const { return editMode; }
+			void SetEditMode(bool on) { editMode = on; }
 			/** Returns true if this player belongs to a zombie team (see `World::IsZombieTeam`). */
 			bool IsZombie();
 			std::string GetTeamName();
@@ -312,6 +316,10 @@ namespace spades {
 			bool OverlapsWithBlock(const IntVector3&);
 			float GetDistanceToBlock(const spades::IntVector3&);
 			bool InBuildRange(const IntVector3&);
+			/** Edit Mode (aosprotocol extensions/edit-mode.md): no running out of
+			 * blocks, building and digging at any distance, in the air and at
+			 * z 62, and builds and hits as fast as the button allows. */
+			bool editMode = false;
 		};
 	} // namespace client
 } // namespace spades

@@ -46,6 +46,7 @@
 #include <Gui/UI/Widgets/Label.h>
 #include <Gui/UI/Widgets/MessageBox.h>
 #include <Gui/UI/Widgets/TextPromptScreen.h>
+#include "VRSetupScreen.h"
 
 DEFINE_SPADES_SETTING(cg_protocolVersion, "3");
 DEFINE_SPADES_SETTING(cg_lastQuickConnectHost, "127.0.0.1");
@@ -59,6 +60,9 @@ DEFINE_SPADES_SETTING(cg_aimWeapon, "0");
 DEFINE_SPADES_SETTING(cg_aimHighlight, "0");
 // For tests: -1, or an aim scenario to start the first time the menu shows.
 DEFINE_SPADES_SETTING(cg_debugStartAim, "-1");
+// For tests: a demo (as the demo list names it, Demos/...) to play the first
+// time the menu shows, as a headset has no command line to give it.
+DEFINE_SPADES_SETTING(cg_debugStartDemo, "");
 
 namespace spades {
 	namespace gui {
@@ -634,7 +638,7 @@ namespace spades {
 					std::function<void()> action;
 				};
 				std::vector<Entry> entries;
-				entries.push_back({_Tr("MainScreen", "Training"), [this] { ShowTraining(); }});
+				entries.push_back({_Tr("MainScreen", "Singleplayer"), [this] { ShowTraining(); }});
 				entries.push_back({_Tr("MainScreen", "Multiplayer"), [this] { ShowTab(0); }});
 				entries.push_back({_Tr("MainScreen", "Demos"), [this] { ShowTab(1); }});
 				if (!helper->IsTryingMod())
@@ -735,11 +739,13 @@ namespace spades {
 					std::string caption;
 				};
 				const LinkInfo links[] = {
-					{"Gfx/UI/IconWeb.png", "https://zerospades.github.io/",
+					// XRSpades' own: its releases, its code and the Discord of the
+					// Survive servers it is made with
+					{"Gfx/UI/IconWeb.png", "https://github.com/Detank2002/xrspades/releases",
 					 _Tr("StartupScreen", "Website")},
-					{"Gfx/UI/IconGithub.png", "https://github.com/siecvi/zerospades",
+					{"Gfx/UI/IconGithub.png", "https://github.com/Detank2002/xrspades",
 					 _Tr("StartupScreen", "GitHub")},
-					{"Gfx/UI/IconDiscord.png", "https://discord.gg/t64rKedpAu",
+					{"Gfx/UI/IconDiscord.png", "https://discord.gg/24JDJbpKV9",
 					 _Tr("StartupScreen", "Discord")},
 				};
 
@@ -1555,10 +1561,41 @@ namespace spades {
 				debugTrainingStarted = true;
 				StartTraining();
 			}
+			static bool debugDemoStarted = false;
+			if (!std::string(cg_debugStartDemo).empty() && !debugDemoStarted) {
+				debugDemoStarted = true;
+				const std::string msg = helper->PlayDemo(cg_debugStartDemo);
+				if (!msg.empty())
+					SPLog("cg_debugStartDemo: %s", msg.c_str());
+			}
 			static bool debugAimStarted = false;
 			if ((int)cg_debugStartAim >= 0 && !debugAimStarted) {
 				debugAimStarted = true;
 				StartAimScenario((int)cg_debugStartAim);
+			}
+			// The first time in a headset: the comfort choices, over the menu
+			// The first-time setup stands over the menu: it waits for another
+			// dialog (the name prompt) to close first, and while it is up the
+			// menu stays off whatever a closing dialog turned back on
+			if (vrSetup && vrSetup->visible)
+				enable = false;
+			if (!vrSetupChecked && enable) {
+				vrSetupChecked = true;
+				if (VRSetupScreen::IsDue()) {
+					Handle<VRSetupScreen> s = Handle<VRSetupScreen>::New(&GetManager());
+					// Over the menu, which takes no clicks meanwhile (the pointer
+					// reached the buttons behind it, testers), as other dialogs
+					// stand over theirs.
+					s->done = [this]() {
+						// Hidden, not removed: this runs inside its own button
+						enable = true;
+						vrSetup->visible = false;
+						vrSetup->enable = false;
+					};
+					vrSetup = s.GetPointerOrNull();
+					enable = false;
+					GetParent()->AddChild(vrSetup);
+				}
 			}
 			// Whichever page is up: the course started from the home screen is
 			// waited for and joined from here.
@@ -1566,7 +1603,7 @@ namespace spades {
 			if (trainingButton) {
 				trainingButton->caption = trainingStarting
 				                            ? _Tr("MainScreen", "Starting the course...")
-				                            : _Tr("MainScreen", "Training");
+				                            : _Tr("MainScreen", "Singleplayer");
 			}
 			if (trainingStarting && tutorialButton)
 				tutorialButton->caption = _Tr("MainScreen", "Starting...");

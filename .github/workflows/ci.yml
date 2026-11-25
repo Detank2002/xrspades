@@ -18,13 +18,13 @@ on:
 
 jobs:
   guard:
-    name: Guard (no AosBot, no singleplayer)
+    name: Guard (no AosBot)
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # ZeroSpadesX ships without the private AosBot and the singleplayer modes
+      # XRSpades ships without the private AosBot and the singleplayer modes
       # built on it; this keeps them from coming back in a merge or a rebase.
       - name: Check
         run: |
@@ -32,7 +32,8 @@ jobs:
             echo "::error::Sources/AosBot exists"
             exit 1
           fi
-          if git grep -niI -E 'aosbot|LocalGamePanel|LocalServer|singleplayer' -- . ':!.github/workflows/ci.yml'; then
+          # ("Singleplayer" is allowed: the training course's button says it.)
+          if git grep -niI -E 'aosbot|LocalGamePanel|LocalServer' -- . ':!.github/workflows/ci.yml'; then
             echo "::error::AosBot or singleplayer code found (above)"
             exit 1
           fi
@@ -81,7 +82,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ZeroSpadesX-windows-x86
+          name: XRSpades-windows-x86
           path: |
             ${{ runner.workspace }}\zerospades.mk\bin\Release
             !${{ runner.workspace }}\**\*.lib
@@ -141,7 +142,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ZeroSpadesX-windows-x64
+          name: XRSpades-windows-x64
           path: |
             ${{ runner.workspace }}\zerospades.mk\bin\Release
             !${{ runner.workspace }}\**\*.lib
@@ -161,12 +162,12 @@ jobs:
             runner: macos-15-intel
             triplet: x64-osx
             arch: x86_64
-            artifact: ZeroSpadesX-macos-intel
+            artifact: XRSpades-macos-intel
           - name: Apple Silicon
             runner: macos-15
             triplet: arm64-osx
             arch: arm64
-            artifact: ZeroSpadesX-macos-arm64
+            artifact: XRSpades-macos-arm64
     runs-on: ${{ matrix.runner }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "12.0"
@@ -237,7 +238,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ZeroSpadesX-linux-nix
+          name: XRSpades-linux-nix
           path: result/
           if-no-files-found: error
 
@@ -317,7 +318,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ZeroSpadesX-linux-x64
+          name: XRSpades-linux-x64
           path: build/bin/
           if-no-files-found: error
 
@@ -457,13 +458,13 @@ jobs:
             --libs "${{ runner.workspace }}/zerospades-android" \
             --paks "${{ runner.workspace }}/zerospades-android/Resources" \
             --sdl-source "$SDL_SOURCE" \
-            --out "$RUNNER_TEMP/ZeroSpadesX-quest3.apk" \
+            --out "$RUNNER_TEMP/XRSpades-quest3.apk" \
             "${version_args[@]}"
           rm -f "$RUNNER_TEMP/release.keystore"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ZeroSpadesX-quest3-apk
-          path: ${{ runner.temp }}/ZeroSpadesX-quest3.apk
+          name: XRSpades-quest3-apk
+          path: ${{ runner.temp }}/XRSpades-quest3.apk
           if-no-files-found: error

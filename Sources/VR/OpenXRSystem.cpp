@@ -53,6 +53,9 @@ DEFINE_SPADES_SETTING(vr_disableExtensions, "");
 // (XR_EXT_performance_settings) instead of the runtime's own choice: steadier
 // in busy scenes, for more battery and heat.
 DEFINE_SPADES_SETTING(vr_performanceBoost, "0");
+// The headset's refresh rate, in Hz: 0 leaves it its own (a Quest's 72).
+// Higher is smoother, and leaves less time for each frame.
+DEFINE_SPADES_SETTING(vr_refreshRate, "0");
 // 1: draw each eye with the smallest centred frustum covering the runtime's, as
 // before the renderer took off-centre ones (10-20% more pixels). The control for
 // the asymmetric path, and a way back if a runtime mishandles it.
@@ -68,6 +71,14 @@ DEFINE_SPADES_SETTING(vr_traceRecord, "");
 DEFINE_SPADES_SETTING(vr_traceReplay, "");
 SPADES_SETTING(vr_wristHud);
 SPADES_SETTING(vr_wristWidth);
+// Tracked hands point at the menus and pinch to click, when the controllers
+// are put down (Quest; a PC runtime with hand tracking). Read at start.
+DEFINE_SPADES_SETTING(vr_handTracking, "1");
+// The controllers' buttons, moved about (VRParseBindings; the in-game Controls
+// screen's Change Buttons writes it). Empty: the default layout.
+DEFINE_SPADES_SETTING(vr_bindings, "");
+// Walk with the tool hand's stick and turn with the other's.
+DEFINE_SPADES_SETTING(vr_swapSticks, "0");
 
 namespace spades {
 	namespace vr {
@@ -310,6 +321,27 @@ namespace spades {
 			    !load("xrPerfSettingsSetPerformanceLevelEXT",
 			          reinterpret_cast<PFN_xrVoidFunction*>(&pfnPerfSettingsSetPerformanceLevel)))
 				pfnPerfSettingsSetPerformanceLevel = nullptr;
+			if (caps[XrCap::DisplayRefreshRate] &&
+			    (!load("xrEnumerateDisplayRefreshRatesFB",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnEnumerateDisplayRefreshRates)) ||
+			     !load("xrRequestDisplayRefreshRateFB",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnRequestDisplayRefreshRate)))) {
+				pfnEnumerateDisplayRefreshRates = nullptr;
+				pfnRequestDisplayRefreshRate = nullptr;
+			}
+#ifdef XR_EXT_hand_tracking
+			if (caps[XrCap::HandTracking] &&
+			    !(load("xrCreateHandTrackerEXT",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnCreateHandTracker)) &&
+			      load("xrDestroyHandTrackerEXT",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnDestroyHandTracker)) &&
+			      load("xrLocateHandJointsEXT",
+			           reinterpret_cast<PFN_xrVoidFunction*>(&pfnLocateHandJoints)))) {
+				pfnCreateHandTracker = nullptr;
+				pfnDestroyHandTracker = nullptr;
+				pfnLocateHandJoints = nullptr;
+			}
+#endif
 
 			// Required before a session may be created, and it says which Vulkan
 			// version the instance has to ask for.
@@ -380,6 +412,7 @@ namespace spades {
 			if (actionSet != XR_NULL_HANDLE)
 				xrDestroyActionSet(actionSet);
 			actionSet = XR_NULL_HANDLE;
+			DestroyHandTrackers();
 			if (session != XR_NULL_HANDLE) {
 				if (sessionRunning)
 					xrEndSession(session);
@@ -478,6 +511,7 @@ namespace spades {
 
 			if (!CreateActions())
 				return false;
+			CreateHandTrackers();
 
 			SPLog("[OpenXR] Session created");
 			return true;
@@ -582,6 +616,80 @@ namespace spades {
 			         {menuAction, "/user/hand/left/input/menu/click"},
 			         {hapticAction, "/user/hand/left/output/haptic"},
 			         {hapticAction, "/user/hand/right/output/haptic"}});
+
+			// Touch Plus (Quest 3, 3S) and Touch Pro (Quest Pro), where the runtime
+			// names them: the same buttons as Touch, and the picture of the
+			// controllers in hand (no ring) can then be told from a Quest 2's.
+			// `squeeze`: the grip's input there (a value, or only a click)
+			auto touchLike = [&](const char* profile, const char* squeeze = "value") {
+				const std::string sl = std::string("/user/hand/left/input/squeeze/") + squeeze;
+				const std::string sr = std::string("/user/hand/right/input/squeeze/") + squeeze;
+				suggest(profile,
+				        {{gripPoseAction, "/user/hand/left/input/grip/pose"},
+				         {gripPoseAction, "/user/hand/right/input/grip/pose"},
+				         {aimPoseAction, "/user/hand/left/input/aim/pose"},
+				         {aimPoseAction, "/user/hand/right/input/aim/pose"},
+				         {triggerAction, "/user/hand/left/input/trigger/value"},
+				         {triggerAction, "/user/hand/right/input/trigger/value"},
+				         {squeezeAction, sl.c_str()},
+				         {squeezeAction, sr.c_str()},
+				         {thumbstickAction, "/user/hand/left/input/thumbstick"},
+				         {thumbstickAction, "/user/hand/right/input/thumbstick"},
+				         {thumbstickClickAction, "/user/hand/left/input/thumbstick/click"},
+				         {thumbstickClickAction, "/user/hand/right/input/thumbstick/click"},
+				         {primaryAction, "/user/hand/left/input/x/click"},
+				         {primaryAction, "/user/hand/right/input/a/click"},
+				         {secondaryAction, "/user/hand/left/input/y/click"},
+				         {secondaryAction, "/user/hand/right/input/b/click"},
+				         {menuAction, "/user/hand/left/input/menu/click"},
+				         {hapticAction, "/user/hand/left/output/haptic"},
+				         {hapticAction, "/user/hand/right/output/haptic"}});
+			};
+			if (caps[XrCap::TouchControllerPlus])
+				touchLike("/interaction_profiles/meta/touch_controller_plus");
+			if (caps[XrCap::TouchControllerPro])
+				touchLike("/interaction_profiles/facebook/touch_controller_pro");
+			// The others laid out as Touch is: X and Y on the left with a menu
+			// button, A and B on the right, a stick each
+			if (caps[XrCap::PicoController]) {
+				touchLike("/interaction_profiles/bytedance/pico4_controller");
+				touchLike("/interaction_profiles/bytedance/pico_neo3_controller");
+			}
+			if (caps[XrCap::Focus3Controller])
+				touchLike("/interaction_profiles/htc/vive_focus3_controller");
+			if (caps[XrCap::CosmosController])
+				touchLike("/interaction_profiles/htc/vive_cosmos_controller", "click");
+			if (caps[XrCap::HpController])
+				touchLike("/interaction_profiles/hp/mixed_reality_controller");
+
+			// Steam Frame: a D-pad on the left and A, B, X, Y on the right, as
+			// SteamVR maps Touch onto it (the lower button A / D-pad down, the
+			// upper ones B, X, Y / D-pad up, left, right), and View for the menu.
+			if (caps[XrCap::FrameController])
+				suggest("/interaction_profiles/valve/frame_controller_valve",
+				        {{gripPoseAction, "/user/hand/left/input/grip/pose"},
+				         {gripPoseAction, "/user/hand/right/input/grip/pose"},
+				         {aimPoseAction, "/user/hand/left/input/aim/pose"},
+				         {aimPoseAction, "/user/hand/right/input/aim/pose"},
+				         {triggerAction, "/user/hand/left/input/trigger/value"},
+				         {triggerAction, "/user/hand/right/input/trigger/value"},
+				         {squeezeAction, "/user/hand/left/input/squeeze/value"},
+				         {squeezeAction, "/user/hand/right/input/squeeze/value"},
+				         {thumbstickAction, "/user/hand/left/input/thumbstick"},
+				         {thumbstickAction, "/user/hand/right/input/thumbstick"},
+				         {thumbstickClickAction, "/user/hand/left/input/thumbstick/click"},
+				         {thumbstickClickAction, "/user/hand/right/input/thumbstick/click"},
+				         {primaryAction, "/user/hand/left/input/dpad_down/click"},
+				         {primaryAction, "/user/hand/right/input/a/click"},
+				         {secondaryAction, "/user/hand/left/input/dpad_up/click"},
+				         {secondaryAction, "/user/hand/left/input/dpad_left/click"},
+				         {secondaryAction, "/user/hand/left/input/dpad_right/click"},
+				         {secondaryAction, "/user/hand/right/input/b/click"},
+				         {secondaryAction, "/user/hand/right/input/x/click"},
+				         {secondaryAction, "/user/hand/right/input/y/click"},
+				         {menuAction, "/user/hand/left/input/view/click"},
+				         {hapticAction, "/user/hand/left/output/haptic"},
+				         {hapticAction, "/user/hand/right/output/haptic"}});
 
 			// Index. Its system button is reserved, so there is no menu binding;
 			// holding both B buttons opens the menu instead (see the client).
@@ -800,6 +908,43 @@ namespace spades {
 			}
 		}
 
+		void OpenXRSystem::ApplyRefreshRate() {
+			// The rate asked for, or the nearest the headset offers under it
+			// (over it if none is under). 0, until asked otherwise, is the
+			// headset's own; asked back to 0, its lowest. The frame's time
+			// (displayPeriod, and so Hold The Frame Rate's budget) follows.
+			if (!pfnRequestDisplayRefreshRate || !pfnEnumerateDisplayRefreshRates ||
+			    session == XR_NULL_HANDLE)
+				return;
+			const int want = std::max(0, (int)vr_refreshRate);
+			if (want == appliedRefreshRate || (appliedRefreshRate < 0 && want == 0)) {
+				appliedRefreshRate = want;
+				return;
+			}
+			uint32_t n = 0;
+			if (XR_FAILED(pfnEnumerateDisplayRefreshRates(session, 0, &n, nullptr)) || n == 0) {
+				appliedRefreshRate = want;
+				return;
+			}
+			std::vector<float> rates(n);
+			if (XR_FAILED(pfnEnumerateDisplayRefreshRates(session, n, &n, rates.data()))) {
+				appliedRefreshRate = want;
+				return;
+			}
+			std::sort(rates.begin(), rates.end());
+			float pick = rates.front();
+			if (want > 0) {
+				for (float r : rates)
+					if (r <= static_cast<float>(want) + 0.5F)
+						pick = r;
+			}
+			const bool ok = Check(pfnRequestDisplayRefreshRate(session, pick),
+			                      "xrRequestDisplayRefreshRateFB");
+			appliedRefreshRate = want;
+			SPLog("[OpenXR] Refresh rate %.0f Hz asked for (wanted %d)%s", pick, want,
+			      ok ? "" : " (refused)");
+		}
+
 		void OpenXRSystem::ApplyPerformanceLevels() {
 			if (!pfnPerfSettingsSetPerformanceLevel)
 				return;
@@ -889,6 +1034,7 @@ namespace spades {
 
 			frameBegun = true;
 			ApplyPerformanceLevels();
+			ApplyRefreshRate();
 			predictedDisplayTime = fs.predictedDisplayTime;
 			if (fs.predictedDisplayPeriod > 0)
 				frameState.displayPeriod = static_cast<float>(fs.predictedDisplayPeriod) * 1.0E-9F;
@@ -900,7 +1046,9 @@ namespace spades {
 
 			LocateViews();
 			UpdateInput();
+			UpdateHandTracking();
 			UpdateTrace();
+			ApplyBindings();
 			PlaceHudPanel();
 
 			frameState.wristWidth = std::max(0.08F, (float)vr_wristWidth);
@@ -942,6 +1090,18 @@ namespace spades {
 				frameState.wristGrow = 0.0F;
 				frameState.wristWidth = client::kVRHeldMapWidth;
 			}
+
+			// The keyboard standing on its own takes the wrist panel while it is
+			// up (typing has no use for the HUD). Asked for each frame.
+			frameState.keyboardPanel = keyboardWanted && keyboardPose.valid;
+			if (frameState.keyboardPanel) {
+				frameState.wristShown = true;
+				frameState.wristExpanded = false;
+				frameState.wristGrow = 0.0F;
+				frameState.wristPanel = keyboardPose;
+				frameState.wristWidth = keyboardWidth;
+			}
+			keyboardWanted = false;
 		}
 
 		void OpenXRSystem::LocateViews() {
@@ -1021,67 +1181,84 @@ namespace spades {
 		}
 
 		void OpenXRSystem::PlaceHudPanel() {
-			// A menu stands in the room, as menus do in other headset games: put
-			// down in front of the head, level, at eye height, and left there, so
-			// it is a thing to look at and walk up to rather than a sheet glued
-			// to the face. It follows lazily: looked away from (over 55 degrees)
-			// for more than a second, or left more than twice its distance
-			// behind, it is put down in front again. In a game the panel carries
-			// overlays drawn through it onto the world (names, markers), which
-			// only line up while it is before the eyes, so there the client asks
-			// for that each frame (SetHudFollowsHead) and gets it.
+			// The panel floats in front of you and trails the head, as menus and
+			// popups do in other headset games, rather than being glued to the
+			// face (testers: the popups were huge and in the way) or left standing
+			// in the room. It stays put while you look about it, then, once the
+			// head is past the dead zone, eases back in front (about a fifth of a
+			// second). It turns only about you, level at eye height, never up or
+			// down with the head (testers: menus started high up). A menu's dead
+			// zone is half the panel's width and
+			// a little more, so pointing at its edges does not move it, and it
+			// does not set off while a trigger is held (a slider being dragged).
+			// In a game (SetHudFollowsHead) the panel holds popups, so its dead
+			// zone is small. Names and markers are drawn into each eye, so nothing
+			// needs the panel square in front.
 			const client::VRPose& head = frameState.head;
-			const bool follow = hudFollowAsked || !head.valid;
+			const bool game = hudFollowAsked;
 			hudFollowAsked = false;
 			const float d = frameState.hudDistance;
 			const Vector3 ahead = head.orientation.Rotate(MakeVector3(0.0F, 0.0F, -1.0F));
-			Vector3 level = MakeVector3(ahead.x, 0.0F, ahead.z);
-			auto put = [&]() {
-				if (level.GetLength() < 0.2F)
-					return; // looking straight up or down: no heading to face
-				level = level.Normalize();
-				hudStandPose.position = head.position + level * d;
-				// The panel's +Z towards the head: a turn about +Y taking -Z to `level`.
-				hudStandPose.orientation = client::VRQuat::FromAxisAngle(
-				  MakeVector3(0.0F, 1.0F, 0.0F), std::atan2(-level.x, -level.z));
-				hudStandPose.valid = true;
-				hudStanding = true;
-				hudAwayTime = 0.0F;
-			};
-			if (follow) {
-				hudStanding = false;
-			} else if (!hudStanding) {
-				put();
-			} else {
-				Vector3 to = hudStandPose.position - head.position;
-				to.y = 0.0F;
-				const float away = to.GetLength();
-				bool lost = away > d * 2.0F;
-				if (away > 1.0E-3F && level.GetLength() > 0.2F) {
-					const float c = Vector3::Dot(to * (1.0F / away), level.Normalize());
-					if (c < std::cos(55.0F * 0.0174532925F))
-						hudAwayTime += std::max(0.0F, frameState.displayPeriod);
-					else
-						hudAwayTime = 0.0F;
-					lost = lost || hudAwayTime > 1.0F;
-				}
-				if (lost)
-					put();
-			}
-			frameState.hudAnchored = hudStanding;
-			if (hudStanding) {
-				frameState.hudPanel = hudStandPose;
-			} else {
+			if (!head.valid) {
+				frameState.hudAnchored = false;
 				frameState.hudPanel.position = head.position + ahead * d;
 				frameState.hudPanel.orientation = head.orientation;
-				frameState.hudPanel.valid = head.valid;
+				frameState.hudPanel.valid = false;
+				hudTrailValid = false;
+				return;
 			}
+			// Where the head faces, level; looking straight up or down has no
+			// heading, so the panel stays where it is.
+			Vector3 level = MakeVector3(ahead.x, 0.0F, ahead.z);
+			const bool hasHeading = level.GetLength() > 0.2F;
+			level = hasHeading ? level.Normalize() : hudTrailDir;
+			if (!hudTrailValid) {
+				hudTrailDir = hasHeading ? level : MakeVector3(0.0F, 0.0F, -1.0F);
+				hudTrailValid = true;
+				hudTrailMoving = false;
+			}
+			const float deg = 0.0174532925F;
+			const float dead =
+			  game ? 12.0F * deg : std::atan(frameState.hudWidth * 0.5F / d) + 5.0F * deg;
+			// Any trigger held, bound or not, or a hand's pinch (what the menu
+			// pointer clicks with)
+			bool dragging = false;
+			for (int i = 0; i < 2 && !game; i++)
+				dragging = dragging || frameState.hands[i].trigger > 0.5F ||
+				           frameState.rawHands[i].trigger > 0.5F ||
+				           frameState.handPinch[i] > 0.5F;
+			const float off = std::acos(Clamp(Vector3::Dot(hudTrailDir, level), -1.0F, 1.0F));
+			if (off > dead && !dragging && hasHeading)
+				hudTrailMoving = true;
+			if (hudTrailMoving) {
+				const float k = 1.0F - std::exp(-std::max(0.0F, frameState.displayPeriod) * 5.0F);
+				Vector3 next = hudTrailDir + (level - hudTrailDir) * k;
+				next.y = 0.0F;
+				if (next.GetLength() > 1.0E-3F)
+					hudTrailDir = next.Normalize();
+				if (off < 1.5F * deg)
+					hudTrailMoving = false;
+			}
+			// Upright, level, facing the head: a turn about +Y.
+			const Vector3 f = hudTrailDir;
+			const float yaw = std::atan2(-f.x, -f.z);
+			frameState.hudAnchored = true;
+			frameState.hudPanel.position = head.position + f * d;
+			frameState.hudPanel.orientation =
+			  client::VRQuat::FromAxisAngle(MakeVector3(0.0F, 1.0F, 0.0F), yaw);
+			frameState.hudPanel.valid = true;
 		}
 
 		void OpenXRSystem::SetHeldMap(bool held) {
 			if (held != heldMapWanted)
 				SPLog("[VR] Big map %s", held ? "held in the off hand" : "put away");
 			heldMapWanted = held;
+		}
+
+		void OpenXRSystem::SetKeyboardPanel(bool wanted, const client::VRPose& pose, float width) {
+			keyboardWanted = wanted;
+			keyboardPose = pose;
+			keyboardWidth = std::max(0.1F, width);
 		}
 
 		void OpenXRSystem::UpdateTrace() {
@@ -1205,6 +1382,108 @@ namespace spades {
 				c.buttonSecondary = getBool(secondaryAction);
 				c.menu = getBool(menuAction);
 			}
+		}
+
+		void OpenXRSystem::ApplyBindings() {
+			// After the trace, so a trace holds the controllers as they were
+			// pressed and replays under whatever bindings are set then.
+			const std::string text = vr_bindings;
+			if (text != bindingsText) {
+				bindingsText = text;
+				bindings = client::VRParseBindings(text);
+				SPLog("[VR] Button bindings: %s", text.empty() ? "the default layout" : text.c_str());
+			}
+			frameState.rawHands[0] = frameState.hands[0];
+			frameState.rawHands[1] = frameState.hands[1];
+			client::VRApplyBindings(frameState.rawHands, frameState.hands, client::VRToolHand(),
+			                        bindings, (bool)vr_swapSticks);
+		}
+
+		void OpenXRSystem::CreateHandTrackers() {
+#ifdef XR_EXT_hand_tracking
+			if (!(bool)vr_handTracking || !pfnCreateHandTracker || session == XR_NULL_HANDLE)
+				return;
+			for (int h = 0; h < 2; h++) {
+				XrHandTrackerCreateInfoEXT ci{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+				ci.hand = h == client::VRHandLeft ? XR_HAND_LEFT_EXT : XR_HAND_RIGHT_EXT;
+				ci.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
+				if (XR_FAILED(pfnCreateHandTracker(session, &ci, &handTrackers[h]))) {
+					handTrackers[h] = XR_NULL_HANDLE;
+					SPLog("[OpenXR] Hand tracking: no tracker for the %s hand",
+					      h == client::VRHandLeft ? "left" : "right");
+				}
+			}
+			if (handTrackers[0] != XR_NULL_HANDLE || handTrackers[1] != XR_NULL_HANDLE)
+				SPLog("[OpenXR] Hand tracking for the menus (%s)",
+				      caps[XrCap::HandTrackingAim] ? "the runtime's aim and pinch"
+				                                   : "the palm, and thumb to finger");
+#endif
+		}
+
+		void OpenXRSystem::DestroyHandTrackers() {
+#ifdef XR_EXT_hand_tracking
+			for (auto& t : handTrackers) {
+				if (t != XR_NULL_HANDLE && pfnDestroyHandTracker)
+					pfnDestroyHandTracker(t);
+				t = XR_NULL_HANDLE;
+			}
+#endif
+		}
+
+		void OpenXRSystem::UpdateHandTracking() {
+			for (int h = 0; h < 2; h++) {
+				frameState.handTracked[h] = false;
+				frameState.handPinch[h] = 0.0F;
+				frameState.handMenu[h] = false;
+			}
+#ifdef XR_EXT_hand_tracking
+			if (!pfnLocateHandJoints || appSpace == XR_NULL_HANDLE)
+				return;
+			for (int h = 0; h < 2; h++) {
+				if (handTrackers[h] == XR_NULL_HANDLE)
+					continue;
+				XrHandJointsLocateInfoEXT li{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+				li.baseSpace = appSpace;
+				li.time = predictedDisplayTime;
+				XrHandJointLocationEXT joints[XR_HAND_JOINT_COUNT_EXT];
+				XrHandJointLocationsEXT locs{XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
+				locs.jointCount = XR_HAND_JOINT_COUNT_EXT;
+				locs.jointLocations = joints;
+#ifdef XR_FB_hand_tracking_aim
+				XrHandTrackingAimStateFB aim{XR_TYPE_HAND_TRACKING_AIM_STATE_FB};
+				if (caps[XrCap::HandTrackingAim])
+					locs.next = &aim;
+#endif
+				if (XR_FAILED(pfnLocateHandJoints(handTrackers[h], &li, &locs)) || !locs.isActive)
+					continue;
+#ifdef XR_FB_hand_tracking_aim
+				if (caps[XrCap::HandTrackingAim] && (aim.status & XR_HAND_TRACKING_AIM_VALID_BIT_FB)) {
+					frameState.handAim[h] = ToPose(aim.aimPose, true);
+					frameState.handPinch[h] = aim.pinchStrengthIndex;
+					frameState.handMenu[h] = (aim.status & XR_HAND_TRACKING_AIM_MENU_PRESSED_BIT_FB) != 0;
+					frameState.handTracked[h] = true;
+					continue;
+				}
+#endif
+				// Without the runtime's aim: the palm points (its -Z runs along the
+				// fingers), and the thumb's tip to the index finger's is the pinch,
+				// full at 1cm, none from 4cm.
+				const XrHandJointLocationEXT& palm = joints[XR_HAND_JOINT_PALM_EXT];
+				const XrHandJointLocationEXT& thumb = joints[XR_HAND_JOINT_THUMB_TIP_EXT];
+				const XrHandJointLocationEXT& index = joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+				if (!PoseValid(palm.locationFlags))
+					continue;
+				frameState.handAim[h] = ToPose(palm.pose, true);
+				if (PoseValid(thumb.locationFlags) && PoseValid(index.locationFlags)) {
+					const float dx = thumb.pose.position.x - index.pose.position.x;
+					const float dy = thumb.pose.position.y - index.pose.position.y;
+					const float dz = thumb.pose.position.z - index.pose.position.z;
+					const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+					frameState.handPinch[h] = std::max(0.0F, std::min(1.0F, (0.04F - d) / 0.03F));
+				}
+				frameState.handTracked[h] = true;
+			}
+#endif
 		}
 
 		bool OpenXRSystem::AcquireEyeImage(int eye, VkImage& image) {

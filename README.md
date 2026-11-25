@@ -1,19 +1,20 @@
-# ZeroSpades X [![Build status](https://github.com/Detank2002/zerospadesx/actions/workflows/ci.yml/badge.svg)](https://github.com/Detank2002/zerospadesx/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/release/Detank2002/zerospadesx.svg)](https://github.com/Detank2002/zerospadesx/releases/latest)
+# XRSpades [![Build status](https://github.com/Detank2002/xrspades/actions/workflows/ci.yml/badge.svg)](https://github.com/Detank2002/xrspades/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/release/Detank2002/xrspades.svg)](https://github.com/Detank2002/xrspades/releases/latest)
 
-ZeroSpades X is [ZeroSpades](https://github.com/Fran6nd/zerospades) with VR:
+XRSpades is [ZeroSpades](https://github.com/Fran6nd/zerospades) with VR:
 play Ace of Spades in a headset on PC (OpenXR) or standalone on a Meta Quest 3,
 on the same servers as everyone else. Everything else is ZeroSpades as Fran6nd
-makes it; ZeroSpades X follows its `vulkan-2` branch.
+makes it; XRSpades follows its `vulkan-2` branch. XRSpades was called
+ZeroSpades X until 0.4.0; ZeroSpades X updates itself to XRSpades.
 
-[Download](https://github.com/Detank2002/zerospadesx/releases/latest) — Community: [BuildAndShoot](https://buildandshoot.com) - [aloha.pk](https://aloha.pk)
+[Download](https://github.com/Detank2002/xrspades/releases/latest) — Community: [BuildAndShoot](https://buildandshoot.com) - [aloha.pk](https://aloha.pk)
 
-## What ZeroSpades X adds
+## What XRSpades adds
 * **VR on PC**: tick **VR Headset** in the launcher's Graphics tab (Vulkan, any
   OpenXR runtime: SteamVR, Meta Link, ...). Tracked head and hands, the gun in
   your hand, a wrist menu. See [VR.md](VR.md).
 * **Meta Quest 3, standalone**: the `quest3.apk` from a release, sideloaded
-  (`adb install -r ZeroSpadesX-<version>-quest3.apk`). It installs over the
-  earlier ZeroSpades VR / ZeroSpades X builds and keeps your settings.
+  (`adb install -r XRSpades-<version>-quest3.apk`). It installs over the
+  earlier ZeroSpades VR / XRSpades builds and keeps your settings.
 * **Training**, on your own machine, no server needed:
   * **Tutorial**: a course to learn the controls (VR or not): the range,
     digging, building and grenades. A ping shows where to go next, and a
@@ -25,7 +26,7 @@ makes it; ZeroSpades X follows its `vulkan-2` branch.
     Targets can be outlined. Jump (A in VR) goes again.
   * Ammo, grenades and blocks never run out in either.
 * **Everyone sees VR players**: on servers running `Server/vr_presence.py`,
-  VR players' heads, hands and guns are drawn for every ZeroSpades X player,
+  VR players' heads, hands and guns are drawn for every XRSpades player,
   on a monitor or in a headset.
 * **macOS** builds have no VR (there is no OpenXR runtime there), but they
   draw other players' VR like the rest.
@@ -125,8 +126,8 @@ Demos can also be played back using the external [aos_replay](https://github.com
 
 ### Prerequisites (all platforms)
 ```
-git clone --recurse-submodules https://github.com/Detank2002/zerospadesx
-cd zerospadesx
+git clone --recurse-submodules https://github.com/Detank2002/xrspades
+cd xrspades
 vcpkg/bootstrap-vcpkg.sh    # macOS/Linux
 vcpkg\bootstrap-vcpkg.bat   # Windows
 ```
@@ -213,7 +214,7 @@ See [VR.md](VR.md), "The Quest build": an Android build of `libmain.so`, then
 For troubleshooting and common problems see [TROUBLESHOOTING](TROUBLESHOOTING.md).
 
 ## Credits and licensing
-ZeroSpades X is built on [ZeroSpades](https://github.com/Fran6nd/zerospades)
+XRSpades is built on [ZeroSpades](https://github.com/Fran6nd/zerospades)
 by Fran6nd, which is a fork of [OpenSpades](https://github.com/yvt/openspades)
 by yvt and its contributors. Please see the file named LICENSE.
 

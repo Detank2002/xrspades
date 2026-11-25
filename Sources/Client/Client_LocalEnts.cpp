@@ -33,6 +33,7 @@
 #include "IAudioDevice.h"
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include "Corpse.h"
 #include "ILocalEntity.h"
 #include "ParticleSpriteEntity.h"
@@ -130,6 +131,8 @@ namespace spades {
 
 			if (bloodMarks)
 				bloodMarks->Clear();
+			if (impactMarks)
+				impactMarks->Clear();
 		}
 
 		stmp::optional<std::tuple<Player&, hitTag_t>> Client::HotTrackedPlayer(bool includeEnemies) {
@@ -430,21 +433,38 @@ namespace spades {
 					velBias.z += 1.0F;
 			}
 
-			// fragments
+			// fragments: bits of what blew up. Each takes the colour of a block
+			// near the blast (grey where there is none, in the air), and they are
+			// small and soon gone: the flat squares they are drawn as were up to
+			// 1.2 blocks across and lasted five seconds, so a few grenades at once
+			// filled the air with big grey tiles flying past the eyes.
 			Handle<IImage> img = renderer->RegisterWhiteImage();
 
-			uint32_t col = IntVectorToColor(MakeIntVector3(70, 70, 70));
-			col = map->GetColorJit(col); // jit the colour
-			Vector4 color = ConvertColorRGBA(IntVectorFromColor(col));
+			std::vector<uint32_t> near;
+			for (int dz = -1; dz <= 1 && near.size() < 8; dz++)
+				for (int dy = -1; dy <= 1; dy++)
+					for (int dx = -1; dx <= 1; dx++) {
+						const int x = static_cast<int>(std::floor(pos.x)) + dx;
+						const int y = static_cast<int>(std::floor(pos.y)) + dy;
+						const int z = static_cast<int>(std::floor(pos.z)) + dz + 1;
+						if (map->IsValidMapCoord(x, y, z) && map->IsSolid(x, y, z))
+							near.push_back(map->GetColor(x, y, z));
+					}
+			const uint32_t grey = IntVectorToColor(MakeIntVector3(70, 70, 70));
+			Vector4 color;
 
 			int particlesNum = cg_particlesGrenadeNum;
 			for (int i = 0; i < particlesNum; i++) {
+				uint32_t col = near.empty() ? grey : near[static_cast<std::size_t>(i) % near.size()];
+				col = map->GetColorJit(col & 0xFFFFFF); // jit the colour
+				color = ConvertColorRGBA(IntVectorFromColor(col));
+				color.w = 1.0F;
 				auto ent = stmp::make_unique<ParticleSpriteEntity>(*this, img, color);
 				Vector3 dir = RandomUnitVector() + velBias * 0.5F;
-				float radius = 0.3F + SampleRandomFloat() * SampleRandomFloat() * 0.3F;
-				ent->SetTrajectory(pos + dir * 0.2F, dir * 16.0F, 0.1F + radius * 3.0F);
+				float radius = 0.08F + SampleRandomFloat() * SampleRandomFloat() * 0.17F;
+				ent->SetTrajectory(pos + dir * 0.2F, dir * 14.0F, 0.1F + radius * 3.0F);
 				ent->SetRadius(radius);
-				ent->SetLifeTime(3.5F + SampleRandomFloat() * 2.0F, 0.0F, 1.0F);
+				ent->SetLifeTime(1.4F + SampleRandomFloat() * 1.2F, 0.0F, 0.6F);
 				if (dist < PARTICLE_BOUNCE_DIST)
 					ent->SetBlockHitAction(BlockHitAction::BounceWeak);
 				localEntities.emplace_back(std::move(ent));
@@ -452,6 +472,9 @@ namespace spades {
 
 			if (particleLevel < 2)
 				return;
+
+			// The smoke is grey whatever blew up
+			color = ConvertColorRGBA(IntVectorFromColor(map->GetColorJit(grey)));
 
 			// rapid smoke
 			for (int i = 0; i < 4; i++) {

@@ -171,14 +171,29 @@ def stick(s, x, y, r=30):
 
 def button(s, x, y, r, letter):
     s.ellipse(x, y, r, r, fill=PART, outline=PART_EDGE, width=2)
-    if letter:
+    k = r * 0.5
+    if letter == "cross":
+        s.line([(x - k, y - k), (x + k, y + k)], TEXT, 2)
+        s.line([(x - k, y + k), (x + k, y - k)], TEXT, 2)
+    elif letter == "circle":
+        s.ellipse(x, y, k, k, outline=TEXT, width=2)
+    elif letter == "square":
+        s.d.rectangle([S(x - k), S(y - k), S(x + k), S(y + k)], outline=TEXT, width=S(2))
+    elif letter == "triangle":
+        s.line([(x, y - k * 1.1), (x + k, y + k * 0.7), (x - k, y + k * 0.7), (x, y - k * 1.1)],
+               TEXT, 2)
+    elif letter:
         s.text((x, y + 1), letter, int(r * 1.1), TEXT, bold=True, anchor="mm")
 
 
-def touch(s, cx, cy, hand, ring):
+def touch(s, cx, cy, hand, ring, letters=None, bumper=False):
     """Meta Touch: Quest 2 and Rift S (`ring`: the tracking ring over the
-    top), Quest 3 and 3S (Touch Plus: no ring)."""
+    top), Quest 3 and 3S (Touch Plus: no ring). Also every controller laid
+    out as Touch is (Pico, Vive Focus 3, Cosmos, Reverb G2, PlayStation VR2
+    Sense): `letters` names its two face buttons, {"lo": (left, right),
+    "hi": (left, right)}; `bumper`, one over the trigger (Cosmos)."""
     m = hand
+    letters = letters or {"lo": ("X", "A"), "hi": ("Y", "B")}
     if ring:
         # The ring sweeps over the top, out past the thumb side.
         s.arc(cx - 18 * m, cy - 70, 150, 120, 150, 390, BODY_EDGE, 16)
@@ -192,6 +207,9 @@ def touch(s, cx, cy, hand, ring):
     s.ellipse(cx, cy, rx, ry, fill=BODY, outline=BODY_EDGE, width=3)
     # Trigger at the top front, under the index finger; grip on the handle's
     # inside, under the middle finger.
+    if bumper:
+        s.rrect(cx - 50, cy - ry - 46, cx + 50, cy - ry - 28, 8, fill=PART, outline=PART_EDGE,
+                width=2)
     s.rrect(cx - 30, cy - ry - 26, cx + 30, cy - ry + 4, 12, fill=COLOURS["trigger"])
     gx = cx - 46 * m
     s.poly([(gx - 10, cy + 70), (gx + 10, cy + 70), (gx + 10 + 6 * m, cy + 230),
@@ -200,37 +218,54 @@ def touch(s, cx, cy, hand, ring):
     stick(s, *st)
     lo = (cx + 34 * m, cy + 30)
     hi = (cx + 74 * m, cy - 22)
-    button(s, *lo, 20, "A" if m > 0 else "X")
-    button(s, *hi, 20, "B" if m > 0 else "Y")
+    button(s, *lo, 20, letters["lo"][1 if m > 0 else 0])
+    button(s, *hi, 20, letters["hi"][1 if m > 0 else 0])
     sysb = (cx + 6 * m, cy + 64)
     s.ellipse(sysb[0], sysb[1], 11, 8, fill=PART, outline=PART_EDGE, width=2)
     if m < 0:
         for k in (-3, 0, 3):
             s.line([(sysb[0] - 5, sysb[1] + k), (sysb[0] + 5, sysb[1] + k)], TEXT, 1)
-    return {"trigger": (cx, cy - ry - 12), "grip": (gx, cy + 150), "stick": st,
-            "lo": lo, "hi": hi, "sys": sysb}
+    pts = {"trigger": (cx, cy - ry - 12), "grip": (gx, cy + 150), "stick": st,
+           "lo": lo, "hi": hi, "sys": sysb}
+    if bumper:
+        pts["bumper"] = (cx, cy - ry - 37)
+    return pts
 
 
 def index(s, cx, cy, hand):
-    """Valve Index: a tall handle; the hand is strapped on, the grip is a
-    squeeze of the whole handle."""
+    """Valve Index (from Valve's photo): a round disc on a tall handle, and a
+    halo arm round over the back of the hand. On the disc the stick toward
+    the thumb, a tall oval trackpad in the middle, B
+    above A at the outer edge and the system button under the trackpad. The
+    hand is strapped on; the grip is a squeeze of the whole handle."""
     m = hand
-    s.rrect(cx - 50, cy - 170, cx + 50, cy + 270, 46, fill=BODY, outline=BODY_EDGE, width=3)
-    # The strap, on the outside.
-    s.rrect(cx + 52 * m - 7, cy - 120, cx + 52 * m + 7, cy + 220, 6, fill=(44, 48, 58))
-    s.rrect(cx - 30, cy - 196, cx + 30, cy - 166, 12, fill=COLOURS["trigger"])
-    s.rrect(cx - 54, cy + 40, cx + 54, cy + 230, 30, outline=COLOURS["grip"], width=6)
-    st = (cx - 8 * m, cy - 118)
+    # The halo: out from the disc and round over the back of the hand, on
+    # the outer side (with the strap)
+    s.arc(cx + 120 * m, cy + 40, 90, 170, -90 if m > 0 else 90, 90 if m > 0 else 270,
+          BODY_EDGE, 18)
+    s.arc(cx + 120 * m, cy + 40, 90, 170, -90 if m > 0 else 90, 90 if m > 0 else 270,
+          BODY, 12)
+    # Handle, with the strap down its outside
+    s.rrect(cx - 46, cy + 30, cx + 46, cy + 300, 40, fill=BODY, outline=BODY_EDGE, width=3)
+    s.rrect(cx + 44 * m - 7, cy + 70, cx + 44 * m + 7, cy + 280, 6, fill=(44, 48, 58))
+    s.rrect(cx - 50, cy + 90, cx + 50, cy + 260, 30, outline=COLOURS["grip"], width=6)
+    # Trigger at the top front
+    s.rrect(cx - 28, cy - 132, cx + 28, cy - 104, 12, fill=COLOURS["trigger"])
+    # The disc
+    s.ellipse(cx, cy, 110, 110, fill=BODY, outline=BODY_EDGE, width=3)
+    st = (cx - 56 * m, cy - 22)
     stick(s, *st, r=24)
-    a = (cx + 26 * m, cy - 52)
-    b = (cx + 26 * m, cy - 84)
-    button(s, *a, 13, "A")
-    button(s, *b, 13, "B")
-    s.rrect(cx - 24, cy - 40, cx + 14, cy + 20, 18, fill=PART, outline=COLOURS["unused"], width=2)
-    sysb = (cx - 4, cy + 34)
-    s.ellipse(sysb[0], sysb[1], 7, 7, fill=PART, outline=PART_EDGE, width=2)
-    return {"trigger": (cx, cy - 182), "grip": (cx - 54 * m, cy + 150), "stick": st,
-            "lo": a, "hi": b, "pad": (cx - 5, cy - 10)}
+    pad = (cx + 4 * m, cy + 2)
+    s.rrect(pad[0] - 22, pad[1] - 46, pad[0] + 22, pad[1] + 46, 22, fill=PART,
+            outline=COLOURS["unused"], width=2)
+    b = (cx + 62 * m, cy - 22)
+    a = (cx + 56 * m, cy + 26)
+    button(s, *b, 15, "B")
+    button(s, *a, 15, "A")
+    sysb = (cx + 18 * m, cy + 70)
+    s.ellipse(sysb[0], sysb[1], 11, 11, fill=PART, outline=PART_EDGE, width=2)
+    return {"trigger": (cx, cy - 118), "grip": (cx - 50 * m, cy + 175), "stick": st,
+            "lo": a, "hi": b, "pad": pad}
 
 
 def vive(s, cx, cy, hand):
@@ -281,6 +316,102 @@ def wmr(s, cx, cy, hand):
             "menu": menu}
 
 
+def frame(s, cx, cy, hand):
+    """Steam Frame (from a photo of the pair): a round disc for a head on a
+    curved handle, no ring. Left: the D-pad on the outer side, the stick in
+    toward the thumb, View between them at the top, the Steam button below.
+    Right: the stick low and in, A, B, X and Y up and out (Y top, A bottom),
+    Menu beside Y, the Steam button below the stick. Trigger under the disc,
+    a bumper over it (not seen from the front)."""
+    m = hand
+    # Handle, curving down and in under the disc
+    s.poly([(cx - 46, cy + 60), (cx + 46, cy + 60), (cx + 40 + 22 * m, cy + 300),
+            (cx - 36 + 22 * m, cy + 300)], fill=BODY, outline=BODY_EDGE, width=3)
+    s.ellipse(cx + 2 + 22 * m, cy + 300, 38, 17, fill=BODY, outline=BODY_EDGE, width=3)
+    # Bumper and trigger at the top front
+    s.rrect(cx - 50, cy - 140, cx + 50, cy - 122, 9, fill=PART, outline=PART_EDGE, width=2)
+    s.rrect(cx - 30, cy - 124, cx + 30, cy - 106, 9, fill=COLOURS["trigger"])
+    # The disc
+    s.ellipse(cx, cy, 122, 118, fill=BODY, outline=BODY_EDGE, width=3)
+    gx = cx - 40 * m
+    s.poly([(gx - 10, cy + 110), (gx + 10, cy + 110), (gx + 10 + 8 * m, cy + 240),
+            (gx - 10 + 8 * m, cy + 240)], fill=COLOURS["grip"])
+    pts = {"trigger": (cx, cy - 115), "grip": (gx, cy + 175), "bumper": (cx, cy - 131)}
+    if m < 0:
+        st = (cx + 38, cy + 14)
+        stick(s, *st, r=28)
+        c = (cx - 52, cy - 12)
+        a, b = 12, 38
+        x0, y0 = c
+        s.poly([(x0 - a, y0 - b), (x0 + a, y0 - b), (x0 + a, y0 - a), (x0 + b, y0 - a),
+                (x0 + b, y0 + a), (x0 + a, y0 + a), (x0 + a, y0 + b), (x0 - a, y0 + b),
+                (x0 - a, y0 + a), (x0 - b, y0 + a), (x0 - b, y0 - a), (x0 - a, y0 - a)],
+               fill=PART, outline=PART_EDGE, width=2)
+        pts["lo"] = (x0, y0 + 24)
+        pts["hi"] = (x0, y0 - 24)
+        view = (cx + 4, cy - 72)
+        s.rrect(view[0] - 13, view[1] - 7, view[0] + 13, view[1] + 7, 6, fill=PART,
+                outline=PART_EDGE, width=2)
+        pts["view"] = view
+        steam = (cx - 20, cy + 62)
+    else:
+        st = (cx - 42, cy + 28)
+        stick(s, *st, r=28)
+        c = (cx + 42, cy - 22)
+        for key, (dx, dy), letter in (("y", (0, -28), "Y"), ("lo", (0, 28), "A"),
+                                      ("x", (-28, 0), "X"), ("b", (28, 0), "B")):
+            button(s, c[0] + dx, c[1] + dy, 15, letter)
+            pts[key] = (c[0] + dx, c[1] + dy)
+        pts["hi"] = pts["b"]  # the secondary is B (and X, Y as well)
+        menu = (c[0] - 46, c[1] - 30)
+        s.rrect(menu[0] - 13, menu[1] - 7, menu[0] + 13, menu[1] + 7, 6, fill=PART,
+                outline=PART_EDGE, width=2)
+        for k in (-3, 0, 3):
+            s.line([(menu[0] - 6, menu[1] + k), (menu[0] + 6, menu[1] + k)], TEXT, 1)
+        pts["menu"] = menu
+        steam = (cx + 12, cy + 72)
+    s.ellipse(steam[0], steam[1], 12, 12, fill=PART, outline=PART_EDGE, width=2)
+    pts["stick"] = st
+    return pts
+
+
+def pico(s, cx, cy, hand):
+    """Pico 4 and 4 Ultra (from a photo): a big hoop round the knuckles,
+    joined at the top of the face and the bottom of the handle; the stick at
+    the top of the face, the two face buttons side by side under it, and the
+    Home button (a small circle) with a smaller one above it on the palm
+    side."""
+    m = hand
+    # The hoop, in front of the fingers: from the face out and round
+    s.ellipse(cx + 70 * m, cy + 90, 175, 215, outline=BODY_EDGE, width=18)
+    s.ellipse(cx + 70 * m, cy + 90, 175, 215, outline=BODY, width=12)
+    # Handle
+    s.poly([(cx - 48, cy + 40), (cx + 48, cy + 40), (cx + 38 + 10 * m, cy + 290),
+            (cx - 38 + 10 * m, cy + 290)], fill=BODY, outline=BODY_EDGE, width=3)
+    s.ellipse(cx + 10 * m, cy + 290, 38, 16, fill=BODY, outline=BODY_EDGE, width=3)
+    # Face
+    s.ellipse(cx, cy, 112, 96, fill=BODY, outline=BODY_EDGE, width=3)
+    s.rrect(cx - 28, cy - 122, cx + 28, cy - 94, 12, fill=COLOURS["trigger"])
+    gx = cx - 44 * m
+    s.poly([(gx - 10, cy + 70), (gx + 10, cy + 70), (gx + 10 + 6 * m, cy + 220),
+            (gx - 10 + 6 * m, cy + 220)], fill=COLOURS["grip"])
+    st = (cx + 22 * m, cy - 34)
+    stick(s, *st, r=26)
+    # The photo's left controller has X out and Y in; the right mirrors it
+    left = m < 0
+    lo = (cx + 52 * m, cy + 34) if left else (cx - 4 * m, cy + 40)
+    hi = (cx - 4 * m, cy + 40) if left else (cx + 52 * m, cy + 34)
+    button(s, *lo, 18, "X" if left else "A")
+    button(s, *hi, 18, "Y" if left else "B")
+    home = (cx - 62 * m, cy + 4)
+    s.ellipse(home[0], home[1], 13, 13, fill=PART, outline=PART_EDGE, width=2)
+    s.ellipse(home[0], home[1], 5, 5, outline=TEXT, width=2)
+    small = (cx - 56 * m, cy - 36)
+    s.ellipse(small[0], small[1], 9, 9, fill=PART, outline=PART_EDGE, width=2)
+    return {"trigger": (cx, cy - 108), "grip": (gx, cy + 145), "stick": st,
+            "lo": lo, "hi": hi, "sys": small}
+
+
 # --- what the controls do ---------------------------------------------------
 # Kept with VR.md's Controls table and the client (Client::UpdateVRPlayerInput,
 # OpenXRSystem::SuggestBindings).
@@ -319,30 +450,72 @@ STANDARD_FOOT = [
 ]
 
 
-def touch_slide(name, title, subtitle, ring):
+PS_LETTERS = {"lo": ("square", "cross"), "hi": ("triangle", "circle")}
+PS_NAMES = {"square": "Square", "cross": "Cross", "triangle": "Triangle", "circle": "Circle"}
+
+# Every family laid out as Touch: (ring, letters, bumper, menu button's name)
+TOUCH_FAMILIES = {
+    "Quest2": (True, None, False, "Menu button"),
+    "Quest3": (False, None, False, "Menu button"),
+    "Pico": (True, None, False, "Menu button"),
+    "Focus3": (True, None, False, "Menu button"),
+    "Cosmos": (True, None, True, "Menu button"),
+    "Reverb": (True, None, False, "Menu button"),
+    "PSVR2": (True, PS_LETTERS, False, "Create button"),
+}
+
+
+def touch_draw(name):
+    ring, letters, bumper, _ = TOUCH_FAMILIES[name]
+    return lambda s, x, y, h: touch(s, x, y, h, ring, letters, bumper)
+
+
+def touch_letter(name, key, m):
+    """What a face button is called on that family's controller."""
+    letters = TOUCH_FAMILIES[name][1] or {"lo": ("X", "A"), "hi": ("Y", "B")}
+    l = letters[key][1 if m > 0 else 0]
+    return PS_NAMES.get(l, l)
+
+
+def touch_slide(name, title, subtitle, ring=None, draw=None):
+    menu = TOUCH_FAMILIES[name][3]
     left = [
         ("trigger", "trigger", "Trigger", L_TRIGGER),
         ("grip", "grip", "Grip", L_GRIP),
         ("stick", "stick", "Stick", "Walk, where you look. Click: sprint."),
-        ("hi", "button", "Y", "Open or close the big map."),
-        ("lo", "button", "X", "Copy the colour of the block you point at (holding blocks)."),
-        ("sys", "menu", "Menu button", "The game's menu, where the headset lets it through."),
+        ("hi", "button", touch_letter(name, "hi", -1), "Open or close the big map."),
+        ("lo", "button", touch_letter(name, "lo", -1),
+         "Copy the colour of the block you point at (holding blocks)."),
+        ("sys", "menu", menu, "The game's menu, where the headset lets it through."),
     ]
     right = [
         ("trigger", "trigger", "Trigger", R_TRIGGER),
         ("grip", "grip", "Grip", R_GRIP),
         ("stick", "stick", "Stick", "Left/right: turn. Click: crouch (or crouch for real)."),
-        ("hi", "button", "B", "Reload."),
-        ("lo", "button", "A", "Jump."),
+        ("hi", "button", touch_letter(name, "hi", 1), "Reload."),
+        ("lo", "button", touch_letter(name, "lo", 1), "Jump."),
     ]
-    controller_slide(name, title, subtitle, lambda s, x, y, h: touch(s, x, y, h, ring), left,
-                     right, STANDARD_FOOT)
+    if TOUCH_FAMILIES[name][2]:
+        left.append(("bumper", "unused", "Bumper", "Not used."))
+        right.append(("bumper", "unused", "Bumper", "Not used."))
+    foot = STANDARD_FOOT
+    if name == "PSVR2":
+        foot = STANDARD_FOOT[:2] + [("Menu", "Triangle and Circle together (or the wrist "
+                                             "menu's Menu).  In it: Controls, Reset Height, "
+                                             "Setup.")]
+    controller_slide(name + ".png", title, subtitle, draw or touch_draw(name), left, right,
+                     foot)
 
 
 def main():
-    touch_slide("Quest2.png", "Meta Quest 2 controls", "Touch controllers (also Rift S)", True)
-    touch_slide("Quest3.png", "Meta Quest 3 controls", "Touch Plus controllers (also Quest 3S)",
-                False)
+    touch_slide("Quest2", "Meta Quest 2 controls", "Touch controllers (also Rift S)")
+    touch_slide("Quest3", "Meta Quest 3 controls",
+                "Touch Plus controllers (also Quest 3S and Quest Pro)")
+    touch_slide("Pico", "Pico controls", "Pico 4, 4 Ultra and Neo 3 controllers", draw=pico)
+    touch_slide("Focus3", "HTC Vive Focus controls", "Vive Focus 3 and XR Elite controllers")
+    touch_slide("Cosmos", "HTC Vive Cosmos controls", "Vive Cosmos controllers")
+    touch_slide("Reverb", "HP Reverb G2 controls", "Reverb G2 controllers")
+    touch_slide("PSVR2", "PlayStation VR2 controls", "Sense controllers, on PC through SteamVR")
 
     controller_slide(
         "Index.png", "Valve Index controls", "Index controllers",
@@ -392,6 +565,25 @@ def main():
         STANDARD_FOOT[:2] + [
             ("No colour copy", "colours are on the wrist menu."),
             ("Menu", "the left menu button.  In it: Controls, Reset Height, Setup.")])
+
+    controller_slide(
+        "Frame.png", "Steam Frame controls", "Steam Frame controllers", frame,
+        [("trigger", "trigger", "Trigger", L_TRIGGER),
+         ("grip", "grip", "Grip", L_GRIP),
+         ("stick", "stick", "Stick", "Walk, where you look. Click: sprint."),
+         ("hi", "button", "D-pad up, left, right", "Open or close the big map."),
+         ("lo", "button", "D-pad down",
+          "Copy the colour of the block you point at (holding blocks)."),
+         ("view", "menu", "View button", "The game's menu."),
+         ("bumper", "unused", "Bumper", "Not used.")],
+        [("trigger", "trigger", "Trigger", R_TRIGGER),
+         ("grip", "grip", "Grip", R_GRIP),
+         ("stick", "stick", "Stick", "Left/right: turn. Click: crouch (or crouch for real)."),
+         ("hi", "button", "B, X or Y", "Reload."),
+         ("lo", "button", "A", "Jump."),
+         ("bumper", "unused", "Bumper", "Not used.")],
+        STANDARD_FOOT[:2] + [("Menu", "the View button (or the wrist menu's Menu).  In it: "
+                                      "Controls (this sheet), Reset Height, Setup.")])
 
     body_slide()
 
@@ -451,5 +643,147 @@ def body_slide():
     s.save("Body.png")
 
 
+# The rebinding screen's pictures (VRBindingsWindow): the controllers alone,
+# no labels (the game puts a drop-down beside each control), and where each
+# control is, by the game's name for it (VRInput), in the picture's pixels.
+# Per family, which of the drawing's points is which input, as OpenXR binds them
+# (OpenXRSystem::CreateActions): left hand, then right.
+BIND_INPUTS = {
+    "Quest2": (touch, ({"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                        "lo": "Primary", "hi": "Secondary", "sys": "Menu"},
+                       {"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                        "lo": "Primary", "hi": "Secondary"}), True),
+    "Quest3": (touch, None, False),
+    "Pico": (pico, None, None),
+    "Focus3": ("touch", None, None),
+    "Cosmos": ("touch", None, None),
+    "Reverb": ("touch", None, None),
+    "PSVR2": ("touch", None, None),
+    "Index": (index, ({"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                       "lo": "Primary", "hi": "Secondary"},
+                      {"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                       "lo": "Primary", "hi": "Secondary"}), None),
+    "Vive": (vive, ({"trigger": "Trigger", "grip": "Grip", "pad": "StickClick", "menu": "Menu"},
+                    {"trigger": "Trigger", "grip": "Grip", "pad": "Primary",
+                     "menu": "Secondary"}), None),
+    "Frame": (frame, ({"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                       "lo": "Primary", "hi": "Secondary", "view": "Menu"},
+                      {"trigger": "Trigger", "grip": "Grip", "stick": "StickClick",
+                       "lo": "Primary", "hi": "Secondary"}), None),
+    "WMR": (wmr, ({"trigger": "Trigger", "grip": "Grip", "stick": "StickClick", "menu": "Menu"},
+                  {"trigger": "Trigger", "grip": "Grip", "stick": "StickClick", "pad": "Primary",
+                   "menu": "Secondary"}), None),
+}
+
+
+# What colour each of the game's inputs is drawn in, on the picture and on
+# the rebinding screen's line and label to it (the JSON's "colour")
+BIND_COLOURS = {"Trigger": "trigger", "Grip": "grip", "StickClick": "stick",
+                "Primary": "button", "Secondary": "button", "Menu": "menu"}
+
+
+# What each control is called on that controller, per drawing point and hand
+# (-1 left, 1 right): the rebinding screen's caption over its drop-down
+def bind_label(name, key, m):
+    touch_family = name in TOUCH_FAMILIES
+    if touch_family and key in ("lo", "hi"):
+        return touch_letter(name, key, m) + " button"
+    if touch_family and key == "sys":
+        return TOUCH_FAMILIES[name][3]
+    if name == "Frame":
+        if key == "lo":
+            return "D-pad down" if m < 0 else "A button"
+        if key == "hi":
+            return "D-pad up / left / right" if m < 0 else "B, X or Y button"
+        if key == "view":
+            return "View button"
+    if key == "trigger":
+        return "Trigger"
+    if key == "grip":
+        return "Grip"
+    if key == "stick":
+        return "Thumbstick click"
+    if key == "pad":
+        return "Trackpad click" if name in ("Vive", "Index") else "Touchpad click"
+    if key == "menu":
+        return "Menu button"
+    if key == "sys":
+        return "Menu button"
+    if key == "lo":
+        return ("X button" if m < 0 else "A button") if touch_family else "A button"
+    if key == "hi":
+        return ("Y button" if m < 0 else "B button") if touch_family else "B button"
+    return key
+
+
+def bind_slides():
+    """The rebinding screen's pictures, in the client's own look: the
+    controllers in plain greys on nothing (the screen's dark band shows
+    through), a soft shadow under them, and a white ring on each control.
+    Where each control is goes in the JSON, with its name on that controller."""
+    import json
+    from PIL import ImageChops, ImageFilter
+    global BODY, BODY_EDGE, PART, PART_EDGE
+    saved = (BODY, BODY_EDGE, PART, PART_EDGE, dict(COLOURS))
+    BODY, BODY_EDGE = (64, 64, 66), (150, 150, 154)
+    PART, PART_EDGE = (34, 34, 36), (170, 170, 174)
+    COLOURS["trigger"] = (120, 120, 124)
+    COLOURS["grip"] = (104, 104, 108)
+    key_colour = (255, 0, 255)  # the background, keyed out
+    try:
+        for name, (draw, inputs, ring) in BIND_INPUTS.items():
+            if inputs is None:
+                inputs = BIND_INPUTS["Quest2"][1]
+            s = Slide("", "")
+            s.img = Image.new("RGB", s.img.size, key_colour)
+            s.d = ImageDraw.Draw(s.img)
+            lx, rx, cy = 630, 970, 420
+            if draw is touch or draw == "touch":
+                d = touch_draw(name)
+                lp = d(s, lx, cy, -1)
+                rp = d(s, rx, cy, 1)
+            else:
+                lp = draw(s, lx, cy, -1)
+                rp = draw(s, rx, cy, 1)
+            pts = {"size": [W, H], "left": {}, "right": {}, "colour": {},
+                   "label": {"left": {}, "right": {}}}
+            for side, p, inp in (("left", lp, inputs[0]), ("right", rp, inputs[1])):
+                for key, game in inp.items():
+                    if key in p:
+                        x, y = p[key]
+                        s.ellipse(x, y, 16, 16, outline=(20, 20, 22), width=6)
+                        s.ellipse(x, y, 16, 16, outline=(236, 236, 240), width=3)
+                        pts[side][game] = [round(x), round(y)]
+                        pts["colour"][game] = [236, 236, 240]
+                        pts["label"][side][game] = bind_label(name, key,
+                                                              -1 if side == "left" else 1)
+            rgb = s.img
+            keyed = Image.new("RGB", rgb.size, key_colour)
+            mask = ImageChops.difference(rgb, keyed).convert("L").point(
+                lambda v: 255 if v > 40 else 0)
+            # Light from above over the controllers
+            ramp = Image.linear_gradient("L").resize(rgb.size)
+            light = ramp.point(lambda v: int(max(0, 150 - v) * 0.25))
+            rgb = Image.composite(Image.new("RGB", rgb.size, (255, 255, 255)), rgb,
+                                  ImageChops.multiply(light, mask))
+            shadow = mask.filter(ImageFilter.GaussianBlur(S(12)))
+            shadow = ImageChops.offset(shadow, S(5), S(10)).point(lambda v: int(v * 0.5))
+            out = Image.new("RGBA", rgb.size, (0, 0, 0, 0))
+            out.paste(Image.new("RGBA", rgb.size, (0, 0, 0, 255)), (0, 0), shadow)
+            out.paste(rgb.convert("RGBA"), (0, 0), mask)
+            out = out.resize((W, H), Image.LANCZOS)
+            os.makedirs(OUT, exist_ok=True)
+            out.save(os.path.join(OUT, "Bind-" + name + ".png"), optimize=True)
+            print("wrote", "Bind-" + name + ".png")
+            with open(os.path.join(OUT, "Bind-" + name + ".json"), "w") as f:
+                json.dump(pts, f, indent=1)
+    finally:
+        BODY, BODY_EDGE, PART, PART_EDGE, c = saved
+        COLOURS.clear()
+        COLOURS.update(c)
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "bind":
+        sys.exit(bind_slides())
     sys.exit(main())

@@ -152,6 +152,7 @@ namespace spades {
 			void Vibrate(int hand, client::VRHapticShape shape, float amplitude,
 			             float seconds) override;
 			void SetHeldMap(bool held) override;
+			void SetKeyboardPanel(bool wanted, const client::VRPose& pose, float width) override;
 			void SetHudFollowsHead() override { hudFollowAsked = true; }
 
 		private:
@@ -167,12 +168,29 @@ namespace spades {
 			                       VkImage& image, const char* what);
 			void ReleasePanelImage(XRSwapchain& sc, const char* what);
 			void UpdateInput();
+			// Tracked hands, for the menus (VRFrameState::handTracked)
+			void CreateHandTrackers();
+			// vr_bindings, parsed when it changes, applied to each frame's hands
+			void ApplyBindings();
+			std::string bindingsText = "\x01"; // never a real setting: parse once
+			client::VRBindings bindings = client::VRDefaultBindings();
+			void DestroyHandTrackers();
+			void UpdateHandTracking();
+#ifdef XR_EXT_hand_tracking
+			XrHandTrackerEXT handTrackers[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
+			PFN_xrCreateHandTrackerEXT pfnCreateHandTracker = nullptr;
+			PFN_xrDestroyHandTrackerEXT pfnDestroyHandTracker = nullptr;
+			PFN_xrLocateHandJointsEXT pfnLocateHandJoints = nullptr;
+#endif
 			void LocateViews();
 			/** vr_traceRecord / vr_traceReplay, after the frame's input is read. */
 			void UpdateTrace();
 			void HandleSessionStateChange(XrSessionState state);
 			/** Asks for the CPU and GPU levels vr_performanceBoost wants, when it changes. */
 			void ApplyPerformanceLevels();
+			/** vr_refreshRate, asked of the headset when it changes
+			 * (XR_FB_display_refresh_rate). */
+			void ApplyRefreshRate();
 			XrPath Path(const char* s);
 			bool Check(XrResult r, const char* what);
 
@@ -190,6 +208,9 @@ namespace spades {
 			bool recenterOnFocus = false;
 			// The levels asked for this session: -1 none yet, 0 sustained low, 1 high
 			int appliedPerformanceBoost = -1;
+			int appliedRefreshRate = -1;
+			PFN_xrEnumerateDisplayRefreshRatesFB pfnEnumerateDisplayRefreshRates = nullptr;
+			PFN_xrRequestDisplayRefreshRateFB pfnRequestDisplayRefreshRate = nullptr;
 
 			XrSpace appSpace = XR_NULL_HANDLE;  // STAGE, or LOCAL without a stage
 			XrSpace viewSpace = XR_NULL_HANDLE; // for the head and the HUD panel
@@ -213,12 +234,18 @@ namespace spades {
 			// The input trace (UpdateTrace): the file being recorded, or the
 			// lines being replayed and how far the replay is.
 			bool heldMapWanted = false;
+			// The keyboard standing on its own, asked for this frame (for the next).
+			bool keyboardWanted = false;
+			client::VRPose keyboardPose;
+			float keyboardWidth = 0.5F;
 			// The front panel (PlaceHudPanel): asked to follow the head this frame,
 			// and where it stands in the room otherwise.
 			bool hudFollowAsked = false;
-			bool hudStanding = false;
-			client::VRPose hudStandPose;
-			float hudAwayTime = 0.0F;
+			// Playing, the panel trails the head (PlaceHudPanel): its direction
+			// from the head, and whether it is catching up.
+			Vector3 hudTrailDir{0.0F, 0.0F, -1.0F};
+			bool hudTrailValid = false;
+			bool hudTrailMoving = false;
 			void PlaceHudPanel();
 			std::FILE* traceOut = nullptr;
 			std::vector<std::string> traceIn;

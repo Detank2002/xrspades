@@ -142,6 +142,25 @@ namespace spades {
 			                     "Shaders/Vulkan/ShadowMap.frag.spv"});
 		}
 
+		void VulkanMapRenderer::SetFaceHidden(int x, int y, int z, int face, bool hidden) {
+			const uint64_t k = FaceKey(x, y, z, face);
+			const bool was = hiddenFaces.count(k) != 0;
+			if (was == hidden)
+				return;
+			if (hidden)
+				hiddenFaces.insert(k);
+			else
+				hiddenFaces.erase(k);
+			// Only the block's own chunk draws its faces (GameMapChanged would
+			// rebuild the 27 round it, six times for a damaged block)
+			const int cx = (x >> VulkanMapChunk::SizeBits) & (numChunkWidth - 1);
+			const int cy = (y >> VulkanMapChunk::SizeBits) & (numChunkHeight - 1);
+			const int cz = z >> VulkanMapChunk::SizeBits;
+			if (cz >= 0 && cz < numChunkDepth)
+				if (VulkanMapChunk* chunk = GetChunk(cx, cy, cz))
+					chunk->SetNeedsUpdate();
+		}
+
 		void VulkanMapRenderer::GameMapChanged(int x, int y, int z, client::GameMap* map) {
 			SPADES_MARK_FUNCTION();
 
@@ -183,6 +202,8 @@ namespace spades {
 
 			float cullDistance = 128.0F;
 			float releaseDistance = cullDistance + 32.0F;
+			// The whole map, seen from outside (a VR table view): every chunk
+			const bool whole = renderer.GetSceneDef().wholeMap;
 
 			// Calculate distance and realize/unrealize chunks based on distance
 			for (int i = 0; i < numChunks; i++) {
@@ -192,7 +213,7 @@ namespace spades {
 					chunkInfos[i].distance = dist;
 
 					// Frustum culling via distance-based LOD
-					if (dist < cullDistance) {
+					if (whole || dist < cullDistance) {
 						chunk->SetRealized(true);
 					} else if (dist > releaseDistance) {
 						chunk->SetRealized(false);
@@ -263,6 +284,16 @@ namespace spades {
 
 			// The view the pass sees the world through (set 3)
 			renderer.BindSceneView(commandBuffer, pipelineLayout);
+
+			// The whole map once, unwrapped (a VR table view sees it from outside,
+			// where the wrap would show copies of it all round)
+			if (renderer.GetSceneDef().wholeMap) {
+				for (int x = 0; x < numChunkWidth; x++)
+					for (int y = 0; y < numChunkHeight; y++)
+						for (int cz = 0; cz < numChunkDepth; cz++)
+							DrawColumn(commandBuffer, x, y, cz);
+				return;
+			}
 
 			// Draw from nearest to farthest for optimal depth testing
 			// Include all vertical chunks

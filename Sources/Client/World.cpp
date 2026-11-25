@@ -245,6 +245,9 @@ namespace spades {
 				cells.emplace_back(cell);
 			}
 			cells = mapWrapper->RemoveBlocks(cells);
+			// While anyone is in Edit Mode nothing falls: what floats stays.
+			if (IsAnyoneEditing())
+				cells.clear();
 
 			std::vector<IntVector3> cells2;
 			for (const auto& cluster : ClusterizeBlocks(cells)) {
@@ -270,8 +273,15 @@ namespace spades {
 			createdBlocks[cellp] = color;
 		}
 
-		void World::DestroyBlock(std::vector<spades::IntVector3>& pos) {
-			bool allowToDestroy = (pos.size() == 1);
+		bool World::IsAnyoneEditing() {
+			for (const auto& p : players)
+				if (p && p->IsEditing())
+					return true;
+			return false;
+		}
+
+		void World::DestroyBlock(std::vector<spades::IntVector3>& pos, bool atWaterLevel) {
+			bool allowToDestroy = (pos.size() == 1) || atWaterLevel;
 			for (const auto& p : pos) {
 				if (!map->IsValidMapCoord(p.x, p.y, p.z)
 					|| p.z >= (allowToDestroy ? 63 : 62))

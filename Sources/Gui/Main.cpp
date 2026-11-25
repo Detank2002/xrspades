@@ -91,6 +91,11 @@ DEFINE_SPADES_SETTING(core_executablePath, "");
 // "auto" until a standalone headset's first start has written the headset
 // Performance level into the config (Main.cpp), "applied" after.
 DEFINE_SPADES_SETTING(vr_profile, "auto");
+// A standalone headset's start that did not reach a working menu (1), and a
+// start that was put back on the headset Performance level for it (1, until
+// said so in the menu): MainScreen::CheckVRMenuSpeed.
+DEFINE_SPADES_SETTING(cl_startGuard, "0");
+DEFINE_SPADES_SETTING(cl_startRescued, "0");
 // A file: the whole run sampled into it, a report written there at exit
 // (Core/SamplingProfiler.h). 64-bit Windows only.
 DEFINE_SPADES_SETTING(core_profile, "");
@@ -101,6 +106,16 @@ DEFINE_SPADES_SETTING(core_profile, "");
 DEFINE_SPADES_SETTING(cl_zsColorCorrectionOff, "0");
 // Set once a headset's particles have been made the headset levels' (0.3.6).
 DEFINE_SPADES_SETTING(cl_zsHeadsetParticles, "0");
+// Set once 0.4.0's new defaults reached a config still on the old ones: mouse
+// acceleration off and muzzle flashes on (a player who chose otherwise keeps it
+// from then on).
+DEFINE_SPADES_SETTING(cl_zsDefaults040, "0");
+SPADES_SETTING(cg_mouseAccel);
+SPADES_SETTING(cg_muzzleFire);
+// Set once a config has had a respawning player's body removed turned on (a
+// default from late in 0.4.0's testing, after cl_zsDefaults040 had run)
+DEFINE_SPADES_SETTING(cl_zsCorpseDefaulted, "0");
+SPADES_SETTING(cg_corpseClearOnRespawn);
 SPADES_SETTING(r_colorCorrection);
 
 #ifdef WIN32
@@ -226,6 +241,9 @@ namespace {
 	// Demo selection for --replay-demo, set with --demo and --player.
 	std::string g_demoPath;             // empty = latest demo in Demos/
 	std::string g_demoPlayer;           // empty = first player; else id or name
+	float g_demoStart = 0.0F;           // --demo-start: seconds into the demo
+	bool g_demoThirdPerson = false;     // --demo-third-person
+	std::string g_demoCamera;           // --demo-camera x,y,z,tx,ty,tz
 
 	// Menuless demo replay (--replay-demo). Plays a demo and auto-follows a player,
 	// skipping the startup/setup/main screens entirely.
@@ -254,6 +272,8 @@ namespace {
 	const char* const kDebugOptions[] = {"--screenshot-quit", "--editor-reference",
 	                                     "--override-cvar",   "--replay-demo",
 	                                     "--demo",            "--player",
+                                     "--demo-start",      "--demo-third-person",
+                                     "--demo-camera",
 	                                     "--kv6-tools"};
 
 	bool IsDebugOption(const char* arg) {
@@ -308,6 +328,10 @@ namespace {
 		printf("  --demo FILE          demo to use (default: latest in Demos/); a bare\n");
 		printf("                       name resolves under Demos/\n");
 		printf("  --player ID|NAME     player to follow (default: first player)\n");
+		printf("  --demo-start SECONDS start the demo that far in\n");
+		printf("  --demo-third-person  follow the player from behind\n");
+		printf("  --demo-camera X,Y,Z,TX,TY,TZ\n");
+		printf("                       a still camera at X,Y,Z looking at TX,TY,TZ\n");
 		printf("  --editor-reference X|Y|Z IMAGE\n");
 		printf("                       show IMAGE as a reference image across that\n");
 		printf("                       axis in the model editor --open opens\n");
@@ -509,6 +533,24 @@ namespace {
 				}
 				return 0;
 			}
+			if (!strcasecmp(a, "--demo-start")) {
+				if (i + 1 < argc) {
+					g_demoStart = static_cast<float>(std::atof(argv[++i]));
+					return ++i;
+				}
+				return 0;
+			}
+			if (!strcasecmp(a, "--demo-camera")) {
+				if (i + 1 < argc) {
+					g_demoCamera = argv[++i];
+					return ++i;
+				}
+				return 0;
+			}
+			if (!strcasecmp(a, "--demo-third-person")) {
+				g_demoThirdPerson = true;
+				return ++i;
+			}
 			if (!strcasecmp(a, "--player")) {
 				if (i + 1 < argc) {
 					g_demoPlayer = argv[++i];
@@ -630,7 +672,13 @@ namespace spades {
 				auto fontManager = Handle<client::FontManager>::New(renderer);
 				auto innerView = Handle<client::Client>::New(
 				    renderer, audio, ServerAddress(), fontManager, demoPath);
-				innerView->EnableDemoReplayFollow(playerSpec);
+				innerView->EnableDemoReplayFollow(playerSpec, g_demoStart, g_demoThirdPerson);
+				float c[6];
+				if (!g_demoCamera.empty() &&
+				    std::sscanf(g_demoCamera.c_str(), "%f,%f,%f,%f,%f,%f", &c[0], &c[1], &c[2],
+				                &c[3], &c[4], &c[5]) == 6)
+					innerView->SetDemoReplayCamera(MakeVector3(c[0], c[1], c[2]),
+					                               MakeVector3(c[3], c[4], c[5]));
 				return new spades::gui::ConsoleScreen(renderer, audio, fontManager,
 				                                      std::move(innerView).Cast<gui::View>());
 			}
@@ -802,6 +850,13 @@ static std::string Utf8FromWString(const wchar_t* ws) {
 int main(int argc, char** argv) {
 #ifdef WIN32
 	SetUnhandledExceptionFilter(UnhandledExceptionProc);
+
+	// Handle display scaling ourselves, so every size SDL reports (windows, monitor
+	// bounds, display modes, the GL drawable, the mouse) is in real pixels. Without
+	// it, Windows reports scaled-down sizes above 100% and stretches the window,
+	// blurring it and mixing those sizes with the display modes, which are in pixels.
+	// Must come before the video subsystem starts (the splash window).
+	SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
 #endif
 
 	if (argc > 0 && argv[0])
@@ -1158,6 +1213,16 @@ int main(int argc, char** argv) {
 			r_colorCorrection = 0;
 			cl_zsColorCorrectionOff = 1;
 		}
+		if (!static_cast<bool>(cl_zsDefaults040)) {
+			cg_mouseAccel = 0;
+			if ((int)cg_muzzleFire == 0)
+				cg_muzzleFire = 1;
+			cl_zsDefaults040 = 1;
+		}
+		if (!static_cast<bool>(cl_zsCorpseDefaulted)) {
+			cg_corpseClearOnRespawn = 1;
+			cl_zsCorpseDefaulted = 1;
+		}
 
 		// Apply --override-cvar values in memory. The previous value of each
 		// overridden variable is captured here and restored just before the
@@ -1182,6 +1247,20 @@ int main(int argc, char** argv) {
 				spades::Settings::GetInstance()->Flush();
 				SPLog("[VR] First start: the headset Performance level");
 			}
+			// The last start never reached a working menu (graphics too heavy
+			// for the headset ran it out of memory, testers: trapped, unable to
+			// set them back): this one starts on the Performance level.
+			if (static_cast<int>(cl_startGuard) != 0) {
+				const auto& performance = spades::gui::GetHeadsetQualityPresets().front();
+				if (!spades::gui::MatchesQualityPreset(performance)) {
+					spades::gui::ApplyQualityPreset(performance);
+					cl_startRescued = 1;
+					SPLog("[VR] The last start did not reach the menu: the headset "
+					      "Performance level");
+				}
+			}
+			cl_startGuard = 1;
+			spades::Settings::GetInstance()->Flush();
 			// The headset levels took over the particles in 0.3.6; a headset set
 			// up before has the PC's (too many, too big, testers): once, the
 			// Balanced level's.

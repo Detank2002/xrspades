@@ -98,13 +98,254 @@ namespace spades {
 
 		bool VRRayHitsHudPanel(const VRFrameState& fs, int hand, float panelAspect, Vector2& uv,
 		                       float& distance) {
+			return VRRayHitsPanel(fs, hand, fs.hudPanel, fs.hudWidth, panelAspect, uv, distance);
+		}
+
+		VRPose VRPoseRelative(const VRPose& a, const VRPose& b) {
+			VRPose r;
+			const VRQuat inv = a.orientation.Conjugate();
+			r.position = inv.Rotate(b.position - a.position);
+			r.orientation = inv * b.orientation;
+			r.valid = a.valid && b.valid;
+			return r;
+		}
+
+		VRPose VRPoseCompose(const VRPose& a, const VRPose& rel) {
+			VRPose r;
+			r.position = a.position + a.orientation.Rotate(rel.position);
+			r.orientation = a.orientation * rel.orientation;
+			r.valid = a.valid && rel.valid;
+			return r;
+		}
+
+		VRPose VRHeadYawFrame(const VRPose& head) {
+			VRPose r;
+			r.position = head.position;
+			r.valid = head.valid;
+			const Vector3 f = -head.Axis(2);
+			// About +Y by `yaw` takes -Z to (-sin yaw, 0, -cos yaw)
+			const float yaw = (std::fabs(f.x) + std::fabs(f.z) > 1.0E-5F)
+			                    ? std::atan2(-f.x, -f.z)
+			                    : 0.0F;
+			r.orientation = VRQuat::FromAxisAngle(MakeVector3(0.0F, 1.0F, 0.0F), yaw);
+			return r;
+		}
+
+		namespace {
+			Vector3 TurnGame(const Vector3& g, float yaw) {
+				const float c = std::cos(yaw), s = std::sin(yaw);
+				return MakeVector3(g.x * c - g.y * s, g.x * s + g.y * c, g.z);
+			}
+		} // namespace
+
+		VRBindings VRDefaultBindings() {
+			VRBindings b;
+			for (int r = 0; r < 2; r++)
+				for (int i = 0; i < kVRInputCount; i++) {
+					b.target[r][i].role = r;
+					b.target[r][i].input = static_cast<VRInput>(i);
+				}
+			return b;
+		}
+
+		const char* VRInputName(VRInput i) {
+			switch (i) {
+				case VRInput::Trigger: return "trigger";
+				case VRInput::Grip: return "grip";
+				case VRInput::Primary: return "primary";
+				case VRInput::Secondary: return "secondary";
+				case VRInput::StickClick: return "stickclick";
+				case VRInput::Menu: return "menu";
+				default: return "";
+			}
+		}
+
+		namespace {
+			bool ParseBindEnd(const std::string& s, int& role, VRInput& input) {
+				if (s == "none") {
+					role = -1;
+					return true;
+				}
+				const auto dot = s.find('.');
+				if (dot == std::string::npos)
+					return false;
+				const std::string h = s.substr(0, dot), n = s.substr(dot + 1);
+				if (h == "tool")
+					role = VRRoleTool;
+				else if (h == "off")
+					role = VRRoleOff;
+				else
+					return false;
+				for (int i = 0; i < kVRInputCount; i++)
+					if (n == VRInputName(static_cast<VRInput>(i))) {
+						input = static_cast<VRInput>(i);
+						return true;
+					}
+				return false;
+			}
+			std::string TrimBind(const std::string& s) {
+				const auto a = s.find_first_not_of(" \t");
+				const auto b = s.find_last_not_of(" \t");
+				return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+			}
+			float GetBindInput(const VRControllerState& c, VRInput i) {
+				switch (i) {
+					case VRInput::Trigger: return c.trigger;
+					case VRInput::Grip: return c.squeeze;
+					case VRInput::Primary: return c.buttonPrimary ? 1.0F : 0.0F;
+					case VRInput::Secondary: return c.buttonSecondary ? 1.0F : 0.0F;
+					case VRInput::StickClick: return c.thumbstickClick ? 1.0F : 0.0F;
+					case VRInput::Menu: return c.menu ? 1.0F : 0.0F;
+					default: return 0.0F;
+				}
+			}
+			void AddBindInput(VRControllerState& c, VRInput i, float v, bool analogSource) {
+				// An analog source presses a button past half
+				const bool pressed = analogSource ? v > 0.5F : v > 0.0F;
+				switch (i) {
+					case VRInput::Trigger: c.trigger = std::max(c.trigger, v); break;
+					case VRInput::Grip: c.squeeze = std::max(c.squeeze, v); break;
+					case VRInput::Primary: c.buttonPrimary = c.buttonPrimary || pressed; break;
+					case VRInput::Secondary: c.buttonSecondary = c.buttonSecondary || pressed; break;
+					case VRInput::StickClick:
+						c.thumbstickClick = c.thumbstickClick || pressed;
+						break;
+					case VRInput::Menu: c.menu = c.menu || pressed; break;
+					default: break;
+				}
+			}
+		} // namespace
+
+		VRBindings VRParseBindings(const std::string& text) {
+			VRBindings b = VRDefaultBindings();
+			std::size_t at = 0;
+			while (at <= text.size()) {
+				std::size_t comma = text.find(',', at);
+				if (comma == std::string::npos)
+					comma = text.size();
+				const std::string entry = TrimBind(text.substr(at, comma - at));
+				at = comma + 1;
+				const auto eq = entry.find('=');
+				if (eq == std::string::npos)
+					continue;
+				int fromRole = -1, toRole = -1;
+				VRInput from = VRInput::Trigger, to = VRInput::Trigger;
+				if (!ParseBindEnd(TrimBind(entry.substr(0, eq)), fromRole, from) || fromRole < 0 ||
+				    !ParseBindEnd(TrimBind(entry.substr(eq + 1)), toRole, to))
+					continue;
+				VRBindTarget& t = b.target[fromRole][static_cast<int>(from)];
+				t.role = toRole;
+				t.input = to;
+			}
+			return b;
+		}
+
+		std::string VRFormatBindings(const VRBindings& b) {
+			const VRBindings d = VRDefaultBindings();
+			std::string out;
+			for (int r = 0; r < 2; r++)
+				for (int i = 0; i < kVRInputCount; i++) {
+					const VRBindTarget& t = b.target[r][i];
+					if (t == d.target[r][i])
+						continue;
+					if (!out.empty())
+						out += ",";
+					out += std::string(r == VRRoleTool ? "tool." : "off.") +
+					       VRInputName(static_cast<VRInput>(i)) + "=";
+					if (t.role < 0)
+						out += "none";
+					else
+						out += std::string(t.role == VRRoleTool ? "tool." : "off.") +
+						       VRInputName(t.input);
+				}
+			return out;
+		}
+
+		void VRApplyBindings(const VRControllerState in[2], VRControllerState out[2], int toolHand,
+		                     const VRBindings& b, bool swapSticks) {
+			const int handOf[2] = {toolHand, 1 - toolHand}; // by role
+			for (int h = 0; h < 2; h++) {
+				out[h] = in[h];
+				out[h].trigger = out[h].squeeze = 0.0F;
+				out[h].buttonPrimary = out[h].buttonSecondary = false;
+				out[h].thumbstickClick = out[h].menu = false;
+			}
+			for (int r = 0; r < 2; r++)
+				for (int i = 0; i < kVRInputCount; i++) {
+					const VRBindTarget& t = b.target[r][i];
+					if (t.role < 0)
+						continue;
+					const VRInput from = static_cast<VRInput>(i);
+					const float v = GetBindInput(in[handOf[r]], from);
+					const bool analog = from == VRInput::Trigger || from == VRInput::Grip;
+					AddBindInput(out[handOf[t.role]], t.input, v, analog);
+				}
+			if (swapSticks)
+				std::swap(out[0].thumbstick, out[1].thumbstick);
+		}
+
+		bool VRMagazineAtWell(const Vector3& gunHand, const Vector3& gunForward,
+		                      const Vector3& offHand, float scale) {
+			if (gunForward.GetLength() < 1.0E-4F || scale <= 0.0F)
+				return false;
+			const Vector3 f = gunForward.Normalize();
+			const Vector3 rel = (offHand - gunHand) / scale; // metres
+			// Along the gun: from just ahead of the grip to 30cm out
+			const float along = Vector3::Dot(rel, f);
+			if (along < -0.02F || along > 0.30F)
+				return false;
+			// Off the gun's line, and below it (z is down)
+			const Vector3 off = rel - f * along;
+			if (off.GetLength() > 0.17F)
+				return false;
+			return off.z > -0.03F; // under the gun, or level with it
+		}
+
+		Vector3 VRTableToWorld(const VRTablePose& t, const Vector3& anchor, const Vector3& p) {
+			return t.centre + TurnGame(VRTrackingToGameAxes(p - anchor), t.yaw) * t.scale;
+		}
+
+		void VRTableHoldOne(VRTablePose& t, const Vector3& anchor, const Vector3& a,
+		                    const Vector3& p) {
+			t.centre = a - TurnGame(VRTrackingToGameAxes(p - anchor), t.yaw) * t.scale;
+		}
+
+		void VRTableHoldTwo(VRTablePose& t, const Vector3& anchor, const Vector3& a, const Vector3& b,
+		                    const Vector3& pa, const Vector3& pb, float minScale, float maxScale) {
+			// Across: the hands' line, in the game's ground plane, against the held
+			// points'.
+			const Vector3 d = VRTrackingToGameAxes(pb - pa);
+			const Vector3 w = b - a;
+			const float dl = std::sqrt(d.x * d.x + d.y * d.y);
+			const float wl = std::sqrt(w.x * w.x + w.y * w.y);
+			if (dl > 0.02F && wl > 1.0E-3F) {
+				t.scale = std::max(minScale, std::min(maxScale, wl / dl));
+				t.yaw = std::atan2(w.y, w.x) - std::atan2(d.y, d.x);
+			}
+			// The middle of the held points under the middle of the hands
+			VRTableHoldOne(t, anchor, (a + b) * 0.5F, (pa + pb) * 0.5F);
+		}
+
+		VRPose VRDefaultKeyboardPlace() {
+			VRPose r;
+			r.valid = true;
+			// 42cm ahead, 40cm under the eyes: where hands rest typing
+			r.position = MakeVector3(0.0F, -0.40F, -0.42F);
+			// Its face turned up 40 degrees from facing you: the far edge back
+			r.orientation =
+			  VRQuat::FromAxisAngle(MakeVector3(1.0F, 0.0F, 0.0F), -40.0F * 3.14159265F / 180.0F);
+			return r;
+		}
+
+		bool VRRayHitsPanel(const VRFrameState& fs, int hand, const VRPose& panel, float width,
+		                    float aspect, Vector2& uv, float& distance) {
 			const VRControllerState& c = fs.hands[hand];
 			if (!fs.head.valid || !c.aim.valid)
 				return false;
+			const float panelAspect = aspect;
 
 			// Into the panel's own space (it faces +Z, at z = 0), wherever it is:
 			// before the head, or standing in the room.
-			const VRPose& panel = fs.hudPanel;
 			VRQuat toPanel = panel.orientation.Conjugate();
 			Vector3 origin = toPanel.Rotate(c.aim.position - panel.position);
 			Vector3 dir = toPanel.Rotate(-c.aim.Axis(2)); // OpenXR aims down -Z
@@ -116,7 +357,7 @@ namespace spades {
 				return false;
 			Vector3 p = origin + dir * t;
 
-			float w = fs.hudWidth, h = fs.hudWidth * panelAspect;
+			float w = width, h = width * panelAspect;
 			uv = MakeVector2(p.x / w + 0.5F, 0.5F - p.y / h);
 			distance = t;
 			return uv.x >= 0.0F && uv.x <= 1.0F && uv.y >= 0.0F && uv.y <= 1.0F;
@@ -316,6 +557,53 @@ namespace spades {
 			return deg * 3.14159265F / 180.0F;
 		}
 
+		VRHurtRumble VRHurtRumbleFor(int damage, float side, bool known) {
+			// 10 damage is a light tap, 50 and over (a headshot, a big fall)
+			// as hard as the motors go.
+			const float d = std::max(0.0F, std::min(1.0F, (damage - 5) / 45.0F));
+			VRHurtRumble r;
+			r.seconds = 0.08F + 0.17F * d;
+			const float amp = 0.45F + 0.55F * d;
+			if (!known) {
+				r.amplitude[VRHandLeft] = r.amplitude[VRHandRight] = amp;
+				return r;
+			}
+			const float s = std::max(-1.0F, std::min(1.0F, side));
+			// Straight ahead or behind: both alike. Fully to one side: the far
+			// hand at a quarter.
+			const float far = amp * (1.0F - 0.75F * std::fabs(s));
+			r.amplitude[VRHandRight] = s >= 0.0F ? amp : far;
+			r.amplitude[VRHandLeft] = s >= 0.0F ? far : amp;
+			return r;
+		}
+
+		float VRHurtEdgeAmount(int damage, float age) {
+			if (damage <= 0 || age < 0.0F)
+				return 0.0F;
+			const float d = std::max(0.0F, std::min(1.0F, damage / 50.0F));
+			const float peak = 0.35F + 0.65F * d;
+			const float fade = 0.5F + 0.5F * d;
+			if (age >= fade)
+				return 0.0F;
+			const float t = 1.0F - age / fade;
+			return peak * t * t;
+		}
+
+		float VRLowHealthEdge(int health, float time) {
+			if (health <= 0 || health > 30)
+				return 0.0F;
+			const float low = 1.0F - (health - 1) / 30.0F; // ~0 at 30, 1 at 1
+			// A heartbeat: two quick beats a second and a bit apart, faster when lower
+			const float period = 1.2F - 0.4F * low;
+			const float ph = std::fmod(std::max(0.0F, time), period) / period;
+			auto beat = [](float x, float at) {
+				const float u = (x - at) / 0.08F;
+				return std::exp(-u * u);
+			};
+			const float pulse = std::max(beat(ph, 0.1F), 0.7F * beat(ph, 0.3F));
+			return (0.12F + 0.28F * low) * (0.4F + 0.6F * pulse);
+		}
+
 		namespace {
 			// The trace's fields, in order, as floats: a pose is position,
 			// orientation, valid; a controller is active, grip, aim, velocity and
@@ -397,6 +685,14 @@ namespace spades {
 					case VRHapticShape::Kick: v = std::exp(-3.0F * t); break;
 					// On for the first and last 30%, nothing between.
 					case VRHapticShape::DoubleTap: v = (t < 0.3F || t > 0.7F) ? 1.0F : 0.0F; break;
+					// Up over the first 15%, then down to about 12%.
+					case VRHapticShape::Thump:
+						v = t < 0.15F ? t / 0.15F : std::exp(-2.5F * (t - 0.15F) / 0.85F);
+						break;
+					// Grains of 12 ms, strong and weak by turns, dying away.
+					case VRHapticShape::Crumble:
+						v = std::exp(-2.0F * t) * (((i / 6) % 2) == 0 ? 1.0F : 0.35F);
+						break;
 				}
 				out[i] = a * v;
 			}
@@ -423,7 +719,14 @@ namespace spades {
 			return s.on && !was;
 		}
 
-		int VRGripUpdate(VRGripState& s, bool grip, int slot) {
+		int VRGripUpdate(VRGripState& s, bool grip, int slot, float dt, bool mayHolster) {
+			const bool grace = dt > 0.0F;
+			if (slot >= 0) {
+				s.recentSlot = slot;
+				s.sinceSlot = 0.0F;
+			} else {
+				s.sinceSlot += grace ? dt : 1.0E9F;
+			}
 			const bool pressed = grip && !s.prev;
 			s.prev = grip;
 			int take = VRHolsterNone;
@@ -431,46 +734,129 @@ namespace spades {
 				if (slot >= 0) {
 					take = slot;
 					s.fromHolster = true;
+				} else if (grace && mayHolster && s.recentSlot >= 0 &&
+				           s.sinceSlot <= kVRGripGrace) {
+					// Squeezed just after the hand left the slot
+					take = s.recentSlot;
+					s.fromHolster = true;
 				} else {
 					s.action = true;
+					s.actionTime = 0.0F;
+					s.armed = !grace || !mayHolster;
+				}
+			} else if (grip && s.action && !s.armed) {
+				// Squeezed just before the hand reached the slot
+				s.actionTime += dt;
+				if (slot >= 0 && mayHolster) {
+					take = slot;
+					s.action = false;
+					s.fromHolster = true;
+				} else if (s.actionTime >= kVRGripGrace || !mayHolster) {
+					s.armed = true;
 				}
 			}
-			if (!grip)
-				s.fromHolster = s.action = false;
+			if (!grip) {
+				s.fromHolster = s.action = s.armed = false;
+				s.actionTime = 0.0F;
+			}
+			if (take >= 0)
+				s.recentSlot = -1; // taken: not again from the same reach
 			return take;
 		}
 
-		int VRHolsterAt(const VRFrameState& fs, int hand, int hover) {
-			const VRControllerState& c = fs.hands[hand];
-			if (!fs.head.valid || !c.grip.valid)
-				return VRHolsterNone;
+		void VRHolsterFrameUpdate(VRHolsterFrame& f, const VRFrameState& fs, float dt,
+		                          float eyeHeight, bool followHead) {
+			// The hips a share of the standing eye height: 67 cm under eyes at
+			// 1.6 m, within reason for the tallest and shortest. (60 cm was too
+			// high, testers: a hand low at the side digging took from them.)
+			f.hipDrop = std::max(0.48F, std::min(0.9F, eyeHeight * 0.42F));
+			if (!fs.head.valid)
+				return;
+			Vector3 h = fs.head.Axis(2) * -1.0F;
+			h.y = 0.0F;
+			if (h.GetLength() < 0.1F)
+				return; // looking straight up or down: keep the last heading
+			h = h.Normalize();
+			if (!f.valid || followHead) {
+				f.forward = h;
+				f.valid = true;
+				return;
+			}
+			// The angle from the body's heading to the head's, signed (about +Y)
+			const float cross = f.forward.z * h.x - f.forward.x * h.z;
+			const float dot = f.forward.x * h.x + f.forward.z * h.z;
+			const float angle = std::atan2(-cross, dot);
+			const float excess = std::fabs(angle) - kVRHolsterDeadZone;
+			if (excess <= 0.0F)
+				return;
+			// Past the dead zone the body comes round, quickly enough that a turn
+			// of the whole body is followed in about half a second
+			const float turn = (angle > 0.0F ? 1.0F : -1.0F) * excess * std::min(1.0F, 6.0F * dt);
+			const float c = std::cos(turn), sn = std::sin(turn);
+			// Rotate about +Y by `turn`, the way that brings it towards the head
+			const Vector3 r = MakeVector3(f.forward.x * c - f.forward.z * sn, 0.0F,
+			                              f.forward.x * sn + f.forward.z * c);
+			// Whichever way round brings it nearer
+			const Vector3 r2 = MakeVector3(f.forward.x * c + f.forward.z * sn, 0.0F,
+			                               -f.forward.x * sn + f.forward.z * c);
+			f.forward = (Vector3::Dot(r, h) >= Vector3::Dot(r2, h) ? r : r2).Normalize();
+		}
+
+		bool VRHolsterPlace(const VRFrameState& fs, int hand, int slot, Vector3& at,
+		                    float& radius, Vector3& forward, Vector3& right,
+		                    const VRHolsterFrame* frame) {
+			if (!fs.head.valid || slot < 0 || slot > 3)
+				return false;
 			// Tracking space: +X right, +Y up, -Z forward.
-			Vector3 f = fs.head.Axis(2) * -1.0F;
-			f.y = 0.0F;
-			if (f.GetLength() < 0.1F)
-				return VRHolsterNone; // looking straight up or down: no heading
-			f = f.Normalize();
-			const Vector3 right = MakeVector3(-f.z, 0.0F, f.x);
+			Vector3 f;
+			float hipDrop = 0.672F;
+			if (frame && frame->valid) {
+				f = frame->forward;
+				hipDrop = frame->hipDrop;
+			} else {
+				f = fs.head.Axis(2) * -1.0F;
+				f.y = 0.0F;
+				if (f.GetLength() < 0.1F)
+					return false; // looking straight up or down: no heading
+				f = f.Normalize();
+			}
+			const Vector3 r = MakeVector3(-f.z, 0.0F, f.x);
 			const Vector3 up = MakeVector3(0.0F, 1.0F, 0.0F);
 			const Vector3 h = fs.head.position;
 			const float side = hand == VRHandRight ? 1.0F : -1.0F; // the hand's own side
-
 			// Metres from the eyes. Seated, the hips are beside the seat.
-			struct Slot {
-				Vector3 at;
-				float radius;
-			};
-			const Slot slots[4] = {
-			  {h + right * (0.20F * side) - f * 0.15F - up * 0.10F, 0.18F}, // gun: own shoulder
-			  {h - right * (0.20F * side) - f * 0.15F - up * 0.10F, 0.18F}, // spade: other shoulder
-			  {h + right * (0.22F * side) - up * 0.60F, 0.20F},             // blocks: own hip
-			  {h - right * (0.22F * side) - up * 0.60F, 0.20F},             // grenades: other hip
-			};
+			switch (slot) {
+				case VRHolsterGun: // own shoulder
+					at = h + r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.22F;
+					break;
+				case VRHolsterSpade: // other shoulder
+					at = h - r * (0.20F * side) - f * 0.15F - up * 0.10F, radius = 0.22F;
+					break;
+				case VRHolsterBlocks: // own hip
+					at = h + r * (0.22F * side) - up * hipDrop, radius = 0.25F;
+					break;
+				default: // grenades: other hip
+					at = h - r * (0.22F * side) - up * hipDrop, radius = 0.25F;
+					break;
+			}
+			forward = f;
+			right = r;
+			return true;
+		}
+
+		int VRHolsterAt(const VRFrameState& fs, int hand, int hover, const VRHolsterFrame* frame) {
+			const VRControllerState& c = fs.hands[hand];
+			if (!fs.head.valid || !c.grip.valid)
+				return VRHolsterNone;
 			int best = VRHolsterNone;
 			float bestDistance = 1.0E9F;
 			for (int i = 0; i < 4; i++) {
-				float d = (c.grip.position - slots[i].at).GetLength();
-				float radius = slots[i].radius * (i == hover ? 1.25F : 1.0F);
+				Vector3 at, forward, right;
+				float radius;
+				if (!VRHolsterPlace(fs, hand, i, at, radius, forward, right, frame))
+					return VRHolsterNone; // looking straight up or down: no heading
+				float d = (c.grip.position - at).GetLength();
+				radius *= i == hover ? 1.25F : 1.0F;
 				if (d < radius && d < bestDistance) {
 					best = i;
 					bestDistance = d;

@@ -1,4 +1,4 @@
-# ZeroSpades X: VR
+# XRSpades: VR
 
 Play ZeroSpades in a VR headset through OpenXR, with tracked head and hands, on
 the same servers as everyone else. Players on a monitor using this client see VR
@@ -189,8 +189,15 @@ see your laser. `vr_laser 0` turns it off.
 
 The spade swings a little in your hand when it hits (a quick chop and back), and
 leans in as a dig builds up, so you can see the tool working. Others see it too.
-**Swinging the spade hits**, as the trigger does: a swing faster than
-`vr_swingSpeed` (2.5 m/s) is one hit.
+**Striking with the spade** (`vr_spadeContact`, on). The spade is solid: it
+stops at a block's face rather than passing through. Bring its tip onto a
+block at a brisk pace (0.7 m/s, a wrist's flick rather than the arm's full
+swing) and that block takes the hit, the controller kicking harder for a
+harder strike; pull it off the block to strike again. Testers found
+swinging in the air (the old way) tired the arm in twenty seconds and hit
+wherever the spade pointed, not where it was. With it off, **swinging the
+spade** anywhere faster than `vr_swingSpeed` (2.5 m/s) is one hit, along it.
+The trigger works as always.
 
 **Two hands on a gun.** Put your off hand on the gun's barrel and squeeze its
 grip: the gun now points from your gun hand to your off hand, which is steadier
@@ -325,6 +332,17 @@ In a headset there is no crosshair or scope (the gun in your hand is the
 sight), no hit marker (the controller buzzes instead), and no full-screen hurt
 or heal effects, which on a floating panel are a tinted rectangle in the air.
 
+**Taking damage.** Both controllers kick, harder and longer for a bigger hit
+(a light tap at 10 damage, as hard as they go from 50), and stronger in the
+hand on the side the hit came from: fully to one side, the far hand gets a
+quarter of it. A fall or drowning, with no side, kicks both alike
+(`VRHurtRumbleFor`). Each eye gets a dark red edge that closes in and fades over
+half a second to a second, thicker on the hit's side, and below 30 health a
+faint heartbeat at the edge, quicker and stronger the lower it gets
+(`Client::DrawVRHurtEdge`; `vr_hurtEdge 0`, or the game's Hurt Screen Effects
+off, turns the edge off but not the rumble). A headset itself has no rumble:
+the Quest 3's has no motor, and OpenXR has no way to reach the one PS VR2 has.
+
 **Menus.** Every 2D screen (main menu, server browser, team and weapon
 picker, scoreboard, in-game menu) is drawn on a panel. A menu stands in the
 room: it is put down in front of you, level, at eye height, and stays there,
@@ -335,10 +353,66 @@ then (names, pings) is drawn through it onto the world and only lines up with
 the world from in front of your eyes (`OpenXRSystem::PlaceHudPanel`). Point at it with either controller; a dot shows where. The trigger
 clicks and the stick scrolls. When something wants typing (chat, a server
 address) a keyboard comes up on the panel, in the half the text box is not in;
-point and pull the trigger to type. Shift is for one capital. A key answers
+point and pull the trigger to type. Shift is for one capital; Shift twice
+quickly locks capitals (CAPS) until Shift again. Back, and the < and > keys
+that move the text cursor to mend a typo, repeat while the trigger is held on
+them (after half a second, fifteen a second). Close puts the keyboard away,
+as Escape does. A key answers
 when pressed: the menus' soft tick (a little different each time, lower for
 the big keys), a tick in the hand, and the key lit and pressed in for a tenth
 of a second.
+
+**The table view.** Spectating, dead or watching a demo, the map can sit in
+front of you as a model on a table: click the off hand's stick (or press
+**Table** on the wrist menu, where the headlamp's button is while you have no
+body). It comes up 55cm ahead and half a metre below your eyes, the whole map
+about 90cm across. Close a grip on it and the point you gripped stays in your
+hand: drag it about, lift it, lower it. Both grips together turn it and size
+it, as you would stretch a picture on a phone; the off hand's stick zooms
+(up and down) and turns it (sideways). It is drawn as the camera does any
+view, from eyes far outside the world at the model's scale, so the players,
+names and smoke are all in it; the map is drawn whole and unwrapped, without
+fog (`SceneDefinition::wholeMap`; `r_debugWholeMap 1` shows the same on a
+monitor, with `--demo-camera`). Click the stick again, or respawn, to leave
+it. The maths is `VRTableToWorld` and the hold functions beside it, tested in
+`vr_state_test`.
+
+**Hands for the menus** (`vr_handTracking`, on; read at start). Put the
+controllers down and, where the runtime tracks hands (a Quest, or a PC runtime
+with XR_EXT_hand_tracking), a hand points at the menus and the keyboard, and
+a pinch of thumb and index finger clicks. On a Quest the runtime's own aim
+and pinch are used (XR_FB_hand_tracking_aim), and its menu gesture is the
+menu button; elsewhere the palm points and the thumb's tip coming within a
+few centimetres of the index finger's is the pinch. A hand only stands in
+for a controller that is not there, and only in the menus
+(`VRFrameState::handTracked`): the game never reads it, so a pinch can never
+fire a gun. The Quest's manifest asks for hand tracking, not requiring it.
+
+**Change buttons** (the menu's **Controls**, then **Change buttons**). The
+controllers in use, drawn bare, with a drop-down beside each button joined to
+it by a line. Each lists every action the layout has, the common ones first
+(fire, jump, reload, crouch, sprint, the big map), then the rest, and Nothing;
+a choice is saved at once to `vr_bindings` (`VRParseBindings`: only what
+differs from the default, e.g. `tool.primary=off.secondary,off.grip=none`).
+Bindings belong to the hands' roles, the gun hand's and the other's, so they
+follow a left-handed player. **Sticks** swaps walking and turning between the
+sticks (`vr_swapSticks`); **Reset to default** clears both. The remapping is
+done where the controllers are read (`OpenXRSystem::ApplyBindings`, after the
+input trace, which keeps the buttons as pressed), so everything in the game
+follows it. The menus alone take the buttons as pressed
+(`VRFrameState::rawHands`): no binding can lock anyone out of them, this
+screen included. The pictures and the buttons' places on them come from
+`Tools/vr-controls/make_controls.py bind` (`Bind-<controllers>.png`, `.json`).
+
+**The keyboard on its own** (`vr_keyboardDetached`, on). It comes up in
+front of you, below your eyes and tipped back like a keyboard on a desk, on
+a panel of its own rather than on the menu: aim at a key and pull the
+trigger. Squeeze the grip while pointing at it (or with your hand at it) to
+pick it up; it follows that hand until you let go, and next time it comes up
+where you left it, relative to where you face. It borrows the wrist panel,
+which typing has no use for, so the wrist HUD is away meanwhile; the chat you
+type stays in front. Until the headset has put it up (a frame), or if it
+cannot, the keyboard is on the menu panel as before.
 
 **Settings in the headset.** Setup has a **VR** tab with every VR setting:
 turning, comfort, hands and tools, your body, the HUD and performance. Text
@@ -347,8 +421,10 @@ size, text sharpness and eye resolution take effect on the next start.
 **Reloading.** B reloads, as R does on a keyboard; the laser is amber until it
 is done, and the gun hand buzzes. **By hand** (`vr_reloadGesture`): B drops
 the magazine; take a new one from your belt with the off hand's grip (anywhere
-at your waist) and bring it to the gun, just under its front: that is the
-reload, with its usual time to finish. Pressing B again at any point just
+at your waist) and bring it anywhere under the front half of the gun,
+within about 17cm of it: that is the reload (under in the world, not in the
+gun hand's own frame, so the gun hand need not be rolled over as if to look
+at a watch, which a tester found it did; `VRMagazineAtWell`), with its usual time to finish. Pressing B again at any point just
 reloads. It was the default (as `vr_physicalReload`) until testers found two
 actions for every reload too many, and the sound alone too quiet a sign that
 it was done; it was renamed so that configs which had saved the old default
@@ -418,7 +494,13 @@ far as a normal throw.
 | `vr_twoHandedGrip` | 1 | the off hand's grip on the barrel holds a gun in both hands |
 | `vr_shoulderStock` | 1 | the off hand's trigger, held on a gun's barrel, braces it on the shoulder |
 | `vr_toolCollision` | 0 | hands and held tools stop at blocks (was `vr_solidTools`, on) |
+| `vr_bindings` | (empty) | the buttons moved about (Change buttons); empty is the default layout |
+| `vr_swapSticks` | 0 | walk with the gun hand's stick and turn with the other's |
+| `vr_handTracking` | 1 | with the controllers put down, a tracked hand points at the menus and a pinch clicks; read at start |
+| `vr_keyboardDetached` | 1 | the keyboard stands on its own in front of you, and the grip moves it; 0 draws it on the menu panel |
+| `vr_hurtEdge` | 1 | a red edge round the view when hit, thicker on the hit's side, and a heartbeat at low health (the rumble stays either way) |
 | `vr_aimSmooth` | 0 | 0 to 1: how much a nearly still gun is steadied |
+| `vr_spadeContact` | 1 | the spade is solid, and its tip striking a block hits it; 0: swinging it in the air hits |
 | `vr_swingSpeed` | 2.5 | swinging the spade faster than this (m/s) hits; 0 turns it off |
 | `vr_holsters` | 1 | take tools from the body with the gun hand's grip |
 | `vr_showFps` | 1 | the frame rate on the wrist |
@@ -1501,41 +1583,35 @@ which captures a key press; VR's controls are fixed, so it has nothing to bind.
 
 ## Open
 
-- The HUD is not shown on the monitor while 3D is being drawn (the mirror is a
-  plain copy of the left eye).
-- Screen tints (hit flash, underwater tint) are not applied in VR.
+Checked against the code on 2026-11-19; done since first written: the HUD on
+the monitor (the wrist panel is drawn into the mirror), the hit flash (the red
+edge), the CI and release workflows (every release since 0.3.0, the Quest APK
+built there), multiview (the Quest presets turn it on; measured on a Quest 3),
+auto exposure's render-pass mismatch under HDR (cc02dd2b), and the scope,
+keyboard and wrist, all used by testers.
+
+- The underwater tint is not applied in VR.
 - Grip points per tool want tuning in the headset.
 - With a headset in use but asleep, the monitor shows the 16:9 VR layout
   stretched over the window, and a window of another shape shows the 3D
   stretched too.
-- The wrist panel's place over the wrist (8cm down the grip, 4cm off the back
-  of the hand), its show/hide angles and the 15 degree aim tilt are first
-  guesses, not yet tried in a headset.
-- Not yet tried in a headset: the scope, physical reloading, your body, the
-  comfort camera, holding the frame rate, the keyboard, the VR settings tab.
-  The lens and magazine-well places are first guesses.
-- The scope shows no water.
+- The scope shows no water (its pass skips it: `vrScopePass`).
 - Off-hand weapon actions: a shotgun pump (off hand back and forward along
   the barrel between shots) and a grenade pin (the off hand pulls it to start
   the cook) were built and unit-tested in 4a96027, both optional and never
   faster than the trigger, then taken out on 2026-10-11 until there is a better
   idea of how they should work in play. That commit has the stroke and pin
   detection (`VRPumpStep`, `VRPinStep`) and their tests.
-- The CI and release workflows (`ci.yml`, `release.yml`) have not run on
-  GitHub yet. The Android build is known to build and link locally and the
-  APK to package with `build-apk.ps1`; `build-apk.sh` and the Linux arm64 job
-  are untested.
-- Multiview (`vr_multiview`) has not been seen in a headset.
+- `build-apk.sh` and the Linux arm64 job are untested.
 - With Fog2 (`r_fogShadow 2` and radiosity) the per-eye path's right eye shows
   an unfogged void past a stepped edge in the far corner of the overview
   camera, where multiview draws fog over terrain. It does not happen without
   Fog2, and the cause is not found yet.
-- Under HDR, auto exposure's two gain render passes have different dependency
-  counts (`VkRenderPassBeginInfo-renderPass-00904`); predates multiview.
 - The off-centre eyes are verified on a monitor, not yet in a headset. The
   water's reflections and refractions were not in view in that test.
 - Validation warnings in VR that predate this work: a depth image copied into
   a colour one (`vkCmdCopyImage-srcImage-01551`), pipelines drawn in a render
   pass whose dependencies differ from the one they were made with
   (`vkCmdDrawIndexed-renderPass-02684`), and SPIR-V capabilities the device
-  does not declare (`VkShaderModuleCreateInfo-pCode-08740/08742`).
+  does not declare (`VkShaderModuleCreateInfo-pCode-08740/08742`). Not
+  rechecked since.

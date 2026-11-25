@@ -38,14 +38,12 @@
 		private Renderer@ renderer;
 		private AudioDevice@ audioDevice;
 		private Model@ spadeModel;
-		private Model@ pickaxeModel;
 		private Model@ model;
 
 		ThirdPersonSpadeSkin(Renderer@ r, AudioDevice@ dev) {
 			@renderer = r;
 			@audioDevice = dev;
 			@spadeModel	= renderer.RegisterModel("Models/Weapons/Spade/Spade.kv6");
-			@pickaxeModel = renderer.RegisterModel("Models/Weapons/Spade/Pickaxe.kv6");
 			@model = @spadeModel;
 		}
 
@@ -59,7 +57,7 @@
 			mat = CreateTranslateMatrix(trans) * mat;
 
 			if (actionType == spades::SpadeActionType::Bash) {
-				@model = @pickaxeModel;
+				@model = @spadeModel; // the spade for a hit too
 			} else if (actionType == spades::SpadeActionType::DigStart or actionType == spades::SpadeActionType::Dig) {
 				@model = @spadeModel;
 			}

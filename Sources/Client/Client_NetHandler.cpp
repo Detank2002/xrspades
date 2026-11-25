@@ -47,10 +47,14 @@
 #include "DemoRecorder.h"
 #include "NetClient.h"
 
-DEFINE_SPADES_SETTING(cg_corpseClearOnRespawn, "0");
+// A player's body goes when they respawn (in intense fighting the bodies
+// piled up, and their physics cost frames: testers)
+DEFINE_SPADES_SETTING(cg_corpseClearOnRespawn, "1");
 DEFINE_SPADES_SETTING(cg_centerMessage, "2");
 DEFINE_SPADES_SETTING(cg_autoScreenshot, "0");
-DEFINE_SPADES_SETTING(cg_demoAutoRecord, "0");
+// On by default since 0.4.0, the newest few kept (cg_demoMaxFiles): a moment
+// worth keeping or reporting is there afterwards
+DEFINE_SPADES_SETTING(cg_demoAutoRecord, "1");
 DEFINE_SPADES_SETTING(cg_demoMaxFiles, "10");
 DEFINE_SPADES_SETTING(cg_demoAutoPrune, "1");
 SPADES_SETTING(cg_damageIndicators);
@@ -169,6 +173,12 @@ namespace spades {
 			// server running the script that it did not (UpdateVRPresenceNotice).
 			if (GetVRSystem() && net && !IsDemoMode())
 				vrPresenceCheckAt = time + 4.0F;
+
+			// display discord invite
+			s = _Tr("Client", "Join the XRSpades Discord {0}", "https://discord.gg/24JDJbpKV9");
+			s = ChatWindow::ColoredMessage(s, MsgColorSysInfo);
+			chatWindow->AddMessage(s);
+			scriptedUI->RecordChatLog(s, chatWindow->GetColor(MsgColorSysInfo));
 
 			// start recording if auto-record is enabled
 			if (net && (int)cg_demoAutoRecord != 0) {
@@ -316,6 +326,13 @@ namespace spades {
 				Handle<IAudioChunk> c = audioDevice->RegisterSound("Sounds/Weapons/Block/Build.opus");
 				audioDevice->Play(c.GetPointerOrNull(), p.GetEye() + p.GetFront(), AudioParam());
 			}
+			// A knock as the block sets in place
+			if (p.IsLocalPlayer())
+				VRPulse(VRToolHand(), 0.35F, 0.04F, VRHapticShape::Kick);
+		}
+
+		void Client::LocalPlayerBrokeBlock() {
+			VRPulse(VRToolHand(), 0.8F, 0.12F, VRHapticShape::Crumble);
 		}
 
 		void Client::PlayBlockDestroySound(spades::Vector3 pos) {

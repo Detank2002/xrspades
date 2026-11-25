@@ -94,9 +94,9 @@ namespace spades {
 			}
 
 			void Blit(VkCommandBuffer cmd, VkImage src, int32_t sx0, int32_t sy0, int32_t sx1,
-			          int32_t sy1, VkImage dst, int32_t dw, int32_t dh) {
+			          int32_t sy1, VkImage dst, int32_t dw, int32_t dh, uint32_t srcLayer = 0) {
 				VkImageBlit r{};
-				r.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+				r.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, srcLayer, 1};
 				r.srcOffsets[0] = {sx0, sy0, 0};
 				r.srcOffsets[1] = {sx1, sy1, 1};
 				r.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
@@ -1199,7 +1199,8 @@ namespace spades {
 #endif
 		}
 
-		void VulkanRenderer::RecordVREyeOutput(VkCommandBuffer cmd, VulkanImage* finalImage) {
+		void VulkanRenderer::RecordVREyeOutput(VkCommandBuffer cmd, VulkanImage* finalImage,
+		                                       uint32_t layer) {
 			if (!finalImage || vrEyeIndex < 0)
 				return;
 			if (vrScopePass) {
@@ -1287,7 +1288,7 @@ namespace spades {
 			// Linear float in, sRGB out: the blit does the encoding, as it does for
 			// the window. Left in TRANSFER_DST for Flip's overlay pass.
 			Blit(cmd, finalImage->GetImage(), 0, 0, static_cast<int32_t>(w), static_cast<int32_t>(h),
-			     kept, static_cast<int32_t>(w), static_cast<int32_t>(h));
+			     kept, static_cast<int32_t>(w), static_cast<int32_t>(h), layer);
 
 			ImageBarrier(cmd, finalImage->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_READ_BIT,

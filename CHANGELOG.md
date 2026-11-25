@@ -5,6 +5,74 @@ version's section at the top of its release notes, under "What's new", and
 the game shows those lines when it offers the update. Keep each line short:
 one change, in a player's words.
 
+## 0.4.0
+
+- New: ZeroSpades X is now XRSpades, same game, new name
+- New: the menu's links take you to XRSpades' releases, code and Discord
+- New: in VR, getting hit kicks the controller on the side it came from, harder for bigger hits, and reddens the edge of your view
+- New: in VR, a heartbeat at the edge of your view when your health is low
+- New: in VR, watch a game or a demo as a model on a table in front of you: grab it, turn it and zoom with your hands
+- New: in VR, the keyboard stands on its own in front of you, and you can grab it with the grip and put it where you like
+- Improved: the VR keyboard has caps lock (Shift twice), arrow keys to fix typos, a Close key, and Back repeats while held
+- New: in VR, put the controllers down and use your hands in the menus: point, and pinch to click
+- New: bullets and the spade chip real holes out of blocks, pits you can see into from any side; they heal with the block or after a while (Options, Effects to turn them off)
+- Improved: in VR, the spade is solid and hits where its tip strikes a block, with a flick instead of a full swing
+- Improved: in VR, reloading by hand takes the magazine anywhere under the front of the gun, without twisting your wrist
+- New: in VR, change what every controller button does, on a picture of your controllers (Controls, Change buttons), and swap the sticks
+- Improved: the button-changing screen shows each button in its own colour, by its real name, and lights it up as you point at its choice
+- New: in VR, your grenades and blocks hang on your hips where you grab them, fewer as you use them up
+- New: in VR, feel blocks break and set under your hand, every hit you land, and grenades going off near you; the shotgun kicks harder
+- Improved: 3D sound in headphones is on by default (Options, Audio to change it)
+- Improved: the faster Vulkan renderer is the default; a PC that can't run it starts with OpenGL
+- New: search in Settings: type a word and every tab shows only what matches
+- New: in VR, a first-time setup for your hand, standing or seated, turning and the comfort vignette
+- Improved: in VR, the main menu stands you in one of the real maps the flat menu flies round
+- Improved: the main menu says Singleplayer again
+- New: a Weapon page in the Escape menu to change sights and aiming without digging through Settings
+- Improved: in VR, the rifle uses its open iron sights by default; the scope is one click away on the Weapon page
+- Improved: in VR, grabbing from the holsters is far more forgiving: bigger zones, a squeeze a moment early or late still counts, the hips sit at your own height, and looking aside no longer moves them
+- New: Settings has Simple and Advanced: Simple shows the common settings for the screen you play on, Advanced shows everything
+- New: an Audio tab with every volume, and an Advanced tab for debug and technical settings; graphics settings that only the quality preset could reach have their own rows
+- New: a scope type that uses your crosshair while aiming
+- Changed: mouse acceleration off and muzzle flashes on by default; games are recorded by default (the newest 10 kept)
+- Improved: in VR, spectating and demos start on the table view (Settings, VR to turn it off)
+- Improved: in VR, the Cross sight is now a ring reticle that tilts with the gun, and the sight's frame hides only the part of it behind it
+- Improved: in VR, Quest headsets have a little more headroom for keeping a steady frame rate
+- Fixed: in VR, striking a block with the spade digs it again
+- Changed: the spade stays a spade when you hit with it, instead of turning into a pickaxe
+- Improved: in VR, tips and in-game popups float in front of you and catch up when you look away, instead of being stuck to your face; the training tips are smaller
+- Fixed: in VR, the menu behind the first-time setup no longer takes clicks
+- New: in VR, walk and turn around the main menu's map with the sticks; the menu floats along with you
+- Fixed: in VR, a team ping off to the side shows in both eyes, at the edge of where you look
+- Fixed: in VR, joining as a spectator opens the table view, as it should by default
+- New: in VR, your hands are shown in the table view
+- Fixed: in VR, the table view no longer shows a patch of water under you that moved with you
+- Fixed: in VR, the keyboard comes up under the menu and moves with it, instead of being left wherever you were looking when it opened
+- Fixed: on Quest, graphics too heavy for the headset no longer leave you stuck: if the game cannot start or runs far too slowly, it goes back to the Performance level and tells you
+- Changed: on Quest, the graphics are set with Headset Quality in the VR tab; the PC's Low to Ultra are not offered there
+- New: in VR, choose the headset's refresh rate (Settings, VR, Refresh Rate): a Quest 3 holds 90 and 120 Hz
+- Changed: on Quest, settings for a monitor (such as Render Scale) are no longer shown; Eye Resolution in the VR tab sets the headset's sharpness
+- Fixed: bullet holes near a block's edge no longer flicker dark (most visible in VR)
+- Improved: bullet and spade holes can be cut into any face of a block, several on one block, its edges always left whole
+- Fixed: blocks with a bullet hole no longer flicker at their edges or show a thin line of sky
+- Fixed: bits of debris and flesh lie still on the ground instead of shaking
+- Fixed: in VR, shots land where the sights and the laser point again, at any range
+- Improved: in VR, your height is reset by itself when you put the headset back on
+- Changed: a headshot bursts the head only now and then (one in twenty)
+- Changed: in VR, the belt is stepped like the rest of the game's voxels
+- Fixed: in VR, the grenades and blocks sit lower at the hips, digging straight down no longer grabs them, and the grenades on the belt no longer overlap
+- Fixed: in VR, the reflex sight's Cross is cut off by the sight's frame where the frame really is
+- Fixed: in VR, aiming with the stock while looking steeply down no longer swings the gun as you nod
+- Fixed: in VR, the table view keeps a smooth frame rate on Quest: the map on it is a simpler, blockier copy
+- New: Edit Mode, for map-making servers: unlimited blocks, build anywhere, even in the air
+- Fixed: grenades no longer fill the air with big grey squares; the debris is small and the colour of what blew up
+- Improved: the newest ZeroSpades changes, including sharper windows on scaled Windows displays and smoother tool animations
+- Improved: in VR, a new map stays hidden for a moment until the frame rate settles, instead of juddering while it loads
+- New: in VR, a Hip Height slider moves the grenades and blocks on your belt up or down
+- New: in VR, a body mirror beside the menu shows you your body, belt and shoulder tools as you move, so you can see what the body settings change (Settings, VR)
+- Fixed: in VR, a line of blocks drawn quickly starts where you began it
+- Changed: a player's body is removed when they respawn, so heavy fighting keeps a steady frame rate (Options, Effects to change it, and how many bodies stay)
+
 ## 0.3.6
 
 - New: a headshot kill bursts the skull into pieces (Options, Effects to turn it off)

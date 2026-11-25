@@ -52,6 +52,7 @@
 #include "Teamplay.h"
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include <Gui/UI/Components/SoftwareCursor.h>
 #include <Gui/UI/Components/LimboMenu.h>
 #include "Corpse.h"
@@ -209,6 +210,15 @@ namespace spades {
 				return;
 
 			scriptedUI->CloseUI();
+			// The table's copy is of the old map (a new one at the same address
+			// passed for it)
+			vrTableModel = nullptr;
+			vrTableModelPrev = nullptr;
+			vrTableBuiltFor = nullptr;
+			// A new map: in a headset it is not shown until frames come steadily
+			vrSettling = w != nullptr && GetVRSystem() != nullptr;
+			vrSettleTime = vrSettleSteady = vrSettleWorst = 0.0F;
+			vrSettleFrames = vrSettleSlow = 0;
 
 			// A held menu belongs to the world it opened in: its aim and its target
 			// mean nothing in the next one.
@@ -354,6 +364,7 @@ namespace spades {
 
 			RemoveAllLocalEntities();
 			bloodMarks.reset();
+			impactMarks.reset();
 
 			renderer->SetGameMap(nullptr);
 			audioDevice->SetGameMap(nullptr);
@@ -385,8 +396,8 @@ namespace spades {
 			renderer->RegisterImage("Gfx/Bullet/7.62mm.png");
 			renderer->RegisterImage("Gfx/Bullet/9mm.png");
 			renderer->RegisterImage("Gfx/Bullet/12gauge.png");
-			renderer->RegisterImage("Gfx/Demo/Pause.png");
-			renderer->RegisterImage("Gfx/Demo/Play.png");
+			renderer->RegisterImage("Gfx/UI/Pause.png");
+			renderer->RegisterImage("Gfx/UI/Play.png");
 			renderer->RegisterImage("Gfx/Hotbar/Block.png");
 			renderer->RegisterImage("Gfx/Hotbar/Grenade.png");
 			renderer->RegisterImage("Gfx/Hotbar/Spade.png");
@@ -410,7 +421,7 @@ namespace spades {
 			renderer->RegisterImage("Gfx/HurtRing.png");
 			renderer->RegisterImage("Gfx/HurtSprite.png");
 			renderer->RegisterImage("Gfx/Glare.png");
-			renderer->RegisterImage("Gfx/ReflexSight.png");
+			renderer->RegisterImage("Gfx/SightReflex.png");
 			renderer->RegisterImage("Gfx/Spotlight.jpg");
 			renderer->RegisterImage("Textures/Fluid.png");
 			renderer->RegisterImage("Textures/WaterExpl.png");
@@ -555,6 +566,7 @@ namespace spades {
 
 			// init blood marks
 			bloodMarks = stmp::make_unique<BloodMarks>(*this);
+			impactMarks = stmp::make_unique<ImpactMarks>(*this);
 
 			// create block cursor model
 			{
@@ -633,7 +645,6 @@ namespace spades {
 			renderer->RegisterModel("Models/Player/UpperArm.kv6");
 			renderer->RegisterModel("Models/Player/UpperArmRight.kv6");
 			renderer->RegisterModel("Models/Player/Headlamp.kv6");
-			renderer->RegisterModel("Models/Weapons/Spade/Pickaxe.kv6");
 			renderer->RegisterModel("Models/Weapons/Spade/Spade.kv6");
 			renderer->RegisterModel("Models/Weapons/Block/Block.kv6");
 			renderer->RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
@@ -1041,9 +1052,12 @@ namespace spades {
 			time += dt;
 		}
 
-		void Client::EnableDemoReplayFollow(const std::string& playerSpec) {
+		void Client::EnableDemoReplayFollow(const std::string& playerSpec, float startTime,
+		                                    bool thirdPerson) {
 			demoReplayFollowPending = true;
 			demoReplayFollowSpec = playerSpec;
+			demoReplayStart = startTime;
+			demoReplayThirdPerson = thirdPerson;
 		}
 
 		int Client::ResolveDemoPlayer(const std::string& spec) {
@@ -1096,6 +1110,27 @@ namespace spades {
 			if (!world || !IsDemoMode() || activeNet->GetStatus() != NetClientStatusConnected)
 				return;
 
+			// --demo-start: to that moment first; the player is found after
+			if (demoReplayStart > 0.0F && demoNet) {
+				SPLog("Demo: starting at %.1f s (--demo-start)", demoReplayStart);
+				demoNet->Seek(demoReplayStart);
+				demoReplayStart = 0.0F;
+				return;
+			}
+
+			// --demo-camera: the free camera, still, where it was put
+			if (demoCamera) {
+				followCameraState.enabled = false;
+				freeCameraState.position = demoCameraAt;
+				freeCameraState.velocity = MakeVector3(0, 0, 0);
+				const Vector3 d = (demoCameraTo - demoCameraAt).Normalize();
+				// as the free camera reads them: front = (-cos p cos y, -cos p sin y, sin p)
+				followAndFreeCameraState.pitch = std::asin(Clamp(d.z, -1.0F, 1.0F));
+				followAndFreeCameraState.yaw = std::atan2(-d.y, -d.x);
+				demoReplayFollowPending = false;
+				return;
+			}
+
 			// Wait until at least one player exists, then follow it. ResolveDemoPlayer
 			// returns -1 while the world has no players, so this stays pending across
 			// the first frames of playback without ever blocking.
@@ -1105,7 +1140,7 @@ namespace spades {
 
 			followedPlayerId = pid;
 			followCameraState.enabled = true;
-			followCameraState.firstPerson = true;
+			followCameraState.firstPerson = !demoReplayThirdPerson;
 			demoReplayFollowPending = false;
 		}
 

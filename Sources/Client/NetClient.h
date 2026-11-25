@@ -120,6 +120,7 @@ namespace spades {
 			  {ExtensionTypeDaytimeWeather, 1},
 			  {ExtensionTypePieMenu, 1},
 			  {ExtensionTypePlayerOutfit, 1},
+			  {ExtensionTypeEditMode, 1},
 			  {ExtensionTypeCompactWorldUpdate, 1},
 			  {ExtensionTypeSmoke, 1},
 			  {ExtensionTypePlayerLimit, 1},
@@ -174,6 +175,10 @@ namespace spades {
 			void HandleVRPresencePacket(NetPacketReader&);
 			void HandleFlashlightPacket(NetPacketReader&);
 			void HandleSmokePacket(spades::client::NetPacketReader&);
+			void HandleEditModePacket(spades::client::NetPacketReader&);
+			/** Each player id's Edit Mode, kept here: it outlives the Player, which
+			 * is made again at every respawn, and may come before the player. */
+			std::array<bool, 256> editModeOf{};
 			void HandlePlayerOutfitPacket(NetPacketReader&);
 			void WriteInitialPlayerOutfitDemoState();
 			void HandleDaytimeWeatherPacket(NetPacketReader&);

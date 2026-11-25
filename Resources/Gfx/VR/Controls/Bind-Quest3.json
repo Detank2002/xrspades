@@ -1,0 +1,103 @@
+{
+ "size": [
+  1600,
+  900
+ ],
+ "left": {
+  "Trigger": [
+   630,
+   300
+  ],
+  "Grip": [
+   676,
+   570
+  ],
+  "StickClick": [
+   682,
+   414
+  ],
+  "Primary": [
+   596,
+   450
+  ],
+  "Secondary": [
+   556,
+   398
+  ],
+  "Menu": [
+   624,
+   484
+  ]
+ },
+ "right": {
+  "Trigger": [
+   970,
+   300
+  ],
+  "Grip": [
+   924,
+   570
+  ],
+  "StickClick": [
+   918,
+   414
+  ],
+  "Primary": [
+   1004,
+   450
+  ],
+  "Secondary": [
+   1044,
+   398
+  ]
+ },
+ "colour": {
+  "Trigger": [
+   236,
+   236,
+   240
+  ],
+  "Grip": [
+   236,
+   236,
+   240
+  ],
+  "StickClick": [
+   236,
+   236,
+   240
+  ],
+  "Primary": [
+   236,
+   236,
+   240
+  ],
+  "Secondary": [
+   236,
+   236,
+   240
+  ],
+  "Menu": [
+   236,
+   236,
+   240
+  ]
+ },
+ "label": {
+  "left": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "StickClick": "Thumbstick click",
+   "Primary": "X button",
+   "Secondary": "Y button",
+   "Menu": "Menu button"
+  },
+  "right": {
+   "Trigger": "Trigger",
+   "Grip": "Grip",
+   "StickClick": "Thumbstick click",
+   "Primary": "A button",
+   "Secondary": "B button"
+  }
+ }
+}

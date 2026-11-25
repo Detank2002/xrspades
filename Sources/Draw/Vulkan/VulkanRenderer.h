@@ -402,7 +402,10 @@ namespace spades {
 			/** Resizes the 3D targets; waits for the GPU, so only on a real change. */
 			void EnsureRenderSize(int width, int height);
 			void RenderVREyes();
-			void RecordVREyeOutput(VkCommandBuffer commandBuffer, VulkanImage* finalImage);
+			/** `layer`: the eye's layer of `finalImage` (multiview's two-layer
+			 * picture, sent on without first splitting it into one per eye). */
+			void RecordVREyeOutput(VkCommandBuffer commandBuffer, VulkanImage* finalImage,
+			                       uint32_t layer = 0);
 			void FlipVRFrame();
 
 			void BuildProjectionMatrix();
@@ -702,6 +705,8 @@ namespace spades {
 
 			// IGameMapListener implementation
 			void GameMapChanged(int x, int y, int z, client::GameMap*) override;
+			bool SetMapFaceHidden(const IntVector3& block, const IntVector3& normal,
+			                      bool hidden) override;
 
 			// Vulkan-specific methods
 			VulkanMapRenderer* GetMapRenderer() { return mapRenderer.get(); }

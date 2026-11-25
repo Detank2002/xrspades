@@ -50,6 +50,14 @@ namespace spades {
 			Handle<ui::UIManager> manager;
 			Handle<MainScreenMainMenu> mainMenu;
 			Handle<client::GameMap> titleMap;
+			// The flyover round the map: its centre, how far out and how high
+			// the camera goes (clear of the highest ground on its circle), and
+			// what it looks at.
+			Vector3 orbitCentre;
+			float orbitRadius = 150.0F;
+			float orbitZ = 12.0F;
+			bool orbit = false;
+			void SetupOrbit();
 
 			float time = -1.0F;
 

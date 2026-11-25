@@ -632,6 +632,7 @@ namespace spades {
 				case ExtensionTypeVRPresence: return "VR Presence";
 				case ExtensionTypeCompactWorldUpdate: return "Compact World Update";
 				case ExtensionTypeSmoke: return "Smoke";
+				case ExtensionTypeEditMode: return "Edit Mode";
 				default: return _Tr("NetClient", "Unknown (ID {0})", ToString(id));
 			}
 		}
@@ -1064,6 +1065,58 @@ namespace spades {
 				ReleasePacketsAwaitingSky();
 		}
 
+		void NetClient::HandleEditModePacket(spades::client::NetPacketReader& r) {
+			SPADES_MARK_FUNCTION();
+
+			if (!HasExtension(ExtensionTypeEditMode)) {
+				SPLog("Ignoring an Edit Mode packet from a server that did not negotiate "
+				      "the extension");
+				return;
+			}
+			if (!GetWorld() || r.GetNumRemainingBytes() < 3)
+				return;
+			const int sub = r.ReadByte();
+			const int id = r.ReadByte();
+			stmp::optional<Player&> p = GetPlayerOrNull(id);
+			if (sub == EditModeSubState) {
+				const bool on = r.ReadByte() != 0;
+				editModeOf[static_cast<std::size_t>(id)] = on;
+				if (!p)
+					return;
+				const bool was = p->IsEditing();
+				p->SetEditMode(on);
+				if (p->IsLocalPlayer() && was != on)
+					client->LocalPlayerEditModeChanged(on);
+			} else if (sub == EditModeSubBatch) {
+				const int action = r.ReadByte();
+				std::vector<IntVector3> cells;
+				while (r.GetNumRemainingBytes() >= 12) {
+					IntVector3 c;
+					c.x = static_cast<int>(r.ReadInt());
+					c.y = static_cast<int>(r.ReadInt());
+					c.z = static_cast<int>(r.ReadInt());
+					if (GetWorld()->GetMap()->IsValidMapCoord(c.x, c.y, c.z))
+						cells.push_back(c);
+				}
+				if (cells.empty())
+					return;
+				if (action == 0) {
+					const IntVector3 col = p ? p->GetBlockColor() : temporaryPlayerBlockColor;
+					for (const auto& c : cells)
+						GetWorld()->CreateBlock(c, col);
+					if (p)
+						client->PlayerCreatedBlock(*p);
+				} else if (action == 1) {
+					// Each alone, as Block Action 1
+					for (const auto& c : cells) {
+						std::vector<IntVector3> one{c};
+						GetWorld()->DestroyBlock(one);
+					}
+					client->PlayerDestroyedBlockWithWeaponOrTool(cells.front());
+				}
+			}
+		}
+
 		void NetClient::HandleGamePacket(spades::client::NetPacketReader& r) {
 			SPADES_MARK_FUNCTION();
 
@@ -1074,6 +1127,7 @@ namespace spades {
 				case PacketTypeVRPresence: HandleVRPresencePacket(r); break;
 				case PacketTypeFlashlight: HandleFlashlightPacket(r); break;
 				case PacketTypeSmoke: HandleSmokePacket(r); break;
+				case PacketTypeEditMode: HandleEditModePacket(r); break;
 				case PacketTypePositionData: {
 					Player& p = GetLocalPlayer();
 					if (r.GetLength() != 13) {
@@ -1252,6 +1306,7 @@ namespace spades {
 						// set tool
 						p->SetTool(GetToolType(tool));
 
+						p->SetEditMode(editModeOf[static_cast<std::size_t>(pId)]);
 						GetWorld()->SetPlayer(pId, std::move(p));
 
 						// set name and score
@@ -1327,6 +1382,7 @@ namespace spades {
 					// set position
 					p->SetPosition(pos);
 
+					p->SetEditMode(editModeOf[static_cast<std::size_t>(pId)]);
 					GetWorld()->SetPlayer(pId, std::move(p));
 
 					// set name
@@ -1371,7 +1427,8 @@ namespace spades {
 						} else {
 							GetWorld()->CreateBlock(pos, p->GetBlockColor());
 							if (!GetWorld()->GetMap()->IsSolidWrapped(pos.x, pos.y, pos.z)) {
-								p->UseBlocks(1);
+								if (!p->IsEditing())
+									p->UseBlocks(1);
 								if (p->IsLocalPlayer())
 									client->RegisterPlacedBlocks(1);
 							}
@@ -1383,17 +1440,21 @@ namespace spades {
 						if (p && p->IsToolSpade())
 							p->GotBlock();
 						client->PlayerDestroyedBlockWithWeaponOrTool(pos);
+						if (p && p->IsLocalPlayer())
+							client->LocalPlayerBrokeBlock();
 					} else if (action == BlockActionDig) {
 						for (int z = -1; z <= 1; z++)
 							cells.push_back(MakeIntVector3(pos.x, pos.y, pos.z + z));
-						GetWorld()->DestroyBlock(cells);
+						GetWorld()->DestroyBlock(cells, p && p->IsEditing());
 						client->PlayerDiggedBlock(pos);
+						if (p && p->IsLocalPlayer())
+							client->LocalPlayerBrokeBlock();
 					} else if (action == BlockActionGrenade) {
 						for (int x = -1; x <= 1; x++)
 						for (int y = -1; y <= 1; y++)
 						for (int z = -1; z <= 1; z++)
 							cells.push_back(MakeIntVector3(pos.x + x, pos.y + y, pos.z + z));
-						GetWorld()->DestroyBlock(cells);
+						GetWorld()->DestroyBlock(cells, p && p->IsEditing());
 						client->GrenadeDestroyedBlock(pos);
 					}
 				} break;
@@ -1404,7 +1465,9 @@ namespace spades {
 					pos1 = r.ReadIntVector3();
 					pos2 = r.ReadIntVector3();
 
-					auto cells = GetWorld()->CubeLine(pos1, pos2, 50);
+					// With Edit Mode a line is drawn in full, whatever its length
+					auto cells = GetWorld()->CubeLine(
+					  pos1, pos2, HasExtension(ExtensionTypeEditMode) ? 4096 : 50);
 					for (const auto& c : cells) {
 						if (!GetWorld()->GetMap()->IsSolid(c.x, c.y, c.z))
 							GetWorld()->CreateBlock(c, p ? p->GetBlockColor()
@@ -1413,7 +1476,8 @@ namespace spades {
 
 					if (p) {
 						int blocks = static_cast<int>(cells.size());
-						p->UseBlocks(blocks);
+						if (!p->IsEditing())
+							p->UseBlocks(blocks);
 						if (p->IsLocalPlayer())
 							client->RegisterPlacedBlocks(blocks);
 						client->PlayerCreatedBlock(*p);
@@ -1591,6 +1655,7 @@ namespace spades {
 
 					client->PlayerLeaving(p);
 					flashlightBeams.Forget(pId);
+					editModeOf[static_cast<std::size_t>(pId)] = false;
 					GetWorld()->GetPlayerPersistent(pId).score = 0;
 
 					savedPlayerTeam[pId] = -1;

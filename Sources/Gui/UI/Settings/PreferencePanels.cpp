@@ -19,6 +19,7 @@
  */
 
 #include "PreferenceView.h"
+#include <Core/Settings.h>
 #include <Core/Strings.h>
 #include <Gui/UI/Framework/UIManager.h>
 
@@ -27,7 +28,67 @@ namespace spades {
 		using ui::UIElement;
 		using ui::UIManager;
 
-		// -- GameOptionsPanel --
+		namespace {
+			// Rows that set several settings together, in the quality preset's
+			// widget: a button per level, and Custom while they match none. The
+			// individual settings stay in Advanced. Static: the buttons keep
+			// references to them.
+			const std::vector<QualityPreset>& ClassicPresets() {
+				static const std::vector<QualityPreset> p = {
+				  {"Off",
+				   {{"cg_classicWeaponRecoil", "0"},
+				    {"cg_classicSprinting", "0"},
+				    {"cg_classicZoom", "0"},
+				    {"cg_classicPlayerModels", "0"},
+				    {"cg_classicViewWeapon", "0"}}},
+				  {"Recoil",
+				   {{"cg_classicWeaponRecoil", "1"},
+				    {"cg_classicSprinting", "0"},
+				    {"cg_classicZoom", "0"},
+				    {"cg_classicPlayerModels", "0"},
+				    {"cg_classicViewWeapon", "0"}}},
+				  {"Full",
+				   {{"cg_classicWeaponRecoil", "1"},
+				    {"cg_classicSprinting", "1"},
+				    {"cg_classicZoom", "1"},
+				    {"cg_classicPlayerModels", "1"},
+				    {"cg_classicViewWeapon", "1"}}}};
+				return p;
+			}
+			const std::vector<QualityPreset>& ScreenEffectPresets() {
+				static const std::vector<QualityPreset> p = {
+				  {"Off", {{"cg_hurtScreenEffects", "0"}, {"cg_healScreenEffects", "0"}}},
+				  {"On", {{"cg_hurtScreenEffects", "1"}, {"cg_healScreenEffects", "1"}}}};
+				return p;
+			}
+			const std::vector<QualityPreset>& RagdollPresets() {
+				static const std::vector<QualityPreset> p = {
+				  {"Off", {{"cg_ragdoll", "0"}, {"cg_corpseLineCollision", "0"}}},
+				  {"Simple", {{"cg_ragdoll", "1"}, {"cg_corpseLineCollision", "0"}}},
+				  {"Full", {{"cg_ragdoll", "1"}, {"cg_corpseLineCollision", "1"}}}};
+				return p;
+			}
+			const std::vector<QualityPreset>& LensFlarePresets() {
+				static const std::vector<QualityPreset> p = {
+				  {"Off", {{"r_lensFlare", "0"}, {"r_lensFlareDynamic", "0"}}},
+				  {"Sun", {{"r_lensFlare", "1"}, {"r_lensFlareDynamic", "0"}}},
+				  {"Sun and Lights", {{"r_lensFlare", "1"}, {"r_lensFlareDynamic", "1"}}}};
+				return p;
+			}
+
+			// 0 means off (or "smooth" for turning) on several sliders.
+			Formatter ZeroMeans(std::string zero, int digits, std::string suffix) {
+				Formatter f = NumberFormatter(digits, suffix);
+				f.custom = [zero, digits, suffix](float value) -> std::string {
+					if (value <= 0.0F)
+						return zero;
+					return FormatConfigNumber(digits, "", suffix, 1.0F, value);
+				};
+				return f;
+			}
+		} // namespace
+
+		// -- GameOptionsPanel (Gameplay) --
 
 		GameOptionsPanel::GameOptionsPanel(UIManager* manager, const PreferenceViewOptions& options,
 		                                   client::FontManager* fontManager, HeadingNavIndex* nav)
@@ -45,14 +106,30 @@ namespace spades {
 			nameField->removeNewlines = true;
 
 			l.AddHeading(_Tr("Preferences", "Gameplay"));
+			l.SetPlatform(PlatformFlat);
+			l.AddSliderField(_Tr("Preferences", "Field of View"), "cg_fov", 45, 110, 1,
+			                 FOVFormatter());
+			l.AddHelp(_Tr("Preferences", "Vertical: 68 is about 102 degrees across on a 16:9 screen."));
 			l.AddChoiceField(_Tr("Preferences", "Aiming Animation"), "cg_animations",
 			                 {_Tr("Preferences", "FAST"), _Tr("Preferences", "NORMAL"),
 			                  _Tr("Preferences", "OFF")},
 			                 {2, 1, 0});
+			l.SetPlatform(PlatformBoth);
+			l.AddQualityPresetField(_Tr("Preferences", "Classic"), ClassicPresets(),
+			                        {_Tr("Preferences", "Off"), _Tr("Preferences", "Recoil"),
+			                         _Tr("Preferences", "Full")},
+			                        _Tr("Preferences", "Custom"));
+			l.AddHelp(_Tr("Preferences",
+				"How much of the original `AoS 0.75` feel: its recoil only (the default), or "
+				"also its sprinting, zoom, player models and viewmodel. Advanced has each one."));
+
+			l.Advanced();
+			l.SetPlatform(PlatformFlat);
 			l.AddToggleField(_Tr("Preferences", "Full Aim Down Sight"), "cg_trueAimDownSight");
 			l.AddHelp(_Tr("Preferences",
 				"Lets the viewmodel reach full aiming. When off, ADS "
 				"stops halfway (partial / hip-style aim)."));
+			l.SetPlatform(PlatformBoth);
 			l.AddToggleField(_Tr("Preferences", "Classic Weapon Recoil"), "cg_classicWeaponRecoil");
 			l.AddHelp(_Tr("Preferences",
 				"Original `AoS 0.75` recoil (stronger while jumping/moving, especially with "
@@ -61,6 +138,7 @@ namespace spades {
 			l.AddHelp(_Tr("Preferences",
 				"Sprint input stays active even while standing still. When "
 				"off, sprint cancels as soon as you stop moving."));
+			l.SetPlatform(PlatformFlat);
 			l.AddToggleField(_Tr("Preferences", "Classic Zoom"), "cg_classicZoom");
 			l.AddHelp(_Tr("Preferences",
 				"Uses the same zoom level for every weapon, `AoS 0.75` behavior. When off, each "
@@ -69,16 +147,50 @@ namespace spades {
 			l.AddHelp(_Tr("Preferences",
 				"Automatically exits aim down sights after firing (except with the SMG). "
 				"Useful for faster follow-up shots with rifle and shotgun."));
-			l.AddBadgeNew();
+			l.AddToggleField(_Tr("Preferences", "Horizontal FOV"), "cg_horizontalFov");
+			l.AddHelp(_Tr("Preferences",
+				"Applies the FOV value to the horizontal axis instead of the vertical. "
+				"Useful on ultrawide monitors to keep a consistent horizontal view."));
+			l.SetPlatform(PlatformBoth);
+			l.AddToggleField(_Tr("Preferences", "Skip dead players (death cam)"), "cg_skipDeadPlayersWhenDead");
+			l.AddHelp(_Tr("Preferences",
+				"When dead, other dead players will be skipped when cycling through players. When "
+				"off, you can also follow dead players."));
+			l.AddToggleField(_Tr("Preferences", "Save Final Score Screenshot"), "cg_autoScreenshot");
+			l.AddHelp(_Tr("Preferences",
+				"Automatically takes a screenshot of the scoreboard when a team wins."));
+			l.AddToggleField(_Tr("Preferences", "Custom Player Models"), "cg_customPlayerModels");
+			l.AddHelp(_Tr("Preferences",
+				"Draws the model sets a server names. Off: everyone has the usual model."));
 
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Effects"));
 			l.AddToggleField(_Tr("Preferences", "Headshot Gore"), "cg_headshotGore");
+			l.AddToggleField(_Tr("Preferences", "Bullet And Spade Holes In Blocks"),
+			                 "cg_impactMarks");
 			l.AddChoiceField(_Tr("Preferences", "Blood"), "cg_blood",
 			                 {_Tr("Preferences", "MARKS"), _Tr("Preferences", "NORMAL"),
 			                  _Tr("Preferences", "OFF")},
 			                 {2, 1, 0});
-			l.AddToggleField(_Tr("Preferences", "Ragdoll Corpses"), "cg_ragdoll");
-			l.AddToggleField(_Tr("Preferences", "Enhanced Ragdoll Physics"), "cg_corpseLineCollision");
+			l.AddQualityPresetField(_Tr("Preferences", "Ragdoll Corpses"), RagdollPresets(),
+			                        {_Tr("Preferences", "Off"), _Tr("Preferences", "Simple"),
+			                         _Tr("Preferences", "Full")},
+			                        _Tr("Preferences", "Custom"));
+			l.AddChoiceField(_Tr("Preferences", "Particles"), "cg_particles",
+			                 {_Tr("Preferences", "MORE"), _Tr("Preferences", "NORMAL"),
+			                  _Tr("Preferences", "OFF")},
+			                 {2, 1, 0});
+			l.AddQualityPresetField(_Tr("Preferences", "Hurt And Heal Screen Effects"),
+			                        ScreenEffectPresets(),
+			                        {_Tr("Preferences", "Off"), _Tr("Preferences", "On")},
+			                        _Tr("Preferences", "Custom"));
+			l.SetPlatform(PlatformFlat);
+			l.AddChoiceField(_Tr("Preferences", "Camera Shake"), "cg_shake",
+			                 {_Tr("Preferences", "MORE"), _Tr("Preferences", "NORMAL"),
+			                  _Tr("Preferences", "OFF")},
+			                 {2, 1, 0});
+			l.SetPlatform(PlatformBoth);
+			l.Advanced();
 			l.AddChoiceField(_Tr("Preferences", "Bullet Tracers"), "cg_tracers",
 			                 {_Tr("Preferences", "ON"), _Tr("Preferences", "3rd Person"),
 			                  _Tr("Preferences", "OFF")},
@@ -88,19 +200,16 @@ namespace spades {
 			                  _Tr("Preferences", "OFF")},
 			                 {1, 2, 0});
 			l.AddToggleField(_Tr("Preferences", "Eject Bullet Casings"), "cg_ejectBrass");
+			l.AddToggleField(_Tr("Preferences", "Water Splash"), "cg_waterImpact");
 			l.AddToggleField(_Tr("Preferences", "Hurt Screen Effects"), "cg_hurtScreenEffects");
 			l.AddToggleField(_Tr("Preferences", "Heal Screen Effects"), "cg_healScreenEffects");
-			l.AddChoiceField(_Tr("Preferences", "Camera Shake"), "cg_shake",
-			                 {_Tr("Preferences", "MORE"), _Tr("Preferences", "NORMAL"),
-			                  _Tr("Preferences", "OFF")},
-			                 {2, 1, 0});
-			l.AddChoiceField(_Tr("Preferences", "Particles"), "cg_particles",
-			                 {_Tr("Preferences", "MORE"), _Tr("Preferences", "NORMAL"),
-			                  _Tr("Preferences", "OFF")},
-			                 {2, 1, 0});
-			l.AddToggleField(_Tr("Preferences", "Water Splash"), "cg_waterImpact");
+			l.AddToggleField(_Tr("Preferences", "Ragdolls"), "cg_ragdoll");
+			l.AddToggleField(_Tr("Preferences", "Enhanced Ragdoll Physics"), "cg_corpseLineCollision");
+			l.AddToggleField(_Tr("Preferences", "Remove Bodies On Respawn"), "cg_corpseClearOnRespawn");
+			l.AddSliderField(_Tr("Preferences", "Most Bodies At Once"), "cg_corpseHardLimit", 2, 32, 1,
+			                 NumberFormatter(0, ""));
 
-			l.AddHeading(_Tr("Preferences", "Feedbacks"));
+			l.AddHeading(_Tr("Preferences", "Messages"));
 			l.AddChoiceField(_Tr("Preferences", "Center Messages"), "cg_centerMessage",
 			                 {_Tr("Preferences", "NORMAL"), _Tr("Preferences", "LESS")}, {2, 0});
 			l.AddChoiceField(_Tr("Preferences", "Center Messages Size"), "cg_centerMessageSmallFont",
@@ -108,27 +217,15 @@ namespace spades {
 			                 !options.gameActive);
 			l.AddToggleField(_Tr("Preferences", "Ignore Chat Messages"), "cg_ignoreChatMessages");
 			l.AddToggleField(_Tr("Preferences", "Ignore Private Messages"), "cg_ignorePrivateMessages");
-			l.AddSliderField(_Tr("Preferences", "Master Volume"), "s_volume", 0, 100, 1,
-			                 NumberFormatter(0, "%"));
-			l.AddChoiceField(_Tr("Preferences", "Headphone 3D Sound (Next Start)"), "s_hrtf",
-			                 {_Tr("Preferences", "AUTO"), _Tr("Preferences", "ON"),
-			                  _Tr("Preferences", "OFF")},
-			                 {-1, 1, 0});
-			l.AddVolumeSlider(_Tr("Preferences", "Death Camera Volume"), "cg_deathSoundGain");
-			l.AddVolumeSlider(_Tr("Preferences", "Respawn Beep Volume"), "cg_respawnSoundGain");
-			l.AddVolumeSlider(_Tr("Preferences", "Hit Feedback Volume"), "cg_hitFeedbackSoundGain");
-			l.AddVolumeSlider(_Tr("Preferences", "Headshot Feedback Volume"),
-			                  "cg_headshotFeedbackSoundGain");
-			l.AddVolumeSlider(_Tr("Preferences", "Chat Notify Sounds"), "cg_chatBeep");
 			l.AddToggleField(_Tr("Preferences", "Show Alerts"), "cg_alerts");
 			l.AddToggleField(_Tr("Preferences", "Show Server Alerts"), "cg_serverAlert");
-			l.AddVolumeSlider(_Tr("Preferences", "Alert Sounds"), "cg_alertSounds");
 			l.AddToggleField(_Tr("Preferences", "Hit Log"), "cg_hitLog");
 			l.AddHelp(_Tr("Preferences",
 				"Logs each of your hits with the target name, distance, and body "
 				"part. Messages appear in the chat window."));
 			l.AddToggleField(_Tr("Preferences", "Hit Indicator"), "cg_hitIndicator");
 
+			l.SetPlatform(PlatformFlat);
 			l.AddHeading(_Tr("Preferences", "Viewmodel"));
 			l.AddToggleField(_Tr("Preferences", "Weapon Keychains"), "cg_weaponCharms");
 			l.AddHelp(_Tr("Preferences",
@@ -152,41 +249,48 @@ namespace spades {
 				"Uses the original `AoS 0.75` first-person weapon positions and "
 				"animations instead of the new ones."));
 
-			l.AddHeading(_Tr("Preferences", "Misc"));
-			l.AddSliderField(_Tr("Preferences", "Field of View"), "cg_fov", 45, 110, 1,
-			                 FOVFormatter());
-			l.AddToggleField(_Tr("Preferences", "Horizontal FOV"), "cg_horizontalFov");
+			l.FinishLayout();
+		}
+
+		// -- AudioOptionsPanel --
+
+		AudioOptionsPanel::AudioOptionsPanel(UIManager* manager, const PreferenceViewOptions& options,
+		                                     client::FontManager* fontManager, HeadingNavIndex* nav)
+		    : UIElement(manager) {
+			(void)options;
+			layouter = Handle<StandardPreferenceLayouter>::New(this, fontManager);
+			StandardPreferenceLayouter& l = *layouter;
+			l.headingNav = nav;
+
+			l.AddHeading(_Tr("Preferences", "Sound"));
+			l.AddSliderField(_Tr("Preferences", "Master Volume"), "s_volume", 0, 100, 1,
+			                 NumberFormatter(0, "%"));
+			l.AddChoiceField(_Tr("Preferences", "Headphone 3D Sound (Next Start)"), "s_hrtf",
+			                 {_Tr("Preferences", "Auto (headphones)"), _Tr("Preferences", "ON"),
+			                  _Tr("Preferences", "OFF")},
+			                 {-1, 1, 0});
 			l.AddHelp(_Tr("Preferences",
-				"Applies the FOV value to the horizontal axis instead of the vertical. "
-				"Useful on ultrawide monitors to keep a consistent horizontal view."));
+				"Hear where a sound comes from, above and behind too, in headphones. On "
+				"speakers choose Auto or Off."));
+			l.AddVolumeSlider(_Tr("Preferences", "Hit Feedback Volume"), "cg_hitFeedbackSoundGain");
+			l.AddVolumeSlider(_Tr("Preferences", "Headshot Feedback Volume"),
+			                  "cg_headshotFeedbackSoundGain");
+			l.AddToggleField(_Tr("Preferences", "Kill Confirm Sound"), "cg_killConfirmSound");
+			l.AddVolumeSlider(_Tr("Preferences", "Chat Notify Sounds"), "cg_chatBeep");
+			l.AddVolumeSlider(_Tr("Preferences", "Alert Sounds"), "cg_alertSounds");
+
+			l.Advanced();
+			l.AddVolumeSlider(_Tr("Preferences", "Death Camera Volume"), "cg_deathSoundGain");
+			l.AddVolumeSlider(_Tr("Preferences", "Respawn Beep Volume"), "cg_respawnSoundGain");
+			l.AddToggleField(_Tr("Preferences", "Kill Streak Sounds"), "cg_killSounds");
+			l.AddVolumeSlider(_Tr("Preferences", "Kill Streak Volume"), "cg_killSoundsGain");
 			l.AddToggleField(_Tr("Preferences", "Environmental Audio"), "cg_environmentalAudio");
 			l.AddHelp(_Tr("Preferences",
 				"Adds environmental reverb to weapon sounds based on the surroundings. "
 				"When off, gunshots sound more direct and consistent."));
-			l.AddToggleField(_Tr("Preferences", "Skip dead players (death cam)"), "cg_skipDeadPlayersWhenDead");
-			l.AddHelp(_Tr("Preferences",
-				"When dead, other dead players will be skipped when cycling through players. When "
-				"off, you can also follow dead players."));
-			l.AddToggleField(_Tr("Preferences", "Save Final Score Screenshot"), "cg_autoScreenshot");
-			l.AddHelp(_Tr("Preferences",
-				"Automatically takes a screenshot of the scoreboard when a team wins."));
-			l.AddToggleField(_Tr("Preferences", "Debug Hit Detection"), "cg_debugHitTest");
-			l.AddHelp(_Tr("Preferences",
-				"Shows a debug overlay of player hitboxes and bullet impact points "
-				"after each shot. Useful for diagnosing hit registration issues."));
-			l.AddSliderField(_Tr("Preferences", "Hit Debugger Size"), "cg_debugHitTestSize", 64, 256,
-			                 8, NumberFormatter(0, "px"));
-			l.AddControl(_Tr("Preferences", "Toggle Hit Debugger Zoom"), "cg_keyToggleHitTestZoom");
-			l.AddSliderField(_Tr("Preferences", "Hit Debugger Fade Time"), "cg_debugHitTestFadeTime",
-			                 1, 20, 1, NumberFormatter(0, "s"));
-			l.AddToggleField(_Tr("Preferences", "Debug Weapon Spread"), "cg_debugAim");
-			l.AddHelp(_Tr("Preferences",
-				"Draws a visual indicator of the current weapon's spread cone. "
-				"Useful for understanding accuracy while moving, jumping, or aiming."));
-			l.AddToggleField(_Tr("Preferences", "Debug Block Cursor"), "cg_debugBlockCursor");
-			l.AddToggleField(_Tr("Preferences", "Debug Players Hitbox"), "cg_debugPlayerHitboxes");
-			l.AddToggleField(_Tr("Preferences", "Debug Weapon Anchor Points"),
-			                 "cg_debugToolSkinAnchors");
+			l.AddToggleField(_Tr("Preferences", "EAX Reverb (Next Start)"), "s_eax");
+			l.AddSliderField(_Tr("Preferences", "Sounds At Once (Next Start)"), "s_maxPolyphonics",
+			                 16, 256, 8, NumberFormatter(0, ""));
 
 			l.FinishLayout();
 		}
@@ -210,24 +314,37 @@ namespace spades {
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "ON"),
 			                  _Tr("Preferences", "Grenades")},
 			                 {0, 1, 2});
-			l.AddToggleField(_Tr("Preferences", "Show Hover Player Names"), "cg_playerNames");
+			// 2: the player under the crosshair; 1: the same with the distance
+			l.AddChoiceField(_Tr("Preferences", "Player Names"), "cg_playerNames",
+			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Pointed At"),
+			                  _Tr("Preferences", "Pointed At, With Distance")},
+			                 {0, 2, 1});
+			l.Advanced();
 			l.AddToggleField(_Tr("Preferences", "Show Dead Player Names"), "cg_playerNamesDead");
 
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Heads-Up Display"));
 			l.AddToggleField(_Tr("Preferences", "Hide HUD"), "cg_hideHud");
 			l.AddSliderField(_Tr("Preferences", "HUD Color"), "cg_hudColor", 0, 10, 1,
 			                 HUDColorFormatter());
+			l.AddSliderField(_Tr("Preferences", "Chat Height"), "cg_chatHeight", 10, 100, 1,
+			                 NumberFormatter(0, "px"));
+			l.Advanced();
 			l.AddRGBSlider(_Tr("Preferences", "Custom Color"),
 			               {"cg_hudColorR", "cg_hudColorG", "cg_hudColorB"});
+			l.SetPlatform(PlatformFlat);
 			l.AddButtonField(_Tr("Preferences", "HUD Edge Positions"), _Tr("Preferences", "Edit"),
 			                 [this](UIElement& s) { OnEditHUDClicked(s); }, options.gameActive);
+			l.SetPlatform(PlatformBoth);
 			l.AddChoiceField(_Tr("Preferences", "HUD Ammo Style"), "cg_hudAmmoStyle",
 			                 {_Tr("Preferences", "NORMAL"), _Tr("Preferences", "SIMPLE")}, {0, 1});
 			l.AddToggleField(_Tr("Preferences", "Show Tool Hotbar"), "cg_hudHotbar");
 			// The compass also needs the server's permission, so turning this on does
 			// not put one on screen where the server does not allow it.
 			l.AddToggleField(_Tr("Preferences", "Show Compass Bar"), "cg_hudCompassBar");
-			l.AddBadgeNew();
+			l.AddToggleField(_Tr("Preferences", "Show Health Bar"), "cg_hudHealthBar");
+			l.AddToggleField(_Tr("Preferences", "Show Reload Indicator"), "cg_hudReloadIndicator");
+			l.AddToggleField(_Tr("Preferences", "Show Block Palette"), "cg_hudPalette");
 			l.AddChoiceField(_Tr("Preferences", "Show Alive Player Count"), "cg_hudPlayerCount",
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Top"),
 			                  _Tr("Preferences", "Bottom")},
@@ -242,8 +359,6 @@ namespace spades {
 			                 "cg_playerStatsShowPlacedBlocks");
 			l.AddSliderField(_Tr("Preferences", "Player Statistics Height"), "cg_playerStatsHeight",
 			                 0, 100, 1, NumberFormatter(0, "px"));
-			l.AddSliderField(_Tr("Preferences", "Chat Height"), "cg_chatHeight", 10, 100, 1,
-			                 NumberFormatter(0, "px"));
 			l.AddSliderField(_Tr("Preferences", "Chat Fade Time"), "cg_chatFadeTime", 5, 20, 1,
 			                 NumberFormatter(0, "s"));
 			l.AddSliderField(_Tr("Preferences", "Killfeed Height"), "cg_killfeedHeight", 10, 100, 1,
@@ -251,16 +366,22 @@ namespace spades {
 			l.AddSliderField(_Tr("Preferences", "Killfeed Fade Time"), "cg_killfeedFadeTime", 5, 20,
 			                 1, NumberFormatter(0, "s"));
 			l.AddToggleField(_Tr("Preferences", "Killfeed Icons"), "cg_killfeedIcons");
+			l.AddToggleField(_Tr("Preferences", "Kill Distance In The Killfeed"),
+			                 "cg_killfeedDistance");
 			l.AddToggleField(_Tr("Preferences", "Show Dominations"), "cg_killfeedStreaks");
 			l.AddHelp(_Tr("Preferences",
 				"Shows domination and multi-kill streak messages in the killfeed "
 				"(e.g. when you repeatedly kill the same player)."));
 
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Minimap"));
 			l.AddSliderField(_Tr("Preferences", "Minimap Size"), "cg_minimapSize", 128, 256, 8,
 			                 NumberFormatter(0, "px"));
-			l.AddSliderField(_Tr("Preferences", "Minimap Scale Mode"), "cg_minimapScaleMode", 0, 3, 1,
-			                 NumberFormatter(0, ""));
+			l.AddToggleField(_Tr("Preferences", "Circular Minimap"), "cg_minimapCircular");
+			l.AddToggleField(_Tr("Preferences", "Rotating Minimap"), "cg_minimapRotating");
+			l.Advanced();
+			l.AddChoiceField(_Tr("Preferences", "Minimap Zoom"), "cg_minimapScaleMode",
+			                 {"400%", "200%", "100%", "50%"}, {0, 1, 2, 3});
 			l.AddSliderField(_Tr("Preferences", "Minimap Opacity"), "cg_minimapOpacity", 0.1F, 1,
 			                 0.1F, NumberFormatter(1, ""));
 			l.AddToggleField(_Tr("Preferences", "Use Weapon Icons"), "cg_minimapPlayerIcon");
@@ -270,9 +391,10 @@ namespace spades {
 			                  _Tr("Preferences", "Side")},
 			                 {0, 1, 2});
 			l.AddToggleField(_Tr("Preferences", "Show Player Names"), "cg_minimapPlayerNames");
-			l.AddToggleField(_Tr("Preferences", "Circular Minimap"), "cg_minimapCircular");
-			l.AddToggleField(_Tr("Preferences", "Rotating Minimap"), "cg_minimapRotating");
 
+			// The crosshair and the scope reticle: a monitor's
+			l.SetPlatform(PlatformFlat);
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Target"));
 			l.AddTargetPreview();
 			l.AddHeading("");
@@ -280,9 +402,10 @@ namespace spades {
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Default"),
 			                  _Tr("Preferences", "Custom")},
 			                 {0, 1, 2});
-			l.AddToggleField(_Tr("Preferences", "Lines"), "cg_targetLines");
 			l.AddSliderField(_Tr("Preferences", "Color"), "cg_targetColor", 0, 6, 1,
 			                 TargetColorFormatter());
+			l.Advanced();
+			l.AddToggleField(_Tr("Preferences", "Lines"), "cg_targetLines");
 			l.AddRGBSlider(_Tr("Preferences", "Custom Color"),
 			               {"cg_targetColorR", "cg_targetColorG", "cg_targetColorB"});
 			l.AddSliderField(_Tr("Preferences", "Opacity"), "cg_targetAlpha", 0, 255, 1,
@@ -316,15 +439,19 @@ namespace spades {
 			                 4, 1, NumberFormatter(0, "px"));
 			l.AddToggleField(_Tr("Preferences", "T Style"), "cg_targetTStyle");
 
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Scope"));
 			l.AddScopePreview();
 			l.AddHeading("");
-			l.AddChoiceField(_Tr("Preferences", "Reflex Sight"), "cg_reflexScope",
-			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Dot"),
+			l.SetPlatform(PlatformBoth);
+			l.AddChoiceField(_Tr("Preferences", "Sight"), "cg_reflexScope",
+			                 {_Tr("Preferences", "Iron Sights"), _Tr("Preferences", "Red Dot"),
 			                  _Tr("Preferences", "Cross")},
 			                 {0, 3, 4});
-			l.AddSliderField(_Tr("Preferences", "Scope Type"), "cg_pngScope", 0, 3, 1,
+			l.SetPlatform(PlatformFlat);
+			l.AddSliderField(_Tr("Preferences", "Scope Type"), "cg_pngScope", 0, 4, 1,
 			                 ScopeTypeFormatter());
+			l.Advanced();
 			l.AddToggleField(_Tr("Preferences", "Lines"), "cg_scopeLines");
 			l.AddRGBSlider(_Tr("Preferences", "Color"),
 			               {"cg_scopeColorR", "cg_scopeColorG", "cg_scopeColorB"});
@@ -375,6 +502,14 @@ namespace spades {
 			l.headingNav = nav;
 
 			l.AddHeading(_Tr("Preferences", "General"));
+#if defined(__ANDROID__)
+			// A standalone headset's levels are the VR tab's Headset Quality: the
+			// PC's High and Ultra made a Quest too slow to use, menus and all
+			// (testers).
+			l.AddHelp(_Tr("Preferences",
+				"On this headset, set the graphics with Headset Quality, in the VR "
+				"tab: Performance is what it starts with."));
+#else
 			l.AddQualityPresetField(_Tr("Preferences", "Quality Preset"), GetPCQualityPresets(),
 			                        {_Tr("Preferences", "Low"), _Tr("Preferences", "Medium"),
 			                         _Tr("Preferences", "High"), _Tr("Preferences", "Ultra")},
@@ -384,28 +519,67 @@ namespace spades {
 				"effects together. High is the defaults. Changing one of them by "
 				"hand makes it Custom. Anti-aliasing takes effect at the next start, "
 				"the rest at the next map."));
+#endif
+			l.SetPlatform(PlatformFlat);
+			l.AddToggleField(_Tr("Preferences", "Fullscreen (Next Start)"), "r_fullscreen");
+			l.AddChoiceField(_Tr("Preferences", "Vertical Sync (Next Start)"), "r_vsync",
+			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "ON"),
+			                  _Tr("Preferences", "Adaptive")},
+			                 {0, 1, -1});
 			l.AddSliderField(_Tr("Preferences", "Render Scale"), "r_scale", 0.2F, 1, 0.01F,
 			                 NumberFormatter(0, "%", "", 100));
+			l.AddHelp(_Tr("Preferences",
+				"The monitor's picture only. In a headset the eyes' resolution is set "
+				"in the VR tab, Eye Resolution."));
+			{
+				ConfigSlider* fpsSlider = l.AddSliderField(_Tr("Preferences", "FPS Limit"), "cl_fps",
+				                                           0, 300, 1, FPSFormatter());
+				fpsSlider->mapper = [](float v) { return (v < 20) ? 0.0F : v; };
+			}
+			l.SetPlatform(PlatformBoth);
+			l.AddSliderField(_Tr("Preferences", "Exposure"), "r_exposureValue", -18, 18, 0.1F,
+			                 NumberFormatter(1, "EV"));
+
+			l.Advanced();
+			l.SetPlatform(PlatformFlat);
+#if !defined(__ANDROID__) // a headset has only Vulkan
+			l.AddChoiceField(_Tr("Preferences", "Renderer (Next Start)"), "r_vulkan",
+			                 {"Vulkan", "OpenGL"}, {1, 0});
+			l.AddHelp(_Tr("Preferences",
+				"Vulkan is faster and needed for VR. OpenGL is there for a PC whose "
+				"driver has trouble with Vulkan; it needs VR off, in the window that "
+				"opens before the game."));
+#endif
+			l.AddToggleField(_Tr("Preferences", "Use The Monitor's Resolution (Next Start)"),
+			                 "r_videoAutoResolution");
 			l.AddSliderField(_Tr("Preferences", "Render Scaling Filter"), "r_scaleFilter", 0, 2, 1,
 			                 RenderScaleFormatter());
-			l.AddToggleField(_Tr("Preferences", "Rendering Statistics"), "r_debugTiming");
-			l.AddToggleField(_Tr("Preferences", "Allow CPU Rendering"), "r_allowSoftwareRendering");
-			l.AddHelp(_Tr("Preferences",
-				"Allows OpenGL to fall back to a software implementation if no "
-				"GPU is available. Very slow; mainly useful on Linux. Prefer the "
-				"dedicated Software renderer instead."));
+			l.SetPlatform(PlatformBoth);
+
+			l.AddHeading(_Tr("Preferences", "Detail"));
+			l.AddChoiceField(_Tr("Preferences", "Anti-Aliasing, MSAA (Next Start)"),
+			                 "r_multisamples",
+			                 {_Tr("Preferences", "OFF"), "2x", "4x", "8x"}, {0, 2, 4, 8});
+			l.AddToggleField(_Tr("Preferences", "FXAA Anti-Aliasing"), "r_fxaa");
+			l.AddToggleField(_Tr("Preferences", "Temporal Anti-Aliasing"), "r_temporalAA");
+			l.AddChoiceField(_Tr("Preferences", "Shadow Detail"), "r_shadowMapSize",
+			                 {"1024", "2048", "4096"}, {1024, 2048, 4096});
+			l.AddToggleField(_Tr("Preferences", "Model Shadows"), "r_modelShadows");
+			l.AddChoiceField(_Tr("Preferences", "Texture Filtering"), "r_maxAnisotropy",
+			                 {"1x", "4x", "8x", "16x"}, {1, 4, 8, 16});
+			l.AddChoiceField(_Tr("Preferences", "Water"), "r_water",
+			                 {_Tr("Preferences", "OFF"), "1", "2", "3"}, {0, 1, 2, 3});
+			l.AddToggleField(_Tr("Preferences", "Ambient Occlusion (SSAO)"), "r_ssao");
+			l.AddToggleField(_Tr("Preferences", "Global Illumination"), "r_radiosity");
+			l.AddToggleField(_Tr("Preferences", "Physically Based Lighting"), "r_physicalLighting");
+			l.AddChoiceField(_Tr("Preferences", "Volumetric Fog"), "r_fogShadow",
+			                 {_Tr("Preferences", "OFF"), "1", "2"}, {0, 1, 2});
+			l.AddToggleField(_Tr("Preferences", "Soft Particles"), "r_softParticles");
+			l.AddToggleField(_Tr("Preferences", "Linear HDR Rendering"), "r_hdr");
 
 			l.AddHeading(_Tr("Preferences", "World"));
 			l.AddToggleField(_Tr("Preferences", "Dynamic Lights"), "r_dlights");
 			l.AddToggleField(_Tr("Preferences", "Tracers Lights"), "cg_tracerLights");
-			l.AddToggleField(_Tr("Preferences", "Depth Prepass"), "r_depthPrepass");
-			l.AddHelp(_Tr("Preferences",
-				"Fills the depth buffer before shading so hidden pixels can be "
-				"skipped. Usually improves performance. Forced on when SSAO is enabled."));
-			l.AddToggleField(_Tr("Preferences", "Occlusion Querying"), "r_occlusionQuery");
-			l.AddHelp(_Tr("Preferences",
-				"Uses GPU occlusion queries when rendering water to skip it when "
-				"fully hidden. Can improve FPS, but may crash some drivers."));
 			l.AddToggleField(_Tr("Preferences", "Object Outlines"), "r_outlines");
 			l.AddHelp(_Tr("Preferences",
 				"Draws cartoon-style outlines around players and map."));
@@ -421,24 +595,20 @@ namespace spades {
 				"for an outline to be drawn. Lower draws more outlines. Vulkan renderer only."));
 
 			l.AddHeading(_Tr("Preferences", "Post-processing"));
+			l.AddToggleField(_Tr("Preferences", "Bloom"), "r_bloom");
+			l.AddQualityPresetField(_Tr("Preferences", "Lens Flares"), LensFlarePresets(),
+			                        {_Tr("Preferences", "Off"), _Tr("Preferences", "Sun"),
+			                         _Tr("Preferences", "Sun + Lights")},
+			                        _Tr("Preferences", "Custom"));
+			l.SetPlatform(PlatformFlat);
 			l.AddToggleField(_Tr("Preferences", "Depth Of Field"), "r_depthOfField");
 			l.AddToggleField(_Tr("Preferences", "Camera Blur"), "r_cameraBlur");
-			l.AddToggleField(_Tr("Preferences", "FXAA Anti-Aliasing"), "r_fxaa");
-			l.AddToggleField(_Tr("Preferences", "Lens Flares"), "r_lensFlare");
-			l.AddToggleField(_Tr("Preferences", "Flares Lights"), "r_lensFlareDynamic");
+			l.SetPlatform(PlatformBoth);
 			l.AddToggleField(_Tr("Preferences", "Color Correction"), "r_colorCorrection");
 			l.AddSliderField(_Tr("Preferences", "Sharpening"), "r_sharpen", 0, 1, 0.1F,
 			                 NumberFormatter(1, ""));
 			l.AddSliderField(_Tr("Preferences", "Saturation"), "r_saturation", 0, 2, 0.1F,
 			                 NumberFormatter(1, ""));
-			l.AddSliderField(_Tr("Preferences", "Exposure"), "r_exposureValue", -18, 18, 0.1F,
-			                 NumberFormatter(1, "EV"));
-
-			l.AddHeading(_Tr("Preferences", "Software Renderer"));
-			l.AddSliderField(_Tr("Preferences", "Thread Count"), "r_swNumThreads", 1, 16, 1,
-			                 NumberFormatter(0, _Tr("Preferences", " Threads")));
-			l.AddSliderField(_Tr("Preferences", "Undersampling"), "r_swUndersampling", 0, 4, 1,
-			                 NumberFormatter(0, "x"));
 
 			l.FinishLayout();
 		}
@@ -452,86 +622,130 @@ namespace spades {
 			layouter = Handle<StandardPreferenceLayouter>::New(this, fontManager);
 			StandardPreferenceLayouter& l = *layouter;
 			l.headingNav = nav;
-
-			// 0 means off (or "smooth" for turning) on several sliders.
-			auto zeroMeans = [](std::string zero, int digits, std::string suffix) {
-				Formatter f = NumberFormatter(digits, suffix);
-				f.custom = [zero, digits, suffix](float value) -> std::string {
-					if (value <= 0.0F)
-						return zero;
-					return FormatConfigNumber(digits, "", suffix, 1.0F, value);
-				};
-				return f;
-			};
+			l.SetPlatform(PlatformVR);
 			const std::string restart = _Tr("Preferences", " (restart)");
 
 			l.AddHeading(_Tr("Preferences", "Movement and Comfort"));
+			// The first-time setup (VRSetupScreen), shown again at the main menu
+			l.AddButtonField(_Tr("Preferences", "First-Time VR Setup"), _Tr("Preferences", "Show Again"),
+			                 [](ui::UIElement&) {
+				                 Settings::ItemHandle("vr_setupDone", nullptr) = 0;
+			                 });
+			l.AddHelp(_Tr("Preferences", "Shows the first-time choices (hand, standing or seated, "
+			                             "turning, vignette) again at the main menu."));
 			l.AddSliderField(_Tr("Preferences", "Turning"), "vr_snapTurn", 0, 90, 15,
-			                 zeroMeans(_Tr("Preferences", "Smooth"), 0, "\xc2\xb0 snap"));
+			                 ZeroMeans(_Tr("Preferences", "Smooth"), 0, "\xc2\xb0 snap"));
+			l.AddSliderField(_Tr("Preferences", "Comfort Vignette"), "vr_vignette", 0, 1, 0.1F,
+			                 ZeroMeans(_Tr("Preferences", "Off"), 1, ""));
+			l.AddToggleField(_Tr("Preferences", "Seated"), "vr_seated");
+			l.AddSliderField(_Tr("Preferences", "World Scale"), "vr_worldScale", 1.0F, 2.0F, 0.05F,
+			                 NumberFormatter(2, _Tr("Preferences", " blocks/m")));
+			l.Advanced();
 			l.AddSliderField(_Tr("Preferences", "Smooth Turn Speed"), "vr_smoothTurnSpeed", 60, 360,
 			                 30, NumberFormatter(0, "\xc2\xb0/s"));
 			l.AddToggleField(_Tr("Preferences", "Comfort Camera When Dead"), "vr_comfortCamera");
-			l.AddSliderField(_Tr("Preferences", "Comfort Vignette"), "vr_vignette", 0, 1, 0.1F,
-			                 zeroMeans(_Tr("Preferences", "Off"), 1, ""));
+			l.AddToggleField(_Tr("Preferences", "Red Edge When Hit"), "vr_hurtEdge");
+			l.AddToggleField(_Tr("Preferences", "Keyboard Stands On Its Own (Grip To Move)"),
+			                 "vr_keyboardDetached");
 			l.AddToggleField(_Tr("Preferences", "Walking In The Room Moves You"), "vr_roomScale");
 			l.AddToggleField(_Tr("Preferences", "Controllers Only (No Keyboard Or Mouse)"),
 			                 "vr_controllersOnly");
-			l.AddToggleField(_Tr("Preferences", "Seated"), "vr_seated");
 			l.AddToggleField(_Tr("Preferences", "Hold The Stick In To Sprint"), "vr_sprintHold");
 			l.AddSliderField(_Tr("Preferences", "Crouch When Head Drops"), "vr_crouchAt", 0.15F,
 			                 0.6F, 0.05F, NumberFormatter(2, " m"));
-			l.AddSliderField(_Tr("Preferences", "World Scale"), "vr_worldScale", 1.0F, 2.0F, 0.05F,
-			                 NumberFormatter(2, _Tr("Preferences", " blocks/m")));
+			l.AddToggleField(_Tr("Preferences", "Swap The Sticks"), "vr_swapSticks");
+			l.AddHelp(_Tr("Preferences", "Walk with the gun hand's stick and turn with the other's."));
+			l.AddToggleField(_Tr("Preferences", "Hand Tracking In The Menus") + restart,
+			                 "vr_handTracking");
 
-			l.AddHeading(_Tr("Preferences", "Hands and Tools"));
+			l.Simple();
+			l.AddToggleField(_Tr("Preferences", "Spectate On A Table"), "vr_tableWhenSpectating");
+			l.AddHelp(_Tr("Preferences", "Spectating or watching a demo starts with the whole map "
+			                             "as a model in front of you. The left stick click turns "
+			                             "it on and off."));
+
+						l.AddHeading(_Tr("Preferences", "Hands and Tools"));
 			l.AddToggleField(_Tr("Preferences", "Left Handed"), "vr_leftHanded");
-			l.AddSliderField(_Tr("Preferences", "Gun Angle"), "vr_aimTilt", -10, 40, 1,
-			                 NumberFormatter(0, _Tr("Preferences", "\xc2\xb0 down")));
-			l.AddToggleField(_Tr("Preferences", "Laser Pointer"), "vr_laser");
-			l.AddToggleField(_Tr("Preferences", "Solid Tools"), "vr_toolCollision");
-			l.AddSliderField(_Tr("Preferences", "Aim Smoothing"), "vr_aimSmooth", 0, 1, 0.1F,
-			                 zeroMeans(_Tr("Preferences", "Off"), 1, ""));
+			l.AddToggleField(_Tr("Preferences", "Holsters On Your Body"), "vr_holsters");
+			l.AddHelp(_Tr("Preferences", "Squeeze the grip over a shoulder (gun, spade) or at a hip "
+			                             "(blocks, grenades) to take that tool."));
+			l.AddToggleField(_Tr("Preferences", "Grenades And Blocks On Your Belt"), "vr_holsterItems");
+			l.AddSliderField(_Tr("Preferences", "Hip Height"), "vr_hipHeight", -30, 30, 1,
+			                 NumberFormatter(0, " cm"));
+			l.AddHelp(_Tr("Preferences",
+				"Moves where the blocks and grenades are on your hips up or down, from "
+				"where your height puts them: up if your hand finds them low, down if "
+				"it takes them while you dig or build."));
 			l.AddToggleField(_Tr("Preferences", "Reload By Hand (Magazine From The Belt)"),
 			                 "vr_reloadGesture");
+			l.AddToggleField(_Tr("Preferences", "Laser Pointer"), "vr_laser");
+			l.Advanced();
+			l.AddToggleField(_Tr("Preferences", "Holsters Turn With Your Head"), "vr_holsterFollow");
+			l.AddHelp(_Tr("Preferences", "Off: the holsters face your body's way, so you can look "
+			                             "aside while you reach for one. On: they turn with every "
+			                             "turn of your head."));
+			l.AddSliderField(_Tr("Preferences", "Gun Angle"), "vr_aimTilt", -10, 40, 1,
+			                 NumberFormatter(0, _Tr("Preferences", "\xc2\xb0 down")));
+			l.AddToggleField(_Tr("Preferences", "Rifle Scope"), "vr_scope");
+			l.AddToggleField(_Tr("Preferences", "Solid Tools"), "vr_toolCollision");
+			l.AddSliderField(_Tr("Preferences", "Aim Smoothing"), "vr_aimSmooth", 0, 1, 0.1F,
+			                 ZeroMeans(_Tr("Preferences", "Off"), 1, ""));
+			l.AddToggleField(_Tr("Preferences", "Hold The Gun In Both Hands"), "vr_twoHandedGrip");
+			l.AddToggleField(_Tr("Preferences", "Brace The Gun On Your Shoulder"), "vr_shoulderStock");
 			l.AddToggleField(_Tr("Preferences", "X And Y Switch Tools (Instead Of Colour And Map)"),
 			                 "vr_toolButtons");
-			l.AddToggleField(_Tr("Preferences", "Rifle Scope"), "vr_scope");
-			// The same setting as the monitor's: any choice but off puts the
-			// reflex sight on every gun in the hand, its dot at infinity.
-			l.AddChoiceField(_Tr("Preferences", "Reflex Sight"), "cg_reflexScope",
-			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "Dot"),
-			                  _Tr("Preferences", "Cross")},
-			                 {0, 3, 4});
+			l.AddToggleField(_Tr("Preferences", "Strike Blocks With The Spade's Tip"),
+			                 "vr_spadeContact");
 			l.AddSliderField(_Tr("Preferences", "Swing Spade To Hit"), "vr_swingSpeed", 0, 5, 0.25F,
-			                 zeroMeans(_Tr("Preferences", "Off"), 2, " m/s"));
+			                 ZeroMeans(_Tr("Preferences", "Off"), 2, " m/s"));
 			l.AddSliderField(_Tr("Preferences", "Full Grenade Throw"), "vr_throwSpeed", 2, 10, 0.5F,
 			                 NumberFormatter(1, " m/s"));
 
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Body"));
 			l.AddToggleField(_Tr("Preferences", "Show Your Body"), "vr_showBody");
+			l.AddChoiceField(_Tr("Preferences", "Body Mirror"), "vr_bodyMirror",
+			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "In Menus"),
+			                  _Tr("Preferences", "Always")},
+			                 {0, 1, 2});
+			l.AddHelp(_Tr("Preferences",
+				"Your body, reflected beside the menu: where the gun and spade sit on your "
+				"shoulders and the grenades and blocks on your belt, your arms as you move "
+				"them. Change Hip Height or the body settings and watch it change."));
+			l.Advanced();
 			l.AddChoiceField(_Tr("Preferences", "Your Arms"), "vr_showArms",
 			                 {_Tr("Preferences", "HANDS"), _Tr("Preferences", "FOREARMS"),
 			                  _Tr("Preferences", "WHOLE ARMS")},
 			                 {0, 1, 2});
 
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "HUD"));
 			l.AddToggleField(_Tr("Preferences", "HUD On The Wrist"), "vr_wristHud");
-			l.AddToggleField(_Tr("Preferences", "Hold The Big Map In Your Hand"), "vr_heldMap");
-			l.AddSliderField(_Tr("Preferences", "Wrist Panel Width"), "vr_wristWidth", 0.12F, 0.4F,
-			                 0.02F, NumberFormatter(2, " m"));
 			l.AddSliderField(_Tr("Preferences", "Menu Panel Distance"), "vr_hudDistance", 0.8F, 3.0F,
 			                 0.1F, NumberFormatter(1, " m"));
-			l.AddSliderField(_Tr("Preferences", "Menu Panel Width"), "vr_hudWidth", 0.8F, 3.0F, 0.1F,
-			                 NumberFormatter(1, " m"));
 			l.AddSliderField(_Tr("Preferences", "Text Size"), "vr_uiWidth", 960, 1920, 160,
 			                 NumberFormatter(0, _Tr("Preferences", " px wide, less is bigger") +
 			                                      restart));
+			l.Advanced();
+			l.AddToggleField(_Tr("Preferences", "Hold The Big Map In Your Hand"), "vr_heldMap");
+			l.AddChoiceField(_Tr("Preferences", "Kill Feed"), "vr_killfeed",
+			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "In Front"),
+			                  _Tr("Preferences", "On The Wrist")},
+			                 {0, 1, 2});
+			l.AddSliderField(_Tr("Preferences", "Wrist Panel Width"), "vr_wristWidth", 0.12F, 0.4F,
+			                 0.02F, NumberFormatter(2, " m"));
+			l.AddSliderField(_Tr("Preferences", "Menu Panel Width"), "vr_hudWidth", 0.8F, 3.0F, 0.1F,
+			                 NumberFormatter(1, " m"));
 			l.AddToggleField(_Tr("Preferences", "Frame Rate On The Wrist"), "vr_showFps");
+			l.AddToggleField(_Tr("Preferences", "A Map Behind The Menus"), "vr_menuScene");
+			l.AddToggleField(_Tr("Preferences", "Show The Game On The Monitor Too") + restart,
+			                 "vr_mirror");
 
 			l.AddHeading(_Tr("Preferences", "Picture"));
 			l.AddSliderField(_Tr("Preferences", "Brightest Blocks"), "vr_brightness", 0.5F, 1.0F,
 			                 0.05F, NumberFormatter(0, "%" + _Tr("Preferences", " (next map)"), "", 100));
 
+			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Performance"));
 			l.AddQualityPresetField(_Tr("Preferences", "Headset Quality"),
 			                        GetHeadsetQualityPresets(),
@@ -545,6 +759,16 @@ namespace spades {
 				"colour correction; Quality soft particles, for a Quest 3 or a PC. "
 				"On a PC it changes the Graphics tab too. Takes effect at the next "
 				"map (anti-aliasing and both eyes in one pass at the next start)."));
+			l.AddChoiceField(_Tr("Preferences", "Refresh Rate"), "vr_refreshRate",
+			                 {_Tr("Preferences", "Headset's Own"), "72 Hz", "80 Hz", "90 Hz",
+			                  "120 Hz"},
+			                 {0, 72, 80, 90, 120});
+			l.AddHelp(_Tr("Preferences",
+				"How many pictures a second the headset shows. Higher is smoother, and "
+				"leaves less time for each: a Quest 3 holds 90 Hz on Performance; on a "
+				"Quest 2, 72 Hz is the safe choice. A rate the headset does not offer "
+				"takes the nearest below it."));
+			l.Advanced();
 			l.AddToggleField(_Tr("Preferences", "Extra Processing Power"), "vr_performanceBoost");
 			l.AddHelp(_Tr("Preferences",
 				"Asks a standalone headset to keep its processor and graphics at "
@@ -571,17 +795,20 @@ namespace spades {
 			layouter = Handle<StandardPreferenceLayouter>::New(this, fontManager);
 			StandardPreferenceLayouter& l = *layouter;
 			l.headingNav = nav;
+			// Keyboard and mouse: a monitor's (a headset has Controls, Change
+			// Buttons in the game's menu)
+			l.SetPlatform(PlatformFlat);
 
-			l.AddHeading(_Tr("Preferences", "Weapons/Tools"));
-			l.AddControl(_Tr("Preferences", "Attack"), "cg_keyAttack");
-			l.AddControl(_Tr("Preferences", "Alt. Attack"), "cg_keyAltAttack");
-			l.AddToggleField(_Tr("Preferences", "Hold Aim Down Sight"), "cg_holdAimDownSight");
-			l.AddSliderField(_Tr("Preferences", "Mouse Sensitivity Type"), "cg_mouseSensScale", 0, 5,
-			                 1, SensScaleFormatter());
+			l.AddHeading(_Tr("Preferences", "Mouse"));
 			l.AddSliderField(_Tr("Preferences", "Mouse Sensitivity"), "cg_mouseSensitivity", 0.1F, 10,
 			                 0.1F, NumberFormatter(1, ""));
 			l.AddSliderField(_Tr("Preferences", "ADS Mouse Sens. Scale"), "cg_zoomedMouseSensScale",
 			                 0.05F, 3, 0.05F, NumberFormatter(2, "x"));
+			l.AddToggleField(_Tr("Preferences", "Invert Y-axis Mouse Input"), "cg_invertMouseY");
+			l.AddToggleField(_Tr("Preferences", "Hold Aim Down Sight"), "cg_holdAimDownSight");
+			l.Advanced();
+			l.AddSliderField(_Tr("Preferences", "Mouse Sensitivity Type"), "cg_mouseSensScale", 0, 5,
+			                 1, SensScaleFormatter());
 			l.AddToggleField(_Tr("Preferences", "Mouse Acceleration"), "cg_mouseAccel");
 			l.AddHelp(_Tr("Preferences",
 				"Scales mouse sensitivity by movement speed. Fast flicks turn more, "
@@ -592,7 +819,11 @@ namespace spades {
 				"Curve strength. Above 1.0 dampens slow movements, "
 				"below 1.0 boosts them. Requires `{0}`.",
 				_Tr("Preferences", "Mouse Acceleration")));
-			l.AddToggleField(_Tr("Preferences", "Invert Y-axis Mouse Input"), "cg_invertMouseY");
+
+			l.Simple();
+			l.AddHeading(_Tr("Preferences", "Weapons/Tools"));
+			l.AddControl(_Tr("Preferences", "Attack"), "cg_keyAttack");
+			l.AddControl(_Tr("Preferences", "Alt. Attack"), "cg_keyAltAttack");
 			l.AddControl(_Tr("Preferences", "Reload"), "cg_keyReloadWeapon");
 			l.AddControl(_Tr("Preferences", "Equip Spade"), "cg_keyToolSpade");
 			l.AddControl(_Tr("Preferences", "Equip Block"), "cg_keyToolBlock");
@@ -619,9 +850,6 @@ namespace spades {
 			l.AddControl(_Tr("Preferences", "Navigate right"), "cg_keyPaletteRight");
 			l.AddControl(_Tr("Preferences", "Toggle extended palette"), "cg_keyExtendedPalette");
 
-			l.AddHeading(_Tr("Preferences", "Model Editor"));
-			l.AddControl(_Tr("Preferences", "Delete"), "cg_keyDelete");
-
 			l.AddHeading(_Tr("Preferences", "Misc"));
 			l.AddControl(_Tr("Preferences", "Scoreboard"), "cg_keyScoreboard");
 			l.AddToggleField(_Tr("Preferences", "Hold Large Map"), "cg_holdMapZoom");
@@ -633,32 +861,36 @@ namespace spades {
 			l.AddControl(_Tr("Preferences", "Chat Log"), "cg_keyChatLog");
 			l.AddControl(_Tr("Preferences", "Chat Zoom"), "cg_keyZoomChatLog");
 			l.AddControl(_Tr("Preferences", "Pie Menu"), "cg_keyPieMenu");
-			l.AddBadgeNew();
 			l.AddControl(_Tr("Preferences", "Show Teammates"), "cg_keyTeamOverlay");
 			l.AddHelp(_Tr("Preferences",
 				"Hold to show teammates through walls (team ESP). "
 				"Only works on servers that allow it."));
-			l.AddBadgeNew();
 			l.AddControl(_Tr("Preferences", "Team Ping"), "cg_keyTeamPing");
 			l.AddHelp(_Tr("Preferences",
 				"Marks a point at the crosshair for your team. "
 				"Requires server support for the teamplay extension."));
-			l.AddBadgeNew();
 			l.AddControl(_Tr("Preferences", "Limbo Menu"), "cg_keyLimbo");
-			l.AddControl(_Tr("Preferences", "Save Map"), "cg_keySaveMap");
-			l.AddControl(_Tr("Preferences", "Save Sceneshot"), "cg_keySceneshot");
 			l.AddControl(_Tr("Preferences", "Save Screenshot"), "cg_keyScreenshot");
 			l.AddControl(_Tr("Preferences", "Master Volume Up"), "cg_keyVolumeUp");
 			l.AddControl(_Tr("Preferences", "Master Volume Down"), "cg_keyVolumeDown");
+			l.Advanced();
+			l.AddControl(_Tr("Preferences", "Save Map"), "cg_keySaveMap");
+			l.AddControl(_Tr("Preferences", "Save Sceneshot"), "cg_keySceneshot");
+			l.AddControl(_Tr("Preferences", "Toggle HUD"), "cg_keyToggleHud");
 			l.AddControl(_Tr("Preferences", "Network Graph"), "cg_keyNetgraph");
 			l.AddControl(_Tr("Preferences", "Force Spectator Mode"), "cg_keyStaffSpectating");
 			l.AddHelp(_Tr("Preferences",
 				"Toggles staff spectator mode. Lets you free-cam and follow players "
 				"without leaving your team (intended for admins/staff)."));
+			l.AddControl(_Tr("Preferences", "Spectator Zoom"), "cg_keySpectatorZoom");
+
+			l.AddHeading(_Tr("Preferences", "Model Editor"));
+			l.AddControl(_Tr("Preferences", "Delete"), "cg_keyDelete");
+
 			l.FinishLayout();
 		}
 
-		// -- MiscOptionsPanel --
+		// -- MiscOptionsPanel (Demos and updates) --
 
 		MiscOptionsPanel::MiscOptionsPanel(UIManager* manager, const PreferenceViewOptions& options,
 		                                   client::FontManager* fontManager, HeadingNavIndex* nav)
@@ -668,10 +900,56 @@ namespace spades {
 			StandardPreferenceLayouter& l = *layouter;
 			l.headingNav = nav;
 
+			l.AddHeading(_Tr("Preferences", "Demo Recording"));
+			l.AddToggleField(_Tr("Preferences", "Auto Record"), "cg_demoAutoRecord");
+			l.AddHelp(_Tr("Preferences",
+				"Records every game, keeping the newest few, so a moment worth "
+				"keeping or reporting is there afterwards."));
+			l.AddSliderField(_Tr("Preferences", "Max Stored Demos"), "cg_demoMaxFiles", 1, 256, 1,
+			                 NumberFormatter(0, ""));
+			l.SetPlatform(PlatformFlat);
+			l.AddControl(_Tr("Preferences", "Start/Stop Recording"), "cg_keyDemoRecord");
+			l.SetPlatform(PlatformBoth);
+			l.Advanced();
+			l.AddToggleField(_Tr("Preferences", "Auto Delete Old Demos"), "cg_demoAutoPrune");
+
+			l.SetPlatform(PlatformFlat);
+			l.AddHeading(_Tr("Preferences", "Demo Playback"));
+			l.AddControl(_Tr("Preferences", "Pause/Resume"), "cg_keyDemoPlayPause");
+			l.AddControl(_Tr("Preferences", "Speed Up"), "cg_keyDemoSpeedUp");
+			l.AddControl(_Tr("Preferences", "Slow Down"), "cg_keyDemoSlowDown");
+			l.AddControl(_Tr("Preferences", "Seek Forward"), "cg_keyDemoSeekForward");
+			l.AddControl(_Tr("Preferences", "Seek Backward"), "cg_keyDemoSeekBackward");
+			l.AddControl(_Tr("Preferences", "Toggle Demo HUD"), "cg_keyDemoToggleHud");
+			l.SetPlatform(PlatformBoth);
+
+			l.Simple();
+			l.AddHeading(_Tr("Preferences", "Startup and Updates"));
+			l.AddToggleField(_Tr("Preferences", "Enable Startup Window"), "cl_showStartupWindow");
+			l.AddHelp(_Tr("Preferences",
+				"Shows the setup window every time you start the game. When off, goes "
+				"straight to the main menu."));
+			l.AddToggleField(_Tr("Preferences", "Show Update Prompt"), "cl_zsUpdatePrompt");
+			l.AddHelp(_Tr("Preferences",
+				"Shows a notice on the main menu when a newer version is available."));
+
+			l.FinishLayout();
+		}
+
+		// -- AdvancedOptionsPanel: debug, technical and internal switches --
+
+		AdvancedOptionsPanel::AdvancedOptionsPanel(UIManager* manager,
+		                                           const PreferenceViewOptions& options,
+		                                           client::FontManager* fontManager,
+		                                           HeadingNavIndex* nav)
+		    : UIElement(manager) {
+			(void)options;
+			layouter = Handle<StandardPreferenceLayouter>::New(this, fontManager);
+			StandardPreferenceLayouter& l = *layouter;
+			l.headingNav = nav;
+			l.Advanced();
+
 			l.AddHeading(_Tr("Preferences", "General"));
-			ConfigSlider* fpsSlider = l.AddSliderField(_Tr("Preferences", "FPS Limit"), "cl_fps", 0,
-			                                           300, 1, FPSFormatter());
-			fpsSlider->mapper = [](float v) { return (v < 20) ? 0.0F : v; };
 			l.AddSliderField(_Tr("Preferences", "Console Scrollback Lines"),
 			                 "cl_consoleScrollbackLines", 100, 2000, 100, NumberFormatter(0, ""));
 			l.AddInputField(_Tr("Preferences", "Server List URL"), "cl_serverListUrl", true, true);
@@ -685,27 +963,51 @@ namespace spades {
 			                       {"PNG", "JPEG"}, {"png", "jpeg"});
 			l.AddSliderField(_Tr("Preferences", "JPEG Quality"), "core_jpegQuality", 1, 100, 1,
 			                 NumberFormatter(0, "%"));
-			l.AddToggleField(_Tr("Preferences", "Enable Startup Window"), "cl_showStartupWindow");
+			l.AddInputField(_Tr("Preferences", "Map Behind The Menu"), "cg_menuMap", true, true);
 			l.AddHelp(_Tr("Preferences",
-				"Shows the setup window every time you start the game. When off, goes "
-				"straight to the main menu."));
-			l.AddToggleField(_Tr("Preferences", "Show Update Prompt"), "cl_zsUpdatePrompt");
-			l.AddHelp(_Tr("Preferences",
-				"Shows a notice on the main menu when a newer version is available."));
-			l.AddHeading(_Tr("Preferences", "Demo Recording"));
-			l.AddControl(_Tr("Preferences", "Start/Stop Recording"), "cg_keyDemoRecord");
-			l.AddToggleField(_Tr("Preferences", "Auto Record"), "cg_demoAutoRecord");
-			l.AddToggleField(_Tr("Preferences", "Auto Delete Old Demos"), "cg_demoAutoPrune");
-			l.AddSliderField(_Tr("Preferences", "Max Stored Demos"), "cg_demoMaxFiles", 1, 256, 1,
-			                 NumberFormatter(0, ""));
+				"random (a different one each launch), a map in Maps/ by name, "
+				"generated, or Title."));
 
-			l.AddHeading(_Tr("Preferences", "Demo Playback"));
-			l.AddControl(_Tr("Preferences", "Pause/Resume"), "cg_keyDemoPlayPause");
-			l.AddControl(_Tr("Preferences", "Speed Up"), "cg_keyDemoSpeedUp");
-			l.AddControl(_Tr("Preferences", "Slow Down"), "cg_keyDemoSlowDown");
-			l.AddControl(_Tr("Preferences", "Seek Forward"), "cg_keyDemoSeekForward");
-			l.AddControl(_Tr("Preferences", "Seek Backward"), "cg_keyDemoSeekBackward");
-			l.AddControl(_Tr("Preferences", "Toggle Demo HUD"), "cg_keyDemoToggleHud");
+			l.AddHeading(_Tr("Preferences", "Renderer"));
+			l.AddToggleField(_Tr("Preferences", "Rendering Statistics"), "r_debugTiming");
+			l.SetPlatform(PlatformFlat);
+			l.AddToggleField(_Tr("Preferences", "Depth Prepass (OpenGL)"), "r_depthPrepass");
+			l.AddHelp(_Tr("Preferences",
+				"Fills the depth buffer before shading so hidden pixels can be "
+				"skipped. Usually improves performance. Forced on when SSAO is enabled."));
+			l.AddToggleField(_Tr("Preferences", "Occlusion Querying (OpenGL)"), "r_occlusionQuery");
+			l.AddHelp(_Tr("Preferences",
+				"Uses GPU occlusion queries when rendering water to skip it when "
+				"fully hidden. Can improve FPS, but may crash some drivers."));
+			l.AddToggleField(_Tr("Preferences", "Allow CPU Rendering (OpenGL)"),
+			                 "r_allowSoftwareRendering");
+			l.AddHelp(_Tr("Preferences",
+				"Allows OpenGL to fall back to a software implementation if no "
+				"GPU is available. Very slow; mainly useful on Linux."));
+			l.AddSliderField(_Tr("Preferences", "Software Renderer Threads"), "r_swNumThreads", 1, 16,
+			                 1, NumberFormatter(0, _Tr("Preferences", " Threads")));
+			l.AddSliderField(_Tr("Preferences", "Software Renderer Undersampling"),
+			                 "r_swUndersampling", 0, 4, 1, NumberFormatter(0, "x"));
+			l.SetPlatform(PlatformBoth);
+
+			l.AddHeading(_Tr("Preferences", "Debug"));
+			l.AddToggleField(_Tr("Preferences", "Debug Hit Detection"), "cg_debugHitTest");
+			l.AddHelp(_Tr("Preferences",
+				"Shows a debug overlay of player hitboxes and bullet impact points "
+				"after each shot. Useful for diagnosing hit registration issues."));
+			l.AddSliderField(_Tr("Preferences", "Hit Debugger Size"), "cg_debugHitTestSize", 64, 256,
+			                 8, NumberFormatter(0, "px"));
+			l.AddControl(_Tr("Preferences", "Toggle Hit Debugger Zoom"), "cg_keyToggleHitTestZoom");
+			l.AddSliderField(_Tr("Preferences", "Hit Debugger Fade Time"), "cg_debugHitTestFadeTime",
+			                 1, 20, 1, NumberFormatter(0, "s"));
+			l.AddToggleField(_Tr("Preferences", "Debug Weapon Spread"), "cg_debugAim");
+			l.AddHelp(_Tr("Preferences",
+				"Draws a visual indicator of the current weapon's spread cone. "
+				"Useful for understanding accuracy while moving, jumping, or aiming."));
+			l.AddToggleField(_Tr("Preferences", "Debug Block Cursor"), "cg_debugBlockCursor");
+			l.AddToggleField(_Tr("Preferences", "Debug Players Hitbox"), "cg_debugPlayerHitboxes");
+			l.AddToggleField(_Tr("Preferences", "Debug Weapon Anchor Points"),
+			                 "cg_debugToolSkinAnchors");
 
 			l.FinishLayout();
 		}

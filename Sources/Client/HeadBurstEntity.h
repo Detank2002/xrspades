@@ -48,6 +48,7 @@ namespace spades {
 				float life;     // seconds left before this chunk disappears
 				int modelIndex;
 				bool splatDone; // blood already drawn on the first impact
+				bool resting = false; // lying still: no longer moved
 			};
 			std::vector<Chunk> chunks;
 

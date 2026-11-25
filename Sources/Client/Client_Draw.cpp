@@ -348,8 +348,8 @@ namespace spades {
 			renderer->DrawOutlinedRect(lineX - 1, barY - lineH - 1, lineX + lineW + 1, barY + barH + lineH + 1);
 
 			// draw status playing/paused
-			Handle<IImage> playIcon = renderer->RegisterImage("Gfx/Demo/Play.png");
-			Handle<IImage> pauseIcon = renderer->RegisterImage("Gfx/Demo/Pause.png");
+			Handle<IImage> playIcon = renderer->RegisterImage("Gfx/UI/Play.png");
+			Handle<IImage> pauseIcon = renderer->RegisterImage("Gfx/UI/Pause.png");
 			const float iconX = statusX;
 			const float iconY = barY + (barH - statusIconSize) * 0.5F;
 			renderer->SetColorAlphaPremultiplied(white);
@@ -523,7 +523,7 @@ namespace spades {
 			);
 
 			// draw player icon
-			img = renderer->RegisterImage("Gfx/User.png");
+			img = renderer->RegisterImage("Gfx/IconUser.png");
 			float iconSize = 12.0F;
 			float iconSpacing = 5.0F;
 			pos.x = x - (teamBarW * 0.5F) - (iconSize * 0.5F);
@@ -1182,12 +1182,9 @@ namespace spades {
 
 			// Sized against the screen height, like the chevron, and kept inside a
 			// margin so a ping just off the edge still tells you which way to look.
-			// (In an eye, well inside its picture: the edges of an eye's image are
-			// past what that eye's lens shows.)
+			// (In an eye, held by direction from the head instead: see below.)
 			float sz = Clamp(sh * 0.014F, 10.0F, 26.0F);
 			float margin = sz * 2.0F;
-			if (vrEyeOverlayPass)
-				margin = std::max(margin, std::min(sw, sh) * 0.22F);
 
 			// What is left of a marker the player is facing: enough to keep the callout
 			// on screen without hiding what it points at. Down the sights it thins
@@ -1217,7 +1214,35 @@ namespace spades {
 
 				Vector2 scrPos;
 				bool onScreen = false;
-				if (forward > 0.0F && Project(ping.position, scrPos)) {
+				if (vrEyeOverlayPass) {
+					// In a headset, each eye pinned it to its own picture's edge,
+					// and the two edges are not in the same place: the eyes saw two
+					// markers they could not fuse, and mostly one (testers). Here
+					// the marker is held by direction from the head instead: within
+					// 30 degrees of where you look it is where the ping is; further
+					// off, on that 30 degree ring, 4m out, the same point in both
+					// eyes. The ring is well inside what the lenses show.
+					const Vector3 headAt = vrRig.camera;
+					const Vector3 fwd = vrRig.headAxes[0];
+					Vector3 to = ping.position - headAt;
+					const float len = to.GetLength();
+					Vector3 dir = len > 1.0E-3F ? to * (1.0F / len) : fwd;
+					const float c = Vector3::Dot(dir, fwd);
+					const float ring = 30.0F * 0.0174532925F;
+					Vector3 at = ping.position;
+					if (c < std::cos(ring)) {
+						Vector3 side = dir - fwd * c;
+						if (side.GetLength() < 1.0E-3F)
+							side = vrRig.headAxes[2]; // straight behind: below
+						side = side.Normalize();
+						at = headAt + (fwd * std::cos(ring) + side * std::sin(ring)) *
+						                (4.0F * (vrTable.active ? vrTable.pose.scale : vrRig.scale));
+					} else {
+						onScreen = true;
+					}
+					if (!Project(at, scrPos))
+						continue;
+				} else if (forward > 0.0F && Project(ping.position, scrPos)) {
 					onScreen = scrPos.x >= margin && scrPos.x <= sw - margin &&
 							   scrPos.y >= margin && scrPos.y <= sh - margin;
 				} else {
@@ -1232,8 +1257,10 @@ namespace spades {
 					scrPos = MakeVector2(sw * 0.5F, sh * 0.5F) + dir * (sh * 0.5F);
 				}
 
-				scrPos.x = Clamp(scrPos.x, margin, sw - margin);
-				scrPos.y = Clamp(scrPos.y, margin, sh - margin);
+				if (!vrEyeOverlayPass) {
+					scrPos.x = Clamp(scrPos.x, margin, sw - margin);
+					scrPos.y = Clamp(scrPos.y, margin, sh - margin);
+				}
 
 				// A marker stands between the player and the thing it points at — often
 				// the marked enemy it was placed on — so it gets out of the way as the
@@ -1243,7 +1270,12 @@ namespace spades {
 				// still legible, the copies on any other surface the ping asked for are
 				// untouched, and it is back in full the moment the aim moves off.
 				if (onScreen) {
-					float dist = (scrPos - MakeVector2(sw, sh) * 0.5F).GetLength();
+					// Where you look: the middle of the screen, or in an eye where
+					// the head's forward lands in it (not its picture's middle)
+					Vector2 aimAt = MakeVector2(sw, sh) * 0.5F;
+					if (vrEyeOverlayPass)
+						Project(vrRig.camera + vrRig.headAxes[0] * (10.0F * vrRig.scale), aimAt);
+					float dist = (scrPos - aimAt).GetLength();
 					alpha *= Mix(facedAlpha, 1.0F,
 								 SmoothStep(Clamp((dist - sz * 0.5F) / sz, 0.0F, 1.0F)));
 					if (alpha <= 0.0F)
@@ -1634,27 +1666,49 @@ namespace spades {
 			Vector4 shadow = MakeVector4(0, 0, 0, 0.7F);
 
 			float lh = 20.0F;
-			auto addLine = [&](const std::string& text) {
-				Vector2 pos = MakeVector2(x, y);
-				y += lh;
-				font.DrawShadow(text, pos, 1.0F, color, shadow);
-			};
+
+			// Collect the lines first so the background can be sized to fit them
+			// before the text is drawn on top of it.
+			std::vector<std::string> lines;
 
 			const auto& weaponType = p.GetWeaponType();
 			int hits = weaponStats.hits[weaponType];
 			int shots = weaponStats.shots[weaponType];
 			int accPerc = int(100.0F * (float(hits) / float(std::max(1, shots))));
-			addLine(_Tr("Client", "Accuracy: {0}%", accPerc));
+			lines.push_back(_Tr("Client", "Accuracy: {0}%", accPerc));
 
 			char buf[32];
 			snprintf(buf, sizeof(buf), "%.3g", curKills / float(std::max(1, curDeaths)));
-			addLine(_Tr("Client", "Kill/Death Ratio: {0}", std::string(buf)));
-			addLine(_Tr("Client", "Kill Streak: {0}, Best: {1}", curStreak, bestStreak));
-			addLine(_Tr("Client", "Melee Kills: {0}", meleeKills));
-			addLine(_Tr("Client", "Grenade Kills: {0}", grenadeKills));
+			lines.push_back(_Tr("Client", "Kill/Death Ratio: {0}", std::string(buf)));
+			lines.push_back(_Tr("Client", "Kill Streak: {0}, Best: {1}", curStreak, bestStreak));
+			lines.push_back(_Tr("Client", "Melee Kills: {0}", meleeKills));
+			lines.push_back(_Tr("Client", "Grenade Kills: {0}", grenadeKills));
 
 			if (cg_playerStatsShowPlacedBlocks && !activeNet->GetGameProperties()->isGameModeArena)
-				addLine(_Tr("Client", "Blocks Placed: {0}", placedBlocks));
+				lines.push_back(_Tr("Client", "Blocks Placed: {0}", placedBlocks));
+
+			// draw background: solid at the screen edge, fading out across the text
+			{
+				float maxW = 0.0F;
+				for (const auto& line : lines)
+					maxW = std::max(maxW, font.Measure(line).x);
+
+				const float margin = 2.0F;
+				const float fadeEnd = x + maxW + margin;
+				const float top = y - margin;
+
+				const int numLines = static_cast<int>(lines.size() - 1);
+				const float bottom = y + lh * numLines + lh + margin * 2.0F;
+
+				renderer->DrawFilledRectFade(0.0F, top, fadeEnd, bottom,
+					MakeVector4(0, 0, 0, 0.55F), MakeVector4(0, 0, 0, 0), true);
+			}
+
+			// draw text
+			for (const auto& line : lines) {
+				font.DrawOutline(line, MakeVector2(x, y), 1.0F, color, shadow);
+				y += lh;
+			}
 		}
 
 		void Client::DrawAlert() {
@@ -1671,7 +1725,7 @@ namespace spades {
 			float borderFade = (time - alertAppearTime) / 0.5F;
 			borderFade = Clamp(1.0F - borderFade, 0.0F, 1.0F);
 
-			Handle<IImage> alertIcon = renderer->RegisterImage("Gfx/AlertIcon.png");
+			Handle<IImage> alertIcon = renderer->RegisterImage("Gfx/IconAlert.png");
 
 			IFont& font = fontManager->GetGuiFont();
 			Vector2 textSize = font.Measure(alertContents);
@@ -1970,7 +2024,7 @@ namespace spades {
 			if (mode && mode->ModeType() == IGameMode::m_CTF) {
 				auto& ctf = static_cast<CTFGameMode&>(mode.value());
 				if (ctf.PlayerHasIntel(p)) {
-					Handle<IImage> img = renderer->RegisterImage("Gfx/Intel.png");
+					Handle<IImage> img = renderer->RegisterImage("Gfx/IconIntel.png");
 					Vector2 size = {img->GetWidth(), img->GetHeight()};
 					Vector2 pos = MakeVector2(((sw - size.x) * 0.5F) - 64.0F, y - size.y);
 
@@ -2778,43 +2832,107 @@ namespace spades {
 		}
 
 		void Client::DrawVRReflexDot() {
-			// Called per eye: the dot is where this eye's line along the barrel
-			// crosses the sight's window, and is seen only through it, so it
-			// stands at infinity on the barrel's line, as a reflex sight's does,
-			// in both eyes alike. Its size is a fixed angle, 3 milliradians.
-			// The setting's Cross (4) draws a thin cross there instead.
+			// Called per eye: the reticle is where this eye's line along the barrel
+			// crosses the sight's window, so it stands at infinity on the barrel's
+			// line, as a reflex sight's does, in both eyes alike. Its size is a
+			// fixed angle. It is seen only through the window: clipped to it, so
+			// the part behind the sight's frame goes and the rest stays (it used to
+			// vanish whole once its centre left the window, testers' report).
 			const Vector3 eye = lastSceneDef.viewOrigin;
 			const Vector3 dir = vrRig.reflexDir;
 			const float depth = Vector3::Dot(vrRig.reflexCenter - eye, dir);
 			if (depth < 0.02F)
 				return;
+			const bool holo = (int)cg_reflexScope == 4;
+			// How far the reticle reaches from its centre, in milliradians
+			const float reach = holo ? 16.0F : 6.0F;
 			const Vector3 at = eye + dir * depth;
-			if ((at - vrRig.reflexCenter).GetLength() > vrRig.reflexRadius)
+			if ((at - vrRig.reflexCenter).GetLength() > vrRig.reflexRadius + depth * reach * 0.001F)
 				return;
-			Vector3 side = Vector3::Cross(dir, MakeVector3(0.0F, 0.0F, 1.0F));
+
+			// The window on screen: its rim, seen nearly along the barrel, a circle
+			Vector3 side = Vector3::Cross(dir, vrRig.reflexUp);
 			if (side.GetLength() < 1.0E-3F)
-				side = MakeVector3(1.0F, 0.0F, 0.0F);
-			Vector2 centre, edge;
-			if (!Project(at, centre) || !Project(at + side.Normalize() * (depth * 0.003F), edge))
+				side = vrRig.reflexRight;
+			side = side.Normalize();
+			Vector2 windowCentre, windowEdge;
+			// The skins' window centre sits half a voxel over the opening's (set
+			// so the old dot, shown or hidden whole, reached its edges); clipped
+			// to it, the reticle went too soon at the bottom and too late at the
+			// top (testers). Half a voxel is a tenth of the 5-voxel radius.
+			const Vector3 windowAt = vrRig.reflexCenter - vrRig.reflexUp * (0.1F * vrRig.reflexRadius);
+			if (!Project(windowAt, windowCentre) ||
+			    !Project(windowAt + side * vrRig.reflexRadius, windowEdge))
 				return;
-			const float r = std::max(1.5F, (edge - centre).GetLength());
-			if ((int)cg_reflexScope == 4) {
-				// Two bars, 8 milliradians across, added to what is behind them
-				const float len = r * (8.0F / 3.0F), thick = std::max(1.0F, r * 0.3F);
-				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.1F, 0.06F, 0.0F));
-				renderer->DrawImage(nullptr, AABB2(centre.x - len, centre.y - thick * 0.5F,
-				                                   len * 2.0F, thick));
-				renderer->DrawImage(nullptr, AABB2(centre.x - thick * 0.5F, centre.y - len, thick,
-				                                   len * 2.0F));
+			const float windowR = (windowEdge - windowCentre).GetLength();
+			if (windowR < 1.0F)
 				return;
+
+			// One milliradian along the gun's own right and up, on screen: the
+			// reticle cants with the gun, not with the head.
+			Vector2 centre, rightEnd, upEnd;
+			const float mrad = depth * 0.001F;
+			if (!Project(at, centre) || !Project(at + vrRig.reflexRight * (mrad * 4.0F), rightEnd) ||
+			    !Project(at + vrRig.reflexUp * (mrad * 4.0F), upEnd))
+				return;
+			const Vector2 u = (rightEnd - centre) * 0.25F; // screen up is -y
+			const Vector2 v = (centre - upEnd) * 0.25F;
+			const float px = std::max(1.0E-3F, (u.GetLength() + v.GetLength()) * 0.5F);
+
+			renderer->BeginClippingCircle(windowCentre, windowR);
+			if (holo) {
+				// A ring with four ticks out from it and a dot in the middle, lit
+				// red over what is behind it: a soft wide pass, then the bright core.
+				auto at2 = [&](float x, float y) { return centre + u * x - v * y; };
+				auto line = [&](Vector2 p0, Vector2 p1, float width) {
+					Vector2 d = p1 - p0;
+					const float l = d.GetLength();
+					if (l < 1.0E-3F)
+						return;
+					d = d * (1.0F / l);
+					const Vector2 n = MakeVector2(-d.y, d.x) * (width * 0.5F);
+					p0 = p0 - d * (width * 0.5F);
+					p1 = p1 + d * (width * 0.5F);
+					renderer->DrawImage(nullptr, p0 - n, p1 - n, p0 + n,
+					                    AABB2(0.0F, 0.0F, 1.0F, 1.0F));
+				};
+				// About a holographic sight's 65 MOA ring
+				const float ring = 9.5F, tickIn = 9.5F, tickOut = 15.0F;
+				const int segments = 48;
+				for (int pass = 0; pass < 2; pass++) {
+					const float width = pass == 0 ? std::max(3.0F, px * 2.5F) : std::max(1.2F, px * 0.8F);
+					renderer->SetColorAlphaPremultiplied(
+					  pass == 0 ? MakeVector4(0.35F, 0.02F, 0.01F, 0.0F)
+					            : MakeVector4(1.0F, 0.18F, 0.12F, 0.0F));
+					for (int k = 0; k < segments; k++) {
+						const float a0 = 6.2831853F * k / segments;
+						const float a1 = 6.2831853F * (k + 1) / segments;
+						line(at2(std::cos(a0) * ring, std::sin(a0) * ring),
+						     at2(std::cos(a1) * ring, std::sin(a1) * ring), width);
+					}
+					line(at2(tickIn, 0.0F), at2(tickOut, 0.0F), width);
+					line(at2(-tickIn, 0.0F), at2(-tickOut, 0.0F), width);
+					line(at2(0.0F, tickIn), at2(0.0F, tickOut), width);
+					line(at2(0.0F, -tickIn), at2(0.0F, -tickOut), width);
+				}
+				Handle<IImage> ball = renderer->RegisterImage("Gfx/Ball.png");
+				const float d = std::max(1.5F, px * 1.2F);
+				renderer->SetColorAlphaPremultiplied(MakeVector4(0.6F, 0.03F, 0.02F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - d * 2.0F, centre.y - d * 2.0F,
+				                                 d * 4.0F, d * 4.0F));
+				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.5F, 0.4F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - d, centre.y - d, d * 2.0F, d * 2.0F));
+			} else {
+				// A red glow round a bright core, 6 milliradians across
+				const float r = std::max(1.5F, px * 3.0F);
+				Handle<IImage> ball = renderer->RegisterImage("Gfx/Ball.png");
+				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.05F, 0.03F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - r * 2.0F, centre.y - r * 2.0F,
+				                                 r * 4.0F, r * 4.0F));
+				renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.6F, 0.5F, 0.0F));
+				renderer->DrawImage(*ball, AABB2(centre.x - r, centre.y - r, r * 2.0F, r * 2.0F));
 			}
-			Handle<IImage> ball = renderer->RegisterImage("Gfx/Ball.png");
-			// A red glow round a bright core, added to what is behind it
-			renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.05F, 0.03F, 0.0F));
-			renderer->DrawImage(*ball, AABB2(centre.x - r * 2.0F, centre.y - r * 2.0F, r * 4.0F,
-			                                 r * 4.0F));
-			renderer->SetColorAlphaPremultiplied(MakeVector4(1.0F, 0.6F, 0.5F, 0.0F));
-			renderer->DrawImage(*ball, AABB2(centre.x - r, centre.y - r, r * 2.0F, r * 2.0F));
+			renderer->EndClippingCircle();
 		}
 
 		void Client::DrawVRScopeLens() {
@@ -3005,6 +3123,14 @@ namespace spades {
 						break;
 					case VRWristButton::Menu: centred(mid, _Tr("Client", "Menu"), b.rect); break;
 					case VRWristButton::Light: {
+						// Not in a body: the table view instead
+						if (VRTableAllowed()) {
+							centred(mid,
+							        vrTable.active ? _Tr("Client", "Table: on")
+							                       : _Tr("Client", "Table: off"),
+							        b.rect);
+							break;
+						}
 						auto local = world->GetLocalPlayer();
 						centred(mid,
 						        local && local->IsFlashlightOn() ? _Tr("Client", "Light: on")
@@ -3208,6 +3334,10 @@ namespace spades {
 				// purpose (big map, scoreboard) stay on the panel in front, as does
 				// the chat while you type into it.
 				const bool onWrist = vrFrame && (int)vr_wristHud != 0 && shouldDrawHUD;
+				// While the wrist panel is the keyboard standing on its own, the wrist
+				// HUD is not drawn (the chat being typed stays in front).
+				const bool wristIsKeyboard =
+				  vrFrame && client::GetVRSystem()->GetFrameState().keyboardPanel;
 				const bool chatInFront =
 				  onWrist && (AcceptsTextInput() || isChatPanelVisible);
 
@@ -3278,7 +3408,7 @@ namespace spades {
 					// panel's image (the VR system put the panel there this frame).
 					const bool heldMap = onWrist && largeMap && (int)vr_heldMap;
 
-					if (!onWrist || renderer->SetVRCanvas(1)) {
+					if (!onWrist || (!wristIsKeyboard && renderer->SetVRCanvas(1))) {
 						vrWristPass = onWrist;
 						if (onWrist)
 							DrawVRWristBackdrop();
@@ -3312,6 +3442,18 @@ namespace spades {
 							if (!largeMap && !onWrist)
 								mapView->Draw();
 
+							// Under the player stats, whose fading backdrop goes over
+							// them (upstream's order)
+							// the chat panel shows the history by itself while it is open
+							if (!chatInFront && !isChatPanelVisible)
+								chatWindow->Draw();
+							// On the wrist only if asked for (testers found it
+							// crowded there); see vr_killfeed
+							// (and not at all in a headset with it off)
+							if ((!vrFrame || (int)vr_killfeed != 0) &&
+							    (!onWrist || (int)vr_killfeed == 2))
+								killfeedWindow->Draw();
+
 							if (!localPlayerIsSpectator) { // player is not spectator
 								if (cg_playerStats)
 									DrawPlayerStats();
@@ -3327,14 +3469,6 @@ namespace spades {
 							} else {
 								DrawSpectateHUD();
 							}
-
-							// the chat panel shows the history by itself while it is open
-							if (!chatInFront && !isChatPanelVisible)
-								chatWindow->Draw();
-							// On the wrist only if asked for (testers found it
-							// crowded there); see vr_killfeed
-							if (!onWrist || (int)vr_killfeed == 2)
-								killfeedWindow->Draw();
 
 							// above the chat
 							if (netgraphVisible && !isDemoMode)
@@ -3461,10 +3595,12 @@ namespace spades {
 			// vignette and the comfort camera's blink. A second pass on the eye
 			// canvas adds to the first.
 			if (IsVRFrameActive()) {
+				UpdateVRTipAnchor();
 				DrawInEachVREye([&]() { DrawVRTutorial(); });
 				// The headset's alone: the window's preview is taken before it
 				DrawInEachVREye(
 				  [&]() {
+					  DrawVRHurtEdge();
 					  DrawVRVignette();
 					  if (vrRig.fade > 0.0F) {
 						  renderer->SetColorAlphaPremultiplied(MakeVector4(0, 0, 0, vrRig.fade));
@@ -3754,6 +3890,17 @@ namespace spades {
 				Draw2DWithWorld();
 			else
 				Draw2DWithoutWorld();
+
+			// While the new map settles out of sight (UpdateVRSettle)
+			if (vrSettling && IsVRFrameActive()) {
+				IFont& font = fontManager->GetLargeFont();
+				const std::string text = _Tr("Client", "Getting the map ready...");
+				const Vector2 size = font.Measure(text);
+				font.DrawShadow(text,
+				                MakeVector2(std::floor((renderer->ScreenWidth() - size.x) * 0.5F),
+				                            std::floor(renderer->ScreenHeight() * 0.3F)),
+				                1.0F, MakeVector4(1, 1, 1, 0.9F), MakeVector4(0, 0, 0, 0.6F));
+			}
 		}
 	} // namespace client
 } // namespace spades

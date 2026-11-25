@@ -208,6 +208,8 @@ namespace spades {
 					return _Tr("Preferences", "Dot Sight");
 				else if (value == 3)
 					return _Tr("Preferences", "Custom");
+				else if (value == 4)
+					return _Tr("Preferences", "Same As Crosshair");
 				else
 					return _Tr("Preferences", "Iron Sight");
 			};

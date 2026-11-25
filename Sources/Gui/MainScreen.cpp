@@ -27,6 +27,7 @@
 #include <Client/SceneDefinition.h>
 #include <Client/VRState.h>
 #include <Core/Debug.h>
+#include <Core/FileManager.h>
 #include <Core/MemoryStream.h>
 #include <Training/MapGen.h>
 #include <Training/VoxelMap.h>
@@ -40,6 +41,9 @@
 #include <Core/Strings.h>
 #include <Gui/TrainingHost.h>
 #include <Gui/UI/MainScreen/MainScreenUI.h>
+#include <Gui/UI/Settings/QualityPresets.h>
+#include <Gui/UI/Widgets/MessageBox.h>
+#include <Gui/UI/Framework/UIManager.h>
 #include <ScriptBindings/ScriptManager.h>
 
 DEFINE_SPADES_SETTING(cg_playerName, "Deuce");
@@ -47,6 +51,12 @@ DEFINE_SPADES_SETTING(cg_playerName, "Deuce");
 // In a headset, the menus stand on a generated map instead of in a void.
 DEFINE_SPADES_SETTING(vr_menuScene, "1");
 SPADES_SETTING(vr_worldScale);
+SPADES_SETTING(vr_snapTurn);
+SPADES_SETTING(vr_smoothTurnSpeed);
+SPADES_SETTING(vr_leftHanded);
+SPADES_SETTING(vr_swapSticks);
+SPADES_SETTING(cl_startGuard);
+SPADES_SETTING(cl_startRescued);
 
 namespace spades {
 	namespace gui {
@@ -126,15 +136,42 @@ namespace spades {
 			if (!fs.running || !fs.shouldRender || !fs.head.valid)
 				return;
 
-			// The map: generated once, off the frame (a headset must not stall),
-			// and loaded when it is ready. Until then, the void.
+			// The map: one of the real maps the flat menu flies round (Maps/Menu),
+			// a different one each launch, read here and decoded off the frame
+			// (a headset must not stall); a generated one if none is there. Until
+			// it is ready, the void.
 			if (!vrMenuMapStarted) {
 				vrMenuMapStarted = true;
-				vrMenuMapLoad = std::async(std::launch::async, []() -> client::GameMap* {
+				static const char* const kMenuMaps[] = {"Maps/Menu/Normandie.vxl",
+				                                        "Maps/Menu/GhostTown.vxl",
+				                                        "Maps/Menu/Quarantine.vxl",
+				                                        "Maps/Menu/MashesswoodIsland.vxl"};
+				const int n = sizeof(kMenuMaps) / sizeof(kMenuMaps[0]);
+				std::string bytes;
+				const int first = static_cast<int>(std::chrono::steady_clock::now()
+				                                     .time_since_epoch()
+				                                     .count() %
+				                                   n);
+				for (int k = 0; k < n && bytes.empty(); k++) {
+					const char* path = kMenuMaps[(first + k) % n];
+					if (!FileManager::FileExists(path))
+						continue;
+					try {
+						bytes = FileManager::ReadAllBytes(path);
+						SPLog("[VR] Menu scene: %s", path);
+					} catch (const std::exception& ex) {
+						SPLog("[VR] Menu scene: %s: %s", path, ex.what());
+					}
+				}
+				vrMenuMapLoad = std::async(std::launch::async, [bytes]() -> client::GameMap* {
+					if (!bytes.empty()) {
+						MemoryStream stream(bytes.data(), bytes.size());
+						return client::GameMap::Load(&stream);
+					}
 					host::VoxelMap m;
 					host::generate_map(m, 0x5EED);
-					const std::vector<uint8_t> bytes = m.save_vxl();
-					MemoryStream stream(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+					const std::vector<uint8_t> gen = m.save_vxl();
+					MemoryStream stream(reinterpret_cast<const char*>(gen.data()), gen.size());
 					return client::GameMap::Load(&stream);
 				});
 			}
@@ -144,7 +181,7 @@ namespace spades {
 					return;
 				try {
 					vrMenuMap = Handle<client::GameMap>(vrMenuMapLoad.get(), false);
-					SPLog("[VR] Menu scene: standing on a generated map");
+					SPLog("[VR] Menu scene: the map is ready");
 				} catch (const std::exception& ex) {
 					SPLog("[VR] Menu scene: the map did not load: %s", ex.what());
 					return;
@@ -159,18 +196,29 @@ namespace spades {
 				vrMenuMapSet = true;
 			}
 
-			// Standing 4 blocks over the ground (a little over a player's eye) at the blue end, looking down the
-			// map. The head's own movement moves the view, as it would anywhere
-			// (a view that ignores the head is what makes people sick); turning is
-			// all the head's. Tracking -Z is the game's +X (VRTrackingToGameAxes).
+			// Standing at a player's eye height over the ground, at the middle of
+			// the map: in among its buildings, as in a game. The head's own
+			// movement moves the view, as it would anywhere (a view that ignores
+			// the head is what makes people sick). The off hand's stick walks and
+			// the other turns, as in a game; the menu panel stays with you.
+			// Tracking -Z is the game's +X (VRTrackingToGameAxes).
 			const float scale = std::max(0.5F, std::min((float)vr_worldScale, 4.0F));
 			if (!vrMenuAnchored) {
 				vrMenuAnchored = true;
 				vrMenuAnchor = fs.head.position;
-				const int x = 96, y = 256;
-				vrMenuEye = MakeVector3((float)x, (float)y, (float)vrMenuMap->GetTop(x, y) - 4.0F);
+				const int x = vrMenuMap->Width() / 2, y = vrMenuMap->Height() / 2;
+				vrMenuEye = MakeVector3((float)x + 0.5F, (float)y + 0.5F,
+				                        (float)vrMenuMap->GetTop(x, y) - 2.5F);
+				vrMenuYaw = 0.0F;
+				vrMenuLastTime = 0.0;
 			}
-			auto toWorld = [&](const Vector3& v) { return client::VRTrackingToGameAxes(v) * scale; };
+			MoveInVRMenu(fs, scale);
+			const float cy = std::cos(vrMenuYaw), sy = std::sin(vrMenuYaw);
+			auto axes = [&](const Vector3& t) {
+				const Vector3 v = client::VRTrackingToGameAxes(t);
+				return MakeVector3(v.x * cy - v.y * sy, v.x * sy + v.y * cy, v.z);
+			};
+			auto toWorld = [&](const Vector3& v) { return axes(v) * scale; };
 			const Vector3 origin = vrMenuEye + toWorld(fs.head.position - vrMenuAnchor);
 
 			client::SceneDefinition def;
@@ -178,8 +226,8 @@ namespace spades {
 			def.zNear = 0.05F;
 			def.zFar = 160.0F;
 			def.viewOrigin = origin;
-			const Vector3 fwd = client::VRTrackingToGameAxes(-fs.head.Axis(2)).Normalize();
-			const Vector3 up = client::VRTrackingToGameAxes(fs.head.Axis(1)).Normalize();
+			const Vector3 fwd = axes(-fs.head.Axis(2)).Normalize();
+			const Vector3 up = axes(fs.head.Axis(1)).Normalize();
 			def.viewAxis[2] = fwd;
 			def.viewAxis[1] = -up;
 			def.viewAxis[0] = Vector3::Cross(def.viewAxis[1], def.viewAxis[2]).Normalize();
@@ -189,9 +237,9 @@ namespace spades {
 				auto& e = def.vrEyes[i];
 				const client::VRPose& eye = fs.eyes[i];
 				e.origin = origin + toWorld(eye.position - fs.head.position);
-				e.axis[0] = client::VRTrackingToGameAxes(eye.Axis(0)).Normalize();
-				e.axis[1] = client::VRTrackingToGameAxes(eye.Axis(1)).Normalize();
-				e.axis[2] = client::VRTrackingToGameAxes(-eye.Axis(2)).Normalize();
+				e.axis[0] = axes(eye.Axis(0)).Normalize();
+				e.axis[1] = axes(eye.Axis(1)).Normalize();
+				e.axis[2] = axes(-eye.Axis(2)).Normalize();
 				e.fovX = 2.0F * std::atan(fs.eyeTanX[i]);
 				e.fovY = 2.0F * std::atan(fs.eyeTanY[i]);
 				e.asymmetric = fs.eyeAsymmetric;
@@ -206,6 +254,196 @@ namespace spades {
 			def.globalBlur = 0.0F;
 			renderer->StartScene(def);
 			renderer->EndScene();
+		}
+
+		void MainScreen::MoveInVRMenu(const client::VRFrameState& fs, float scale) {
+			const double now = std::chrono::duration<double>(
+			                     std::chrono::steady_clock::now().time_since_epoch())
+			                     .count();
+			const float dt = vrMenuLastTime > 0.0
+			                   ? std::min(0.1F, static_cast<float>(now - vrMenuLastTime))
+			                   : 0.0F;
+			vrMenuLastTime = now;
+			if (dt <= 0.0F || !vrMenuMap || !fs.head.valid)
+				return;
+			const int toolHand = (int)vr_leftHanded ? 0 : 1, offHand = 1 - toolHand;
+			// A hand pointing at the panel: its stick scrolls (VRMenuPointer)
+			auto onPanel = [&](int hand) {
+				Vector2 uv;
+				float distance;
+				const float aspect =
+				  renderer->ScreenHeight() / std::max(1.0F, renderer->ScreenWidth());
+				return fs.hands[hand].active &&
+				       client::VRRayHitsHudPanel(fs, hand, aspect, uv, distance);
+			};
+			auto rotate = [&](const Vector3& v) {
+				const float c = std::cos(vrMenuYaw), s = std::sin(vrMenuYaw);
+				return MakeVector3(v.x * c - v.y * s, v.x * s + v.y * c, v.z);
+			};
+			auto headOffset = [&]() {
+				return rotate(client::VRTrackingToGameAxes(fs.head.position - vrMenuAnchor) *
+				              scale);
+			};
+
+			// The hand a (bound) stick is on: with the sticks swapped, the other
+			// one. A stick whose hand points at the panel scrolls it
+			// (VRMenuPointer), and neither walks nor turns.
+			const bool swapped = (bool)vr_swapSticks;
+			auto stickHand = [&](int h) { return swapped ? 1 - h : h; };
+			// Turning, about the head: snapped (vr_snapTurn degrees) or smooth.
+			const float tx =
+			  onPanel(stickHand(toolHand)) ? 0.0F : fs.hands[toolHand].thumbstick.x;
+			float dyaw = 0.0F;
+			const float snap = (float)vr_snapTurn;
+			if (snap > 0.0F) {
+				if (!vrMenuTurnLatched && std::fabs(tx) > 0.7F) {
+					vrMenuTurnLatched = true;
+					dyaw = (tx > 0.0F ? 1.0F : -1.0F) * snap * 0.0174532925F;
+				} else if (std::fabs(tx) < 0.3F) {
+					vrMenuTurnLatched = false;
+				}
+			} else if (std::fabs(tx) > 0.2F) {
+				dyaw = tx * (float)vr_smoothTurnSpeed * 0.0174532925F * dt;
+			}
+			if (dyaw != 0.0F) {
+				const Vector3 before = vrMenuEye + headOffset();
+				vrMenuYaw += dyaw;
+				vrMenuEye = before - headOffset();
+			}
+
+			// Walking, along the ground where the head faces, at a player's pace.
+			// Walls stop it; one block up is a step.
+			const client::GameMap& map = *vrMenuMap;
+			auto solid = [&](float x, float y, float z) {
+				const int ix = (int)std::floor(x), iy = (int)std::floor(y),
+				          iz = (int)std::floor(z);
+				if (ix < 0 || iy < 0 || ix >= map.Width() || iy >= map.Height())
+					return true; // the map's edge
+				if (iz < 0)
+					return false;
+				if (iz >= map.Depth())
+					return true;
+				return map.IsSolid(ix, iy, iz);
+			};
+			const Vector3 head = vrMenuEye + headOffset();
+			Vector2 stick = fs.hands[offHand].thumbstick;
+			if (onPanel(stickHand(offHand)))
+				stick = MakeVector2(0.0F, 0.0F);
+			const float len = stick.GetLength();
+			Vector3 move = MakeVector3(0.0F, 0.0F, 0.0F);
+			if (len > 0.2F) {
+				Vector3 f = rotate(client::VRTrackingToGameAxes(fs.head.Axis(2) * -1.0F));
+				f.z = 0.0F;
+				if (f.GetLength() > 1.0E-3F) {
+					f = f.Normalize();
+					const Vector3 r = MakeVector3(-f.y, f.x, 0.0F);
+					const float speed = 4.0F * std::min(1.0F, (len - 0.2F) / 0.8F) / len;
+					move = (f * stick.y + r * stick.x) * (speed * dt);
+				}
+			}
+			// A column is open if nothing is at the head or the body: the feet
+			// are 2.5 under the eye, and the lowest block of that is a step.
+			auto open = [&](float x, float y) {
+				for (float dz = -0.4F; dz < 1.6F; dz += 0.5F)
+					if (solid(x, y, head.z + dz))
+						return false;
+				return true;
+			};
+			Vector3 eye = vrMenuEye;
+			if (move.x != 0.0F && open(head.x + move.x + (move.x > 0.0F ? 0.3F : -0.3F), head.y))
+				eye.x += move.x;
+			const float hx = head.x + (eye.x - vrMenuEye.x);
+			if (move.y != 0.0F && open(hx, head.y + move.y + (move.y > 0.0F ? 0.3F : -0.3F)))
+				eye.y += move.y;
+			// The ground under the body (not under the head, which may lean into
+			// a wall or past the map's edge: from there it climbed the wall, or
+			// into the sky): stepped up onto by a block at most, or fallen down
+			// to, eased
+			for (int z = std::max(0, (int)std::floor(eye.z + 1.6F)); z < map.Depth(); z++) {
+				if (solid(eye.x, eye.y, (float)z)) {
+					const float want = (float)z - 2.5F;
+					if (want >= eye.z - 1.1F)
+						eye.z += (want - eye.z) * (1.0F - std::exp(-dt * 10.0F));
+					break;
+				}
+			}
+			vrMenuEye = eye;
+		}
+
+		void MainScreen::ClearStartGuard(float dt) {
+			// Nine seconds of frames anywhere: in the menu, or a game joined at
+			// once (cleared only in the menu, a player who went straight into a
+			// game and left from it had their graphics put back on Performance at
+			// the next start).
+#if defined(__ANDROID__)
+			if (startGuardTime >= 9.0F)
+				return;
+			startGuardTime += std::min(dt, 0.1F);
+			if (startGuardTime >= 9.0F && (int)cl_startGuard) {
+				cl_startGuard = 0;
+				Settings::GetInstance()->Flush();
+			}
+#else
+			(void)dt;
+#endif
+		}
+
+		void MainScreen::CheckVRMenuSpeed(float dt) {
+			// On a standalone headset, settings too heavy for it (the PC's Ultra
+			// on a Quest) left it too slow to set them back, or ran it out of
+			// memory before the menu came (testers: trapped). Once a run, nine
+			// seconds into the menu: this start made it (cl_startGuard, which
+			// Main sets as it starts: a start that never clears it puts the next
+			// on the Performance level); and if the menu's scene ran under 40
+			// frames a second, the Performance level is put back now. Either is
+			// said so. Most of it takes effect at the next start.
+#if defined(__ANDROID__)
+			if (vrSpeedChecked || !ui || dt <= 0.0F)
+				return;
+			// Only the frames the headset shows: off a head, or asleep, the loop
+			// runs slowly or not at all, and that is not the graphics
+			// (counted, a game started with the headset on the table was put
+			// back on Performance)
+			client::IVRSystem* vr = client::GetVRSystem();
+			if (!vr || !vr->GetFrameState().focused || !vr->GetFrameState().shouldRender)
+				return;
+			vrSpeedTime += std::min(dt, 0.1F);
+			if (vrSpeedTime < 3.0F)
+				return; // the map settling in
+			vrSpeedFrames++;
+			if (vrSpeedTime < 9.0F)
+				return;
+			vrSpeedChecked = true;
+			const float fps = static_cast<float>(vrSpeedFrames) / (vrSpeedTime - 3.0F);
+			const QualityPreset& performance = GetHeadsetQualityPresets().front();
+			SPLog("[VR] Menu speed: %.0f FPS", fps);
+			std::string message;
+			if ((int)cl_startRescued) {
+				cl_startRescued = 0;
+				message = _Tr("MainScreen",
+				              "The game did not start last time, so its graphics are back "
+				              "on Performance (Settings, VR, Headset Quality).");
+			} else if (client::GetVRSystem() && vrMenuMapSet && fps < 40.0F &&
+			           !MatchesQualityPreset(performance)) {
+				ApplyQualityPreset(performance);
+				SPLog("[VR] Too slow at %.0f FPS: back to the headset Performance level", fps);
+				message = _Tr("MainScreen",
+				              "The game was running too slowly on this headset, so its "
+				              "graphics are back on Performance (Settings, VR, Headset "
+				              "Quality). Restart the game for all of it to take effect.");
+			}
+			Settings::GetInstance()->Flush();
+			if (message.empty())
+				return;
+			ui::UIElement& root = ui->GetUIManager().GetRootElement();
+			if (root.GetChildren().empty())
+				return;
+			Handle<AlertScreen> alert = Handle<AlertScreen>::New(
+			  root.GetChildren().front().GetPointerOrNull(), message, 160.0F);
+			alert->Run();
+#else
+			(void)dt;
+#endif
 		}
 
 		bool MainScreen::NeedsAbsoluteMouseCoordinate() {
@@ -327,6 +565,7 @@ namespace spades {
 
 		void MainScreen::RunFrame(float dt) {
 			SPADES_MARK_FUNCTION();
+			ClearStartGuard(dt);
 			if (subview) {
 				try {
 					subview->RunFrame(dt);
@@ -369,6 +608,8 @@ namespace spades {
 				SPLog("[VR] Menu scene failed, left off: %s", ex.what());
 				vr_menuScene = 0;
 			}
+
+			CheckVRMenuSpeed(dt);
 
 			// `DoInit` either sets `ui` or throws, so this should not fire. Guard it
 			// anyway, so that an init path which ever leaves `ui` unset stops here

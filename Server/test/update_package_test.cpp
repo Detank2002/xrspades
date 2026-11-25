@@ -102,7 +102,7 @@ int main() {
 	Check(!FindUpdateSum("zzb0abc687a33ba766d8423999bba5d07bc4ff41cc9bb68fceebec186c2f3c05  a.zip\n",
 	                     "a.zip"),
 	      "a malformed sum");
-	Check(UpdateAssetName("v0.3.1", "windows-x64") == "ZeroSpadesX-v0.3.1-windows-x64.zip",
+	Check(UpdateAssetName("v0.4.0", "windows-x64") == "XRSpades-v0.4.0-windows-x64.zip",
 	      "the asset's name");
 
 	// A release's What's new, as release.yml writes its notes and GitHub

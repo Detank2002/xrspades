@@ -30,6 +30,7 @@
 #include <Core/Strings.h>
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include "Corpse.h"
 #include "CTFGameMode.h"
 #include "DaytimeWeather.h"
@@ -65,6 +66,9 @@ DEFINE_SPADES_SETTING(cg_debugPlayerHitboxes, "0");
 SPADES_SETTING(cg_ragdoll);
 SPADES_SETTING(cg_hurtScreenEffects);
 SPADES_SETTING(cg_orientationSmoothing);
+
+DEFINE_SPADES_SETTING(cg_fogColorOverride, "");
+DEFINE_SPADES_SETTING(r_debugWholeMap, "0");
 
 namespace spades {
 	namespace client {
@@ -207,6 +211,14 @@ namespace spades {
 
 			if (world) {
 				IntVector3 fogColor = world->GetFogColor();
+				// cg_fogColorOverride "R,G,B": another sky than the server's, for
+				// shots of a demo (empty, the server's)
+				{
+					int r, g, b;
+					const std::string over = cg_fogColorOverride;
+					if (!over.empty() && std::sscanf(over.c_str(), "%d,%d,%d", &r, &g, &b) == 3)
+						fogColor = MakeIntVector3(r, g, b);
+				}
 				renderer->SetFogColor(ConvertColorRGB(fogColor));
 
 				// Without a time of day the scene keeps its default, full daylight.
@@ -536,6 +548,14 @@ namespace spades {
 
 				def.zNear = 0.05F;
 				def.skipWorld = false;
+				// r_debugWholeMap: the whole map, unfogged, as the VR table view
+				// draws it, for checking that on a monitor (with --demo-camera)
+				if ((bool)r_debugWholeMap) {
+					def.wholeMap = true;
+					def.zNear = 0.5F;
+					def.zFar = 8192.0F;
+					renderer->SetFogDistance(8192.0F);
+				}
 			} else {
 				// `cameraMode` is local to the has-world branch above; query it again
 				// here (GetCameraMode() returns None when there's no world). Without
@@ -699,9 +719,17 @@ namespace spades {
 		void Client::DrawScene() {
 			SPADES_MARK_FUNCTION();
 
-			renderer->StartScene(lastSceneDef);
+			// No water without a map (a sheet at the bottom of the loading
+			// screen, for nothing), and none of the world while it settles
+			SceneDefinition def = lastSceneDef;
+			const bool settling = vrSettling && IsVRFrameActive();
+			if (!world || settling)
+				def.skipWater = true;
+			if (settling)
+				def.skipWorld = true;
+			renderer->StartScene(def);
 
-			if (world) {
+			if (world && !settling) {
 				stmp::optional<Player&> maybePlayer = world->GetLocalPlayer();
 
 				// How lit the world around the lamps is: dynamic lights aside, all of it
@@ -722,6 +750,9 @@ namespace spades {
 							glares.emplace_back(strength, clientPlayers[i].GetPointerOrNull());
 					}
 				}
+
+				AddVRTableHandsToScene();
+				AddVRTableMapToScene();
 
 				// Only the strongest glares are drawn. Each gives up as much strength as
 				// the strongest one left out has, so that the weakest of them fades out
@@ -765,6 +796,8 @@ namespace spades {
 					ent->Render3D();
 
 				bloodMarks->Draw();
+				if (impactMarks)
+					impactMarks->Draw();
 
 				if (maybePlayer) { // localplayer exists
 					Player& p = maybePlayer.value();

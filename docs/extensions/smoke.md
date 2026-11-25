@@ -10,7 +10,7 @@ colour and an opacity, of a size, for a time.
 | Type:         | `HAS_PACKETS` |
 
 Written in the style of [aosprotocol](https://github.com/zerospades/aosprotocol)'s
-extensions, for ZeroSpades X; not registered there (yet). `0x3F` is clear of
+extensions, for XRSpades; not registered there (yet). `0x3F` is clear of
 every id registered or proposed in aosprotocol as of 13 November 2026.
 
 ### Sub Packets:

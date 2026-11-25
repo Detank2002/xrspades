@@ -31,6 +31,7 @@
 #include "IAudioDevice.h"
 
 #include "BloodMarks.h"
+#include "ImpactMarks.h"
 #include "CenterMessageView.h"
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
@@ -322,6 +323,8 @@ namespace spades {
 							lastHurtTime = time;
 						lastHealTime = -100.0F;
 						damageTaken = lastHealth - health;
+						if (lastHealth > 0)
+							VRHurtFeedback(damageTaken);
 					} else {
 						lastHurtTime = -100.0F;
 						if (lastHealth > 0)
@@ -404,6 +407,8 @@ namespace spades {
 
 				// update blood marks
 				bloodMarks->Update(gameplayDt);
+				if (impactMarks)
+					impactMarks->Update(gameplayDt);
 
 				// wait for corpse update to finish
 				corpseDispatch.Join();
@@ -983,15 +988,19 @@ namespace spades {
 				if (p.IsLocalPlayer()) {
 					// A shot's kick, by how hard the gun kicks; braced in two
 					// hands the off hand feels it too.
+					// The shotgun's a heavier shove than a crack: a thump.
 					float amp = 0.7F, len = 0.05F;
+					VRHapticShape shape = VRHapticShape::Kick;
 					switch (p.GetWeaponType()) {
-						case SHOTGUN_WEAPON: amp = 1.0F, len = 0.09F; break;
+						case SHOTGUN_WEAPON:
+							amp = 1.0F, len = 0.12F, shape = VRHapticShape::Thump;
+							break;
 						case SMG_WEAPON: amp = 0.5F, len = 0.035F; break;
 						default: amp = 0.85F, len = 0.07F; break;
 					}
-					VRPulse(VRToolHand(), amp, len, VRHapticShape::Kick);
+					VRPulse(VRToolHand(), amp, len, shape);
 					if (vrRig.twoHanded)
-						VRPulse(1 - VRToolHand(), amp * 0.5F, len, VRHapticShape::Kick);
+						VRPulse(1 - VRToolHand(), amp * 0.5F, len, shape);
 				}
 			} else {
 				// register sound
@@ -1218,6 +1227,8 @@ namespace spades {
 			bool isFirstPerson = IsPlayerInFirstPerson(p.GetId());
 			if (isFirstPerson && p.IsLocalPlayer())
 				VRPulse(VRToolHand(), 0.45F, 0.04F);
+			if (impactMarks)
+				impactMarks->Add(hitPos, blockPos, normal, true);
 			if (isFirstPerson)
 				localFireVibrationTime = time;
 
@@ -1546,8 +1557,9 @@ namespace spades {
 				default: break;
 			}
 
-			// headshot gore: burst the skull into flying chunks
-			if (kt == KillTypeHeadshot && cg_headshotGore) {
+			// headshot gore: burst the skull into flying chunks, on one headshot
+			// in twenty (testers: every time, its sound put them off the game)
+			if (kt == KillTypeHeadshot && cg_headshotGore && SampleRandomFloat() < 0.05F) {
 				Vector3 dir;
 				if (killerId != victimId) {
 					dir = (victim.GetPosition() - killer.GetPosition()).Normalize();
@@ -1612,6 +1624,10 @@ namespace spades {
 
 			const bool byLocalPlayer = by.IsLocalPlayer();
 			const bool isMeleeHit = type == HitTypeMelee;
+
+			// A tick in the hand for a hit landed (the kill has its own, harder)
+			if (byLocalPlayer && !hurtPlayer.IsLocalPlayer())
+				VRPulse(VRToolHand(), isMeleeHit ? 0.6F : 0.3F, isMeleeHit ? 0.05F : 0.025F);
 
 			// spatter blood
 			if ((int)cg_blood >= 2) {
@@ -1825,6 +1841,9 @@ namespace spades {
 
 			const auto& shiftedHitPos = hitPos + (MakeVector3(normal) * 0.1F);
 
+			if (impactMarks)
+				impactMarks->Add(hitPos, blockPos, normal, false);
+
 			if (blockPos.z >= 63) {
 				BulletHitWaterSurface(shiftedHitPos);
 
@@ -1975,6 +1994,20 @@ namespace spades {
 			} else {
 				GrenadeExplosion(origin);
 
+				// A blast near the player is felt in both hands, harder the nearer
+				// (the damage, if any, has its own rumble)
+				if (IsVRActive() && world) {
+					stmp::optional<Player&> lp = world->GetLocalPlayer();
+					if (lp && lp->IsAlive()) {
+						const float d = (origin - lp->GetEye()).GetLength();
+						if (d < 16.0F) {
+							const float k = 1.0F - d / 16.0F;
+							VRPulse(-1, 0.25F + 0.75F * k * k, 0.15F + 0.2F * k,
+							        VRHapticShape::Thump);
+						}
+					}
+				}
+
 				if (!IsMuted()) {
 					Handle<IAudioChunk> c, cs;
 					switch (SampleRandomInt(0, 1)) {
@@ -2096,7 +2129,11 @@ namespace spades {
 		void Client::LocalPlayerHurt(HurtType type, spades::Vector3 source) {
 			SPADES_MARK_FUNCTION();
 
-			VRPulse(-1, 0.9F, 0.15F);
+			// The rumble waits for the health, so it knows how hard the hit was
+			// (VRHurtFeedback); here, where it came from.
+			vrHurtSourceKnown = type != HurtTypeFall && source.GetSquaredLength() >= 0.01F;
+			vrHurtSource = source;
+			vrHurtSourceTime = time;
 
 			if (source.GetSquaredLength() < 0.01F) {
 				// should this be handled on the server side?
@@ -2113,6 +2150,15 @@ namespace spades {
 			rel.z = 0.0F;
 			rel = rel.Normalize();
 			hurtRingView->Add(rel);
+		}
+
+		void Client::LocalPlayerEditModeChanged(bool on) {
+			if (on)
+				ShowAlert(_Tr("Client", "Edit Mode: unlimited blocks, build anywhere, even in "
+				                        "the air"),
+				          AlertType::Notice, 5.0F);
+			else
+				ShowAlert(_Tr("Client", "Edit Mode is off"), AlertType::Notice, 3.0F);
 		}
 
 		void Client::LocalPlayerBuildError(BuildFailureReason reason) {

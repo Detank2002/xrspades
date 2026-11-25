@@ -34,6 +34,7 @@
 // a hand held low would otherwise slow and pin the player. See VR.md.
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "Client.h"
@@ -42,6 +43,7 @@
 #include <Core/Bitmap.h>
 #include <Core/Settings.h>
 #include <Core/Strings.h>
+#include <Core/VoxelModel.h>
 
 #include "ChatWindow.h"
 #include "ClientPlayer.h"
@@ -94,8 +96,29 @@ DEFINE_SPADES_SETTING(vr_shoulderStock, "1");
 DEFINE_SPADES_SETTING(vr_aimSmooth, "0");
 // Swinging the spade faster than this (m/s) hits, as the trigger does; 0: off.
 DEFINE_SPADES_SETTING(vr_swingSpeed, "2.5");
+// The spade is solid and hits where its tip strikes a block (testers: swinging
+// in the air tired the arm in seconds, and the hit was not where the spade
+// was). Off: swinging it anywhere faster than vr_swingSpeed hits, along it.
+DEFINE_SPADES_SETTING(vr_spadeContact, "1");
 // Tools on the body: squeeze the gun hand's grip over a shoulder or at a hip.
 DEFINE_SPADES_SETTING(vr_holsters, "1");
+// The hips (blocks and grenades) this many centimetres higher (or, negative,
+// lower) than a share of the eye height puts them (VRHolsterFrameUpdate)
+DEFINE_SPADES_SETTING(vr_hipHeight, "0");
+// The body mirror: 0 never, 1 while a menu is up in a game, 2 always
+DEFINE_SPADES_SETTING(vr_bodyMirror, "1");
+// How far round from the menu panel it stands, in degrees (0: in front)
+DEFINE_SPADES_SETTING(vr_bodyMirrorAngle, "50");
+// 1: the holsters turn with every turn of the head, as before 0.4.0. 0: they face
+// the body's way, which lets the head look aside (VRHolsterFrame).
+DEFINE_SPADES_SETTING(vr_holsterFollow, "0");
+// Spectating or watching a demo in a headset starts in the table view (the off
+// hand's stick click still turns it off). Not when merely dead between lives.
+DEFINE_SPADES_SETTING(vr_tableWhenSpectating, "1");
+// The table view's map: how many blocks each way go to one of its voxels (1,
+// 2, 4 or 8). The whole map at full detail was too many triangles for a
+// standalone headset (a Quest 3 at 22 FPS, binning its 28 ms a frame).
+DEFINE_SPADES_SETTING(vr_tableDetail, "4");
 // The game's frame rate on the wrist.
 DEFINE_SPADES_SETTING(vr_showFps, "1");
 // Dead or following someone: the view holds still and moves in blinks.
@@ -116,12 +139,18 @@ DEFINE_SPADES_SETTING(vr_toolButtons, "0");
 // Sprint while the walking stick is held in, instead of a click toggling it.
 DEFINE_SPADES_SETTING(vr_sprintHold, "0");
 // A magnifying scope on the rifle, seen when an eye looks down its iron sights.
-DEFINE_SPADES_SETTING(vr_scope, "1");
+// Off by default since 0.4.0: testers aimed better with the open sights; the
+// Escape menu's Weapon page turns it on.
+DEFINE_SPADES_SETTING(vr_scope, "0");
 // Held tools do not go through blocks: they stop at them, and slide back.
 // Off by default for now (was vr_solidTools, on; renamed so the new default
 // reaches configs that saved the old one): aiming round cover, the gun
 // stopped at the corner and slid back, and the aim went with it.
 DEFINE_SPADES_SETTING(vr_toolCollision, "0");
+// Taking damage: a red edge round the view, thicker on the side the hit came
+// from, and a heartbeat at low health. 0: off (the rumble stays).
+DEFINE_SPADES_SETTING(vr_hurtEdge, "1");
+SPADES_SETTING(cg_hurtScreenEffects);
 
 SPADES_SETTING(cg_keyAttack);
 SPADES_SETTING(cg_keyAltAttack);
@@ -257,6 +286,20 @@ namespace spades {
 				vrRig.handVelocity[h] =
 				  c.velocityValid ? VRToWorld(c.linearVelocity) : MakeVector3(0, 0, 0);
 			}
+			// The holsters, where the tool hand takes from them
+			for (int i = 0; i < 4; i++) {
+				Vector3 at, forward, right;
+				float radius;
+				vrRig.holsterValid[i] =
+				  VRHolsterPlace(fs, VRToolHand(), i, at, radius, forward, right,
+				                 &vrRig.holsterFrame);
+				if (!vrRig.holsterValid[i])
+					continue;
+				vrRig.holsterPos[i] = origin + VRToWorld(at - fs.head.position);
+				vrRig.holsterForward = VRToWorld(forward).Normalize();
+				vrRig.holsterRight = VRToWorld(right).Normalize();
+			}
+
 			// Again when the scene is built (ApplyVRToSceneDefinition), so the gun
 			// drawn is the gun aimed. The filter's state moves once a frame
 			// (UpdateVRAimAssist); here its result is only put back.
@@ -266,6 +309,47 @@ namespace spades {
 				SetVRToolForward(vrRig.aimFilter.Get());
 			ApplyVRRecoil();
 			ApplyVRToolCollision();
+			UpdateVRMirror(fs);
+		}
+
+		void Client::UpdateVRMirror(const VRFrameState& fs) {
+			// Your body reflected in a plane beside the menu panel, on the side of
+			// the hand that does not point: raise a hand, try the Hip Height, and
+			// see it there. Only while a menu is up (or always, 2), in a game
+			// with you alive in it; not on the table view.
+			vrMirror.shown = false;
+			const int mode = (int)vr_bodyMirror;
+			if (mode <= 0 || !world || vrTable.active || !fs.head.valid)
+				return;
+			auto p = world->GetLocalPlayer();
+			if (!p || !p->IsAlive() || p->IsSpectator())
+				return;
+			if (mode == 1 && !(scriptedUI->NeedsInput() && !scriptedUI->IsChatPanelOpen()))
+				return;
+
+			// Towards the panel, level (else the way the head faces)
+			Vector3 fwd = fs.hudPanel.valid ? VRToWorld(fs.hudPanel.position - fs.head.position)
+			                                : vrRig.headAxes[0];
+			fwd.z = 0.0F;
+			if (fwd.GetLength() < 1.0E-3F)
+				fwd = vrRig.headAxes[0], fwd.z = 0.0F;
+			if (fwd.GetLength() < 1.0E-3F)
+				return;
+			fwd = fwd.Normalize();
+			const Vector3 right = MakeVector3(-fwd.y, fwd.x, 0.0F);
+			// Past the panel's edge (it is about 56 degrees across), on the
+			// pointing hand's other side
+			const float side = VRToolHand() == VRHandRight ? -1.0F : 1.0F;
+			const float a = DEG2RAD(Clamp((float)vr_bodyMirrorAngle, 0.0F, 120.0F));
+			const Vector3 n = (fwd * std::cos(a) + right * (side * std::sin(a))).Normalize();
+			// The plane 0.9 m away: the reflection stands 1.8 m off, whole in view
+			const Vector3 at = vrRig.camera + n * (0.9F * vrRig.scale);
+			// x - 2 n (n . (x - at)): columns of I - 2 n n^T, then 2 (n . at) n
+			const float d = Vector3::Dot(n, at);
+			auto col = [&](const Vector3& e) { return e - n * (2.0F * Vector3::Dot(n, e)); };
+			vrMirror.matrix = Matrix4::FromAxis(col(MakeVector3(1, 0, 0)), col(MakeVector3(0, 1, 0)),
+			                                    col(MakeVector3(0, 0, 1)), n * (2.0F * d));
+			vrMirror.shown = true;
 		}
 
 		float Client::VRToolReach(Player& p) const {
@@ -293,7 +377,14 @@ namespace spades {
 			// nothing is shot, dug or built from inside a wall. Players are not
 			// solid: they would be in the way all the time.
 			vrRig.toolBlocked = false;
-			if (!(int)vr_toolCollision || !vrRig.solidHands || !world || !world->GetMap())
+			// The spade is solid whatever vr_toolCollision says, while it strikes
+			// (vr_spadeContact)
+			bool spadeSolid = false;
+			if ((int)vr_spadeContact && world)
+				if (auto lp = world->GetLocalPlayer())
+					spadeSolid = lp->IsToolSpade();
+			if ((!(int)vr_toolCollision && !spadeSolid) || !vrRig.solidHands || !world ||
+			    !world->GetMap())
 				return;
 			const GameMap& map = *world->GetMap();
 			auto solid = [&](const Vector3& v) { return map.ClipBox(v.x, v.y, v.z); };
@@ -353,16 +444,31 @@ namespace spades {
 		}
 
 		Vector3 Client::VRShoulderPoint() const {
-			// Where a stock sits: below the eyes on the gun hand's side, a little
-			// back, in a frame that turns with the head but stays level, so
-			// nodding does not swing the gun.
-			Vector3 fwd = vrRig.headAxes[0];
+			// Where a stock sits: below the neck on the gun hand's side, in a
+			// frame that turns with the head but stays level. From the neck, not
+			// the eyes: looking steeply down (shooting off a height) the eyes go
+			// some 10 cm forward and down as the head tips, and a shoulder hung
+			// from them went too, swinging the gun's line by about as many
+			// degrees (testers: unplayable firing down). The neck is where the
+			// head turns about, so it stays put. The level heading comes from
+			// the face's, or, looking far up or down, where it has little, from
+			// the top of the head, which then points the way the body faces.
+			const Vector3 eyeFwd = vrRig.headAxes[0];
+			const Vector3 headDown = vrRig.headAxes[2];
+			const float s = vrRig.scale;
+			// Only looking steeply up or down (over 45 degrees): level, a head
+			// tipped sideways to sight down the gun put its down vector to the
+			// side, and the heading and the shoulder turned with it.
+			const float steep = Clamp((std::fabs(eyeFwd.z) - 0.7F) / 0.25F, 0.0F, 1.0F);
+			Vector3 fwd = eyeFwd - headDown * ((eyeFwd.z > 0.0F ? 1.0F : -1.0F) * steep);
 			fwd.z = 0.0F;
 			fwd = fwd.GetLength() > 0.01F ? fwd.Normalize() : MakeVector3(1, 0, 0);
 			const Vector3 right = MakeVector3(-fwd.y, fwd.x, 0.0F);
 			const float side = VRToolHand() == VRHandRight ? 1.0F : -1.0F;
-			const float s = vrRig.scale;
-			return vrRig.camera + MakeVector3(0.0F, 0.0F, 0.20F * s) + right * (0.13F * side * s) -
+			// The neck: 10 cm under the eyes and 8 cm back, in the head's frame
+			const Vector3 neck = vrRig.camera + headDown * (0.10F * s) - eyeFwd * (0.08F * s);
+			// Level, that is the old point (20 cm under the eyes, 4 cm back)
+			return neck + MakeVector3(0.0F, 0.0F, 0.10F * s) + right * (0.13F * side * s) +
 			       fwd * (0.04F * s);
 		}
 
@@ -569,7 +675,13 @@ namespace spades {
 				case VRWristButton::QuickTarget: vrRig.wristToTeam = !vrRig.wristToTeam; break;
 				case VRWristButton::Colour: SetBlockColor(b.color); break;
 				case VRWristButton::Menu: scriptedUI->EnterClientMenu(); break;
-				case VRWristButton::Light: ToggleLocalFlashlight(); break;
+				case VRWristButton::Light:
+					// Not in a body (spectating, dead, a demo): the table view
+					if (VRTableAllowed())
+						SetVRTable(!vrTable.active);
+					else
+						ToggleLocalFlashlight();
+					break;
 				case VRWristButton::Team:
 					// As the limbo key (cg_keyLimbo) does.
 					inGameLimbo = true;
@@ -627,11 +739,8 @@ namespace spades {
 				if (O.squeeze < 0.3F) {
 					vrRig.reloadStage = 1; // dropped it: fetch another
 				} else if (vrRig.handValid[0] && vrRig.handValid[1]) {
-					const float s = vrRig.scale;
-					const Vector3 well = vrRig.handPos[toolHand] +
-					                     vrRig.handAxes[toolHand][0] * (0.10F * s) +
-					                     vrRig.handAxes[toolHand][2] * (0.10F * s);
-					if ((vrRig.handPos[offHand] - well).GetLength() < 0.12F * s) {
+					if (VRMagazineAtWell(vrRig.handPos[toolHand], vrRig.handAxes[toolHand][0],
+					                     vrRig.handPos[offHand], vrRig.scale)) {
 						vrRig.reloadStage = 0;
 						VRPulse(-1, 0.7F, 0.08F, VRHapticShape::DoubleTap);
 						return true;
@@ -728,11 +837,41 @@ namespace spades {
 			SPLog("[VR] The server does not run vr_presence: told the player");
 		}
 
+		void Client::UpdateVRTipAnchor() {
+			// The box floats in the world 1.6m out, a little below the view, and
+			// trails it: it stays put while you look round it, and once more than
+			// 20 degrees off it eases back (testers: glued to the face it was too
+			// big and in the way). It moves with you as you walk.
+			const SceneDefinition& d = lastSceneDef; // the head's
+			const float dt = vrTipValid ? Clamp(time - vrTipTime, 0.0F, 0.1F) : 0.0F;
+			vrTipTime = time;
+			const float down = 15.0F * 0.0174532925F;
+			const Vector3 target =
+			  (d.viewAxis[2] * std::cos(down) - d.viewAxis[1] * std::sin(down)).Normalize();
+			if (!vrTipValid) {
+				vrTipDir = target;
+				vrTipValid = true;
+				vrTipMoving = false;
+			}
+			const float off = std::acos(Clamp(Vector3::Dot(vrTipDir, target), -1.0F, 1.0F));
+			if (off > 20.0F * 0.0174532925F)
+				vrTipMoving = true;
+			if (vrTipMoving) {
+				const Vector3 next = vrTipDir + (target - vrTipDir) * (1.0F - std::exp(-dt * 4.0F));
+				if (next.GetLength() > 1.0E-3F)
+					vrTipDir = next.Normalize();
+				if (off < 2.0F * 0.0174532925F)
+					vrTipMoving = false;
+			}
+			const float scale = vrTable.active ? vrTable.pose.scale : vrRig.scale;
+			vrTipAt = d.viewOrigin + vrTipDir * (1.6F * scale);
+		}
+
 		void Client::DrawVRTutorial() {
-			// Called per eye: a box 2m ahead and a little below where you look,
-			// projected for this eye, so it has its own depth and is not pinned to
-			// infinity. The no-vr_presence notice for its ten seconds, otherwise
-			// the training course's tip for where you are; nothing elsewhere.
+			// Called per eye: the box where UpdateVRTipAnchor put it, projected for
+			// this eye, so it has its own depth and is not pinned to infinity. The
+			// no-vr_presence notice for its ten seconds, otherwise the training
+			// course's tip for where you are; nothing elsewhere.
 			std::string title, tip;
 			Vector4 accent = MakeVector4(1, 0.85F, 0.3F, 1);
 			if (time < vrPresenceNoticeUntil) {
@@ -748,10 +887,22 @@ namespace spades {
 			const SceneDefinition& d = lastSceneDef;
 			const float s = vrRig.scale;
 			Vector2 c, e;
-			const Vector3 at = d.viewOrigin + d.viewAxis[2] * (2.0F * s) - d.viewAxis[1] * (0.45F * s);
-			if (!Project(at, c) || !Project(at + d.viewAxis[0] * (0.7F * s), e))
+			if (!vrTipValid)
 				return;
-			// 1.4m wide at 2m, whatever the eye's resolution.
+			const Vector3 at = vrTipAt;
+			// Level, square to the way it lies from you
+			Vector3 side = Vector3::Cross(vrTipDir, MakeVector3(0.0F, 0.0F, -1.0F));
+			if (side.GetLength() < 1.0E-3F)
+				side = d.viewAxis[0];
+			side = side.Normalize();
+			if (Vector3::Dot(side, d.viewAxis[0]) < 0.0F)
+				side = side * -1.0F;
+			if (Vector3::Dot(at - d.viewOrigin, d.viewAxis[2]) <= 0.0F)
+				return; // behind you
+			const float ts = vrTable.active ? vrTable.pose.scale : s;
+			if (!Project(at, c) || !Project(at + side * (0.3F * ts), e))
+				return;
+			// 0.6m wide at 1.6m (about 21 degrees), whatever the eye's resolution.
 			const float halfW = (e - c).GetLength();
 			if (halfW < 40.0F)
 				return;
@@ -776,6 +927,315 @@ namespace spades {
 				font.Draw(l, MakeVector2(box.GetMinX() + pad, y), k, MakeVector4(1, 1, 1, 1));
 				y += lh * k;
 			}
+		}
+
+		void Client::VRHurtFeedback(int damage) {
+			if (!IsVRActive() || damage <= 0)
+				return;
+			// Where it came from, across the head (LocalPlayerHurt comes with the
+			// health packet, just before)
+			const bool known = vrHurtSourceKnown && time - vrHurtSourceTime < 0.5F;
+			float side = 0.0F, behind = 0.0F;
+			if (known) {
+				Vector3 rel = vrHurtSource - vrRig.camera;
+				rel.z = 0.0F;
+				if (rel.GetSquaredLength() > 1.0E-4F) {
+					rel = rel.Normalize();
+					Vector3 fw = vrRig.headAxes[0], rt = vrRig.headAxes[1];
+					fw.z = rt.z = 0.0F;
+					if (fw.GetSquaredLength() > 1.0E-4F && rt.GetSquaredLength() > 1.0E-4F) {
+						side = Vector3::Dot(rel, rt.Normalize());
+						behind = std::max(0.0F, -Vector3::Dot(rel, fw.Normalize()));
+					}
+				}
+			}
+			vrHurtSide = side;
+			vrHurtBehind = behind;
+			const VRHurtRumble r = VRHurtRumbleFor(damage, side, known);
+			for (int hand = 0; hand < 2; hand++)
+				if (r.amplitude[hand] > 0.0F)
+					VRPulse(hand, r.amplitude[hand], r.seconds, VRHapticShape::Kick);
+		}
+
+		bool Client::VRTableAllowed() {
+			if (!vrRig.active || !world || !world->GetMap())
+				return false;
+			if (IsDemoMode())
+				return true;
+			auto p = world->GetLocalPlayer();
+			// Spectators and demos only: a dead player on a team would see the
+			// whole map's enemies on it while waiting to respawn
+			return !p || p->IsSpectator();
+		}
+
+		void Client::AddVRTableHandsToScene() {
+			// The forearms and hands as in play (ClientPlayer::AddVRBody's, forearm
+			// only), but at the table's scale, so the hands holding the map are
+			// seen holding it. vrRig's hands are in the table's world already.
+			if (!vrTable.active || !vrRig.active || !IsVRFrameActive())
+				return;
+			const float play = Clamp((float)vr_worldScale, 0.5F, 4.0F);
+			// The table's scale (vrRig.scale is the body's again by the time the
+			// scene is drawn: ApplyVRToSceneDefinition puts it back)
+			const float k = vrTable.pose.scale / play; // play-sized blocks to the table's
+			Handle<IModel> arm = renderer->RegisterModel("Models/Player/Arm.kv6");
+			ModelRenderParam param;
+			param.customColor = MakeVector3(0.55F, 0.55F, 0.55F);
+			if (world)
+				if (auto p = world->GetLocalPlayer())
+					if (!p->IsSpectator())
+						param.customColor = ConvertColorRGB(p->GetColor());
+			const float thick = 0.05F * k, foreLen = 0.55F * k;
+			for (int h = 0; h < 2; h++) {
+				if (!vrRig.handValid[h])
+					continue;
+				const Vector3* ax = vrRig.handAxes[h];
+				const Vector3 wrist = vrRig.handPos[h] - ax[0] * (0.08F * k);
+				const Vector3 back = (ax[0] * -0.9F + ax[2] * 0.35F).Normalize();
+				const Vector3 elbow = wrist + back * foreLen;
+				Vector3 a2 = (wrist - elbow).Normalize();
+				Vector3 a1 = Vector3::Cross(a2, MakeVector3(0, 0, 1));
+				if (a1.GetLength() < 1.0E-3F)
+					a1 = Vector3::Cross(a2, MakeVector3(1, 0, 0));
+				a1 = a1.Normalize();
+				const Vector3 a0 = Vector3::Cross(a1, a2).Normalize();
+				Matrix4 m = Matrix4::FromAxis(a0, a1, a2, elbow) * Matrix4::Scale(thick, thick, thick);
+				if (h == VRHandLeft)
+					m = m * Matrix4::Translate(0, -1, 0) * Matrix4::Scale(1, -1, 1);
+				param.matrix = m;
+				renderer->RenderModel(*arm, param);
+			}
+		}
+
+		void Client::UpdateVRSettle(float dt, float framePeriod) {
+			// For the first seconds of a map the frames come slowly (the map is
+			// built, its pieces meshed), and a headset judders with them
+			// (testers: hard on those who feel it). Until a second of frames has
+			// come at the headset's rate, give or take, the world is left out:
+			// an empty space, the menus over it. Never more than eight seconds,
+			// whatever the settings.
+			if (!vrSettling)
+				return;
+			vrSettleTime += dt;
+			const float budget = framePeriod > 0.0F ? framePeriod * 1.3F : 0.02F;
+			const bool onTime = dt > 0.0F && dt <= budget;
+			vrSettleSteady = onTime ? vrSettleSteady + dt : 0.0F;
+			vrSettleFrames++;
+			vrSettleSlow += onTime ? 0 : 1;
+			vrSettleWorst = std::max(vrSettleWorst, dt);
+			if ((vrSettleSteady >= 1.0F && vrSettleTime >= 1.0F) || vrSettleTime >= 8.0F) {
+				vrSettling = false;
+				SPLog("[VR] The map is shown after %.1f s%s: %d frames, %d over %.1f ms, the "
+				      "slowest %.0f ms",
+				      vrSettleTime, vrSettleTime >= 8.0F ? " (frames still slow)" : "",
+				      vrSettleFrames, vrSettleSlow, budget * 1000.0F, vrSettleWorst * 1000.0F);
+			}
+		}
+
+		void Client::AddVRTableMapToScene() {
+			// The map seen on the table is a coarse copy of it: a voxel for every
+			// vr_tableDetail blocks each way, solid if any block in it is, in the
+			// colour of the topmost blocks in it. On a 90 cm table a block is
+			// about two pixels, so little is lost, and the triangles to draw go
+			// down by the square of it (the map itself, skipped there, was
+			// 28 ms of a Quest 3's GPU a frame). Built from the map's columns
+			// (64 heights a word), every two seconds; given to the renderer
+			// again only if a block changed it.
+			if (!vrTable.active || !vrRig.active || !IsVRFrameActive() || !map)
+				return;
+			int f = (int)vr_tableDetail;
+			f = f >= 8 ? 8 : f >= 4 ? 4 : f >= 2 ? 2 : 1;
+			GameMap& m = *map;
+			const int w = m.Width() / f, h = m.Height() / f, d = m.Depth() / f;
+			if (w <= 0 || h <= 0 || d <= 0)
+				return;
+			const bool stale = !vrTableModel || f != vrTableFactor ||
+			                   vrTableBuiltFor != map.GetPointerOrNull();
+			if (stale || time - vrTableBuiltAt > 2.0F) {
+				vrTableBuiltAt = time;
+				std::vector<uint32_t> cells(static_cast<size_t>(w) * h * d, 0);
+				const uint64_t window = (f >= 64) ? ~0ULL : ((1ULL << f) - 1ULL);
+				for (int cx = 0; cx < w; cx++)
+					for (int cy = 0; cy < h; cy++)
+						for (int cz = 0; cz < d; cz++) {
+							uint32_t r = 0, g = 0, b = 0, n = 0;
+							for (int dx = 0; dx < f; dx++)
+								for (int dy = 0; dy < f; dy++) {
+									const int x = cx * f + dx, y = cy * f + dy;
+									const uint64_t bits =
+									  (m.GetSolidMapWrapped(x, y) >> (cz * f)) & window;
+									if (!bits)
+										continue;
+									int z = cz * f;
+									for (uint64_t t = bits; !(t & 1ULL); t >>= 1)
+										z++;
+									const uint32_t c = m.GetColor(x, y, z);
+									r += c & 0xFF;
+									g += (c >> 8) & 0xFF;
+									b += (c >> 16) & 0xFF;
+									n++;
+								}
+							if (n == 0)
+								continue;
+							uint32_t c = (r / n) | ((g / n) << 8) | ((b / n) << 16);
+							if (c == 0)
+								c = 0x010101; // black takes the custom colour
+							cells[(static_cast<size_t>(cz) * h + cy) * w + cx] = c;
+						}
+				if (stale || cells != vrTableCells) {
+					auto vm = Handle<VoxelModel>::New(w, h, d);
+					for (int cz = 0; cz < d; cz++)
+						for (int cy = 0; cy < h; cy++)
+							for (int cx = 0; cx < w; cx++) {
+								const uint32_t c = cells[(static_cast<size_t>(cz) * h + cy) * w + cx];
+								if (c)
+									vm->SetSolid(cx, cy, cz, c);
+							}
+					// Voxel (0,0,0) from 0 to 1: scaled by f, on the map's own grid
+					vm->SetOrigin(MakeVector3(0.5F, 0.5F, 0.5F));
+					vrTableModelPrev = vrTableModel; // a frame in flight may draw it
+					vrTableModel = renderer->CreateModel(*vm);
+					vrTableCells = std::move(cells);
+					vrTableFactor = f;
+					vrTableBuiltFor = map.GetPointerOrNull();
+				}
+			}
+			if (!vrTableModel)
+				return;
+			ModelRenderParam param;
+			param.matrix = Matrix4::Scale(static_cast<float>(f));
+			renderer->RenderModel(*vrTableModel, param);
+		}
+
+		void Client::SetVRTable(bool on) {
+			IVRSystem* vr = GetVRSystem();
+			if (on && (!vr || !VRTableAllowed()))
+				return;
+			if (on == vrTable.active)
+				return;
+			vrTable.active = on;
+			vrTable.held[0] = vrTable.held[1] = false;
+			if (!on) {
+				VRPulse(-1, 0.3F, 0.05F);
+				return;
+			}
+			const VRFrameState& fs = vr->GetFrameState();
+			// On a table in front of you: 55cm ahead and half a metre under the
+			// eyes, the whole map about 90cm across, turned the way you face.
+			Vector3 ahead = -fs.head.Axis(2);
+			ahead.y = 0.0F;
+			ahead = ahead.GetLength() > 1.0E-3F ? ahead.Normalize() : MakeVector3(0, 0, -1);
+			vrTable.anchor = fs.head.position + ahead * 0.55F + MakeVector3(0.0F, -0.5F, 0.0F);
+			const GameMap& map = *world->GetMap();
+			const float size = static_cast<float>(std::max(map.Width(), map.Height()));
+			vrTable.pose.centre = MakeVector3(map.Width() * 0.5F, map.Height() * 0.5F, 58.0F);
+			vrTable.pose.scale = size / 0.9F;
+			vrTable.pose.yaw = vrRig.bodyYaw;
+			VRPulse(-1, 0.4F, 0.06F);
+			ShowAlert(_Tr("Client", "Table view: grip to hold the map, both grips to turn and "
+			                        "size it, stick to zoom"),
+			          AlertType::Notice, 6.0F);
+		}
+
+		void Client::UpdateVRTable(const VRFrameState& fs, float dt) {
+			if (!world || !world->GetMap())
+				return;
+			const GameMap& map = *world->GetMap();
+			const float size = static_cast<float>(std::max(map.Width(), map.Height()));
+			// From 3m across down to 15cm a map's width... and a single block 2cm
+			const float minScale = size / 3.0F, maxScale = std::max(size / 0.15F, 50.0F);
+
+			// A grip holds the point of the model it closed on
+			for (int h = 0; h < 2; h++) {
+				const VRControllerState& c = fs.hands[h];
+				const bool down =
+				  c.grip.valid && (vrTable.held[h] ? c.squeeze > 0.4F : c.squeeze > 0.7F);
+				if (down && !vrTable.held[h]) {
+					vrTable.heldWorld[h] =
+					  VRTableToWorld(vrTable.pose, vrTable.anchor, c.grip.position);
+					VRPulse(h, 0.3F, 0.03F);
+				}
+				vrTable.held[h] = down;
+			}
+			if (vrTable.held[0] && vrTable.held[1]) {
+				VRTableHoldTwo(vrTable.pose, vrTable.anchor, vrTable.heldWorld[0],
+				               vrTable.heldWorld[1], fs.hands[0].grip.position,
+				               fs.hands[1].grip.position, minScale, maxScale);
+			} else if (vrTable.held[0] || vrTable.held[1]) {
+				const int h = vrTable.held[0] ? 0 : 1;
+				VRTableHoldOne(vrTable.pose, vrTable.anchor, vrTable.heldWorld[h],
+				               fs.hands[h].grip.position);
+			} else {
+				// The off hand's stick: up zooms in, sideways turns it, about the
+				// middle of the table.
+				const Vector2 st = fs.hands[1 - VRToolHand()].thumbstick;
+				if (std::fabs(st.y) > 0.2F)
+					vrTable.pose.scale =
+					  Clamp(vrTable.pose.scale * std::exp(-st.y * 1.2F * dt), minScale, maxScale);
+				if (std::fabs(st.x) > 0.2F)
+					vrTable.pose.yaw -= st.x * 1.2F * dt;
+			}
+		}
+
+		void Client::DrawVRHurtEdge() {
+			// Per eye, as the vignette: a red ring, its clear middle pushed away
+			// from the hit's side so that edge is thicker.
+			if (!(bool)vr_hurtEdge || !(bool)cg_hurtScreenEffects)
+				return;
+			if (!world)
+				return;
+			stmp::optional<Player&> p = world->GetLocalPlayer();
+			if (!p || !p->IsAlive() || p->IsSpectator())
+				return;
+			const float hit = VRHurtEdgeAmount(damageTaken, time - lastHurtTime);
+			const float low = VRLowHealthEdge(lastHealth, time);
+			if (hit <= 0.001F && low <= 0.001F)
+				return;
+			constexpr float kInner = 0.55F;
+			if (!vrHurtEdgeImage) {
+				const int n = 256;
+				auto bmp = Handle<Bitmap>::New(n, n);
+				uint32_t* px = bmp->GetPixels();
+				for (int y = 0; y < n; y++)
+					for (int x = 0; x < n; x++) {
+						const float dx = (x + 0.5F) / n * 2.0F - 1.0F;
+						const float dy = (y + 0.5F) / n * 2.0F - 1.0F;
+						float t = (std::sqrt(dx * dx + dy * dy) - kInner) / (1.0F - kInner);
+						t = Clamp(t, 0.0F, 1.0F);
+						t = t * t;
+						px[y * n + x] = static_cast<uint32_t>(t * 255.0F + 0.5F) << 24;
+					}
+				vrHurtEdgeImage = renderer->CreateImage(*bmp);
+			}
+			const SceneDefinition& d = lastSceneDef;
+			// The ring's clear part reaches 40 degrees out; the eye sees ~50
+			const float clear = 40.0F * 3.14159265F / 180.0F;
+			Vector2 c, e;
+			if (!Project(d.viewOrigin + d.viewAxis[2], c) ||
+			    !Project(d.viewOrigin + d.viewAxis[2] + d.viewAxis[0] * std::tan(clear), e))
+				return;
+			const float r = (e - c).GetLength() / kInner;
+			const float w = renderer->ScreenWidth(), h = renderer->ScreenHeight();
+			// The hit's side: the middle moves away from it, so that side
+			// closes in (a hit from behind closes in all round, a little more)
+			const float shift = hit > low ? vrHurtSide : 0.0F;
+			const float grow = hit > low ? 1.0F - 0.15F * vrHurtBehind : 1.0F;
+			const Vector2 cc = MakeVector2(c.x - shift * r * 0.35F, c.y);
+			const float rr = r * grow;
+			const float a = std::min(0.85F, std::max(hit, low));
+			// Premultiplied: a dark red
+			renderer->SetColorAlphaPremultiplied(MakeVector4(0.55F * a, 0.0F, 0.0F, a));
+			renderer->DrawImage(vrHurtEdgeImage, AABB2(cc.x - rr, cc.y - rr, rr * 2.0F, rr * 2.0F));
+			auto rect = [&](float x0, float y0, float x1, float y1) {
+				x0 = std::max(x0, 0.0F), y0 = std::max(y0, 0.0F);
+				x1 = std::min(x1, w), y1 = std::min(y1, h);
+				if (x1 > x0 && y1 > y0)
+					renderer->DrawImage(nullptr, AABB2(x0, y0, x1 - x0, y1 - y0));
+			};
+			rect(0.0F, 0.0F, w, cc.y - rr);
+			rect(0.0F, cc.y + rr, w, h);
+			rect(0.0F, cc.y - rr, cc.x - rr, cc.y + rr);
+			rect(cc.x + rr, cc.y - rr, w, cc.y + rr);
 		}
 
 		void Client::DrawVRVignette() {
@@ -924,6 +1384,11 @@ namespace spades {
 
 			IVRSystem* vr = GetVRSystem();
 			if (!vr || !vr->GetFrameState().running) {
+				if (vrTable.fogFar) {
+					renderer->SetFogDistance(128.0F);
+					vrTable.fogFar = false;
+				}
+				vrTable.active = false;
 				if (vrRig.active) {
 					// Back on the monitor: let go of everything the controllers held.
 					VRReleaseAllKeys();
@@ -939,6 +1404,54 @@ namespace spades {
 
 			const VRFrameState& fs = vr->GetFrameState();
 			vrRig.active = true;
+			UpdateVRSettle(dt, fs.displayPeriod);
+
+			// The headset taken off and put back on: set down on a table, the
+			// tracked height goes with it, and back on the head the body was
+			// out by that much (testers: shots far over the sights, running at
+			// full speed crouched, until the height was reset by hand). So the
+			// height is reset as holding both sticks in does, a second and a
+			// half after it is back on, once the head has settled. Off is the
+			// game losing focus for over three seconds (or not running for
+			// twenty: a headset may stop the app outright; a map loading stalls
+			// for less), and the head then reading 12 cm higher or lower, or
+			// half a metre away: the system menu opened for a while leaves the
+			// head where it was, and a reset then, taken crouched, would have
+			// made the crouch the standing height.
+			{
+				const double now = std::chrono::duration<double>(
+				                     std::chrono::steady_clock::now().time_since_epoch())
+				                     .count();
+				if (!fs.focused) {
+					vrRig.lostFocus = true;
+				} else {
+					const double away = vrRig.lastFocusedAt > 0.0 ? now - vrRig.lastFocusedAt : 0.0;
+					const Vector3 moved = fs.head.position - vrRig.lastFocusedHead;
+					const bool shifted =
+					  fs.head.valid && (std::fabs(moved.y) > 0.12F ||
+					                    std::sqrt(moved.x * moved.x + moved.z * moved.z) > 0.5F);
+					if (vrRig.calibrated && shifted &&
+					    ((vrRig.lostFocus && away > 3.0) || away > 20.0)) {
+						vrRig.putOnResetAt = now + 1.5;
+						SPLog("[VR] The headset is back on after %.0f s: the height is reset "
+						      "shortly", away);
+					}
+					vrRig.lostFocus = false;
+					vrRig.lastFocusedAt = now;
+					if (fs.head.valid)
+						vrRig.lastFocusedHead = fs.head.position;
+					if (vrRig.putOnResetAt > 0.0 && now >= vrRig.putOnResetAt) {
+						// Not while looking well down (picking the controllers up,
+						// bent over): a moment later, upright
+						if (fs.head.valid && -fs.head.Axis(2).y > 0.5F) {
+							vrRig.putOnResetAt = now + 0.5;
+						} else {
+							vrRig.putOnResetAt = 0.0;
+							vrRig.heightResetRequested = true;
+						}
+					}
+				}
+			}
 			vr->SetHeldMap((int)vr_heldMap && (int)vr_wristHud && largeMapView &&
 			               largeMapView->IsZoomed());
 			if (dt > 0.0F)
@@ -1111,7 +1624,13 @@ namespace spades {
 				} else {
 					UpdateVRTwoHandedGrip(p, fs);
 					UpdateVRAimAssist(p, dt);
-					ApplyVRToolCollision(); // again, for the aim just settled
+					// Again, for the aim just settled. It starts from the hand the
+					// first pass already stopped, so it finds nothing in the way: the
+					// tool is still against the block (it cleared this, and the spade
+					// never struck, testers: swinging did nothing).
+					const bool stopped = vrRig.toolBlocked;
+					ApplyVRToolCollision();
+					vrRig.toolBlocked = vrRig.toolBlocked || stopped;
 				}
 				// A light knock as the tool meets a wall.
 				if (vrRig.toolBlocked && !wasBlocked)
@@ -1176,6 +1695,12 @@ namespace spades {
 						// a tool the eye has no line of sight to acts from the eye,
 						// along the tool's direction, as a monitor player's does.
 						// (Past a wall the far end can be clear: the line to it is not.)
+						// A spade strike digs the block its tip struck, along the
+						// strike, for as long as the press is held
+						if (p.IsToolSpade() && time - vrRig.spadeStrikeTime < 0.25F) {
+							toolOffset = vrRig.spadeStrikeOrigin - p.GetEye();
+							toolDir = vrRig.spadeStrikeDir;
+						}
 						if (!presence && (VRHeadClearance(p.GetEye(), toolOffset) < 1.0F ||
 						                  !VRLineOfSight(p.GetEye(), p.GetEye() + toolOffset)))
 							toolOffset = MakeVector3(0.0F, 0.0F, 0.0F);
@@ -1195,6 +1720,7 @@ namespace spades {
 				// you looked in it (testers).
 				if (!menu && fs.focused)
 					p.SetOrientation(facing.Normalize());
+				vrTable.wasSpectating = false; // playing: the next spectate brings the table
 			} else {
 				if (maybePlayer)
 					maybePlayer->ClearVRToolRay();
@@ -1211,8 +1737,34 @@ namespace spades {
 				UpdateVRRigTransforms(fs, lastSceneDef.viewOrigin);
 				UpdateVRWrist(fs, dt, menu);
 
+				// The table view: the off hand's stick click alone (both together
+				// recentre) turns it on and off.
+				const bool tableClick = O.thumbstickClick && !T.thumbstickClick;
+				if (!menu && tableClick && !vrTable.toggleLatched)
+					SetVRTable(!vrTable.active);
+				vrTable.toggleLatched = O.thumbstickClick;
+				{
+					auto lp = world ? world->GetLocalPlayer() : stmp::optional<Player&>();
+					const bool spectating = IsDemoMode() || !lp || lp->IsSpectator();
+					// Until the table can open (on joining, the map is not there
+					// yet), the change is kept for the next frame: used up on that
+					// first frame, spectating never brought the table (testers).
+					if (spectating && !vrTable.wasSpectating && (int)vr_tableWhenSpectating) {
+						if (VRTableAllowed()) {
+							SetVRTable(true);
+							vrTable.wasSpectating = true;
+						}
+					} else {
+						vrTable.wasSpectating = spectating;
+					}
+				}
+
 				if (menu) {
 					VRReleaseAllKeys();
+				} else if (vrTable.active) {
+					// The hands hold the model; nothing else.
+					VRReleaseAllKeys();
+					UpdateVRTable(fs, dt);
 				} else {
 					// Dead or spectating: the triggers cycle whom to follow and A
 					// switches the follow camera, as the mouse and space bar do.
@@ -1289,7 +1841,17 @@ namespace spades {
 			// where the eye saw over (testers' reports). Up close the dot is the
 			// eye-to-hand offset from the barrel's own line; it is always where
 			// the shot lands. Through the scope, the scope's line.
-			Vector3 from = eye;
+			// The ray that finds the target leaves your real eye (the head the
+			// headset tracks), not the body's eye the game keeps: the two are
+			// apart by the head's lean and by your height against the game's eye
+			// height, often 10 to 30 cm, mostly up and down. From the body's eye
+			// the target was that far off the sights at every range, and the
+			// laser climbed to it the more steeply the closer it was (testers:
+			// shots missing what the sights and the laser were on). Down the
+			// sights the real eye is on their line, so the shot lands on them.
+			// The shot itself still leaves the body's eye, towards that target,
+			// as the server expects.
+			Vector3 from = vrRig.camera;
 			Vector3 dir = vrRig.handAxes[toolHand][0];
 			if (vrRig.scopeAimValid) {
 				from = vrRig.scopeAimOrigin;
@@ -1460,7 +2022,48 @@ namespace spades {
 			{
 				const float swingAt = (float)vr_swingSpeed;
 				vrRig.swingHold = std::max(0.0F, vrRig.swingHold - dt);
-				if (p.IsToolSpade() && swingAt > 0.0F && vrRig.handValid[toolHand]) {
+				const bool contact = (int)vr_spadeContact != 0;
+				if (p.IsToolSpade() && contact && vrRig.handValid[toolHand]) {
+					// A strike: the spade comes to rest on a block (it is solid:
+					// ApplyVRToolCollision stopped it) with the hand still moving
+					// into it at a brisk pace, not the arm's full swing. One strike,
+					// one hit: pull it off the block to strike again.
+					const float speed = (vrRig.handVelocity[toolHand] / vrRig.scale).GetLength();
+					const bool touching = vrRig.toolBlocked;
+					if (touching && !vrRig.spadeTouching && speed > 0.7F) {
+						const Vector3 dir = vrRig.handAxes[toolHand][0];
+						const Vector3 tip = vrRig.handPos[toolHand] + dir * vrRig.toolReach;
+						vrRig.spadeStrikeTime = time;
+						vrRig.spadeStrikeOrigin = tip - dir * 0.4F;
+						vrRig.spadeStrikeDir = dir;
+						vrRig.swingHold = 0.15F;
+						VRPulse(toolHand, Clamp(0.4F + speed * 0.2F, 0.4F, 1.0F), 0.06F,
+						        VRHapticShape::Kick);
+					}
+					vrRig.spadeTouching = touching;
+					// Players are not solid, so a strike never comes against one:
+					// a swing at the arm's pace with the tip by somebody hits, as
+					// it did before the spade was made solid
+					bool byPlayer = false;
+					if (world && swingAt > 0.0F) {
+						const Vector3 tip = vrRig.handPos[toolHand] +
+						                    vrRig.handAxes[toolHand][0] * vrRig.toolReach;
+						for (size_t i = 0; i < world->GetNumPlayerSlots() && !byPlayer; i++) {
+							auto other = world->GetPlayer(static_cast<unsigned int>(i));
+							if (!other || &other.value() == &p || !other->IsAlive() ||
+							    other->IsSpectator())
+								continue;
+							const Vector3 body = other->GetEye() + MakeVector3(0.0F, 0.0F, 1.0F);
+							byPlayer = (body - tip).GetLength() < 1.6F;
+						}
+					}
+					if (byPlayer && !vrRig.swingLatched && speed > swingAt) {
+						vrRig.swingLatched = true;
+						vrRig.swingHold = 0.15F;
+					} else if (speed < swingAt * 0.5F) {
+						vrRig.swingLatched = false;
+					}
+				} else if (p.IsToolSpade() && swingAt > 0.0F && vrRig.handValid[toolHand]) {
 					float speed = (vrRig.handVelocity[toolHand] / vrRig.scale).GetLength();
 					if (!vrRig.swingLatched && speed > swingAt) {
 						vrRig.swingLatched = true;
@@ -1512,11 +2115,37 @@ namespace spades {
 			int slot = VRHolsterNone;
 			// Only with the tool pointed down, at the ground by the feet where
 			// the hand is at the hip: in a tunnel a block is always in reach, and
-			// no holster ever counted there (a tester's report).
-			const bool reach = (p.IsToolSpade() || p.IsToolBlock()) &&
-			                   p.GetToolDirection().z > 0.5F && VRToolHasReach(p);
+			// no holster ever counted there (a tester's report). Pointed almost
+			// straight down it counts as digging whether or not a block is in
+			// reach: dug three deep, the floor of the hole was out of it, and the
+			// grip took blocks from the hip (testers).
+			const float down = p.GetToolDirection().z;
+			const bool reach = (p.IsToolSpade() || p.IsToolBlock()) && down > 0.5F &&
+			                   (down > 0.8F || VRToolHasReach(p));
+			// The holsters face the body's way, not the eyes' (VRHolsterFrame)
+			VRHolsterFrameUpdate(vrRig.holsterFrame, fs, dt, vrRig.standingHeight,
+			                     (int)vr_holsterFollow != 0);
+			vrRig.holsterFrame.hipDrop =
+			  Clamp(vrRig.holsterFrame.hipDrop - Clamp((float)vr_hipHeight, -30.0F, 30.0F) * 0.01F,
+			        0.25F, 1.2F);
+			// The grip's grace (a squeeze a moment before or after the hand is at
+			// a holster still takes from it) only near one: anywhere else it held
+			// the grip's own action back 0.2 s, and a line of blocks drawn
+			// quickly began where the hand had got to by then (testers).
+			bool nearHolster = false;
+			if (fs.hands[toolHand].grip.valid) {
+				for (int i = 0; i < 4 && !nearHolster; i++) {
+					Vector3 at, hf, hr;
+					float radius;
+					if (VRHolsterPlace(fs, toolHand, i, at, radius, hf, hr, &vrRig.holsterFrame))
+						nearHolster =
+						  (fs.hands[toolHand].grip.position - at).GetLength() < radius + 0.15F;
+				}
+			}
+			const bool mayHolster =
+			  (int)vr_holsters && !vrRig.twoHanded && !reach && nearHolster;
 			if ((int)vr_holsters && VRGripMayHolster(vrRig.grip, vrRig.twoHanded, reach)) {
-				slot = VRHolsterAt(fs, toolHand, vrRig.holsterHover);
+				slot = VRHolsterAt(fs, toolHand, vrRig.holsterHover, &vrRig.holsterFrame);
 				if (slot >= 0 && p.GetTool() == holstered[slot])
 					slot = VRHolsterNone;
 			}
@@ -1525,13 +2154,14 @@ namespace spades {
 					VRPulse(toolHand, 0.25F, 0.02F);
 				vrRig.holsterHover = slot;
 			}
-			const int take = VRGripUpdate(vrRig.grip, T.squeeze > 0.7F, slot);
+			// A squeeze a moment early or late still takes (kVRGripGrace)
+			const int take = VRGripUpdate(vrRig.grip, T.squeeze > 0.7F, slot, dt, mayHolster);
 			if (take >= 0 && p.IsToolSelectable(holstered[take])) {
 				SetSelectedTool(holstered[take]);
 				MarkTrainingVRStep(training::VRStepHolster);
 				VRPulse(toolHand, 0.6F, 0.06F);
 			}
-			VRSetKey(cg_keyAltAttack, vrRig.grip.action && !p.IsToolWeapon());
+			VRSetKey(cg_keyAltAttack, VRGripActionArmed(vrRig.grip) && !p.IsToolWeapon());
 
 			VRSetKey(cg_keyJump, T.buttonPrimary);
 			VRSetKey(cg_keyReloadWeapon, UpdateVRReload(p, fs));
@@ -1648,6 +2278,22 @@ namespace spades {
 			} else if ((int)vr_comfortCamera && IsVRComfortMode(mode) && vrRig.comfortAnchored) {
 				origin = vrRig.comfortAnchor;
 			}
+			// The table view: the head is outside the world, looking at it as a
+			// model. Seen through the same eyes, at the table's scale and turn.
+			const bool table = vrTable.active && VRTableAllowed();
+			if (!table)
+				vrTable.active = false;
+			const float bodyYaw = vrRig.bodyYaw, bodyScale = vrRig.scale;
+			if (table) {
+				origin = VRTableToWorld(vrTable.pose, vrTable.anchor, fs.head.position);
+				vrRig.bodyYaw = vrTable.pose.yaw;
+				vrRig.scale = vrTable.pose.scale;
+			}
+			if (table != vrTable.fogFar) {
+				// From outside, the fog would hide it all
+				renderer->SetFogDistance(table ? 8192.0F : 128.0F);
+				vrTable.fogFar = table;
+			}
 			UpdateVRRigTransforms(fs, origin);
 
 			// The single view is the head. Its field of view is the HUD panel's, so
@@ -1674,6 +2320,20 @@ namespace spades {
 				e.tangents = FovTangents{fs.eyeLeft[i], fs.eyeRight[i], fs.eyeDown[i], fs.eyeUp[i]};
 			}
 			def.numVREyes = 2;
+			if (table) {
+				vrRig.bodyYaw = bodyYaw;
+				vrRig.scale = bodyScale;
+				// Not wholeMap: the map itself is not drawn (skipWorld), and with
+				// it every chunk of it was meshed in the frame the table opened
+				// No water: its sheet is 128 blocks round the eye, so on the table
+				// it covered a patch under you, and went past the map's edges
+				// (testers). The sea floor shows instead.
+				def.skipWater = true;
+				// The map itself is drawn coarse, as a model (AddVRTableMapToScene)
+				def.skipWorld = true;
+				def.zNear = 0.5F;
+				def.zFar = 8192.0F;
+			}
 
 			// Nothing that moves the picture without the head moving: that is
 			// what makes people sick. Shake, roll and zoom are already gone with

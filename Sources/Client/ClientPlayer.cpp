@@ -76,6 +76,9 @@ DEFINE_SPADES_SETTING(vr_laser, "1");
 static constexpr float kVRLaserAhead = 0.72F, kVRLaserUp = -0.14F;
 // Your own torso and legs when you look down.
 DEFINE_SPADES_SETTING(vr_showBody, "1");
+// The grenades and blocks carried on the hips, drawn where a hand takes them
+DEFINE_SPADES_SETTING(vr_holsterItems, "1");
+SPADES_SETTING(vr_holsters);
 SPADES_SETTING(vr_scope);
 // For tests: the rifle's scope held up to the eye, straight ahead of the head,
 // with no hands (a PC test headset has none), so its view is drawn every frame.
@@ -88,7 +91,8 @@ DEFINE_SPADES_SETTING(cg_hideBody, "0");
 DEFINE_SPADES_SETTING(cg_hideArms, "0");
 DEFINE_SPADES_SETTING(cg_debugToolSkinAnchors, "0");
 DEFINE_SPADES_SETTING(cg_trueAimDownSight, "1");
-DEFINE_SPADES_SETTING(cg_muzzleFire, "0");
+// On by default since 0.4.0: a shot with no flash looked broken
+DEFINE_SPADES_SETTING(cg_muzzleFire, "1");
 
 SPADES_SETTING(cg_orientationSmoothing);
 
@@ -177,6 +181,8 @@ namespace spades {
 			Vector3 xrayColor = MakeVector3(1, 1, 1);
 			std::map<IModel*, std::string> modelFiles;
 			std::vector<std::pair<std::string, Matrix4>>* capture = nullptr;
+			// The body mirror's reflection (SetMirror), or null
+			const Matrix4* mirror = nullptr;
 			// The outfit's set, "Models/Player/Custom/<set>/", whose held items
 			// replace the usual ones (empty: none); and what each path gave.
 			std::string heldFolder;
@@ -278,6 +284,11 @@ namespace spades {
 				capture = into;
 			}
 
+			/** Every model drawn from here on is drawn reflected by `m` instead,
+			 * over the world, casting no shadow; lights and sprites are left out
+			 * (null: stop). The body mirror (Client::vrMirror). */
+			void SetMirror(const Matrix4* m) { mirror = m; }
+
 			Handle<IImage> CreateImage(Bitmap& bmp) { return base->CreateImage(bmp); }
 			Handle<IModel> CreateModel(VoxelModel& m) { return base->CreateModel(m); }
 
@@ -289,6 +300,8 @@ namespace spades {
 			void StartScene(const SceneDefinition&) { OnProhibitedAction(); }
 
 			void AddLight(const client::DynamicLightParam& light) {
+				if (mirror)
+					return;
 				AABB3 aabb{light.origin, light.origin};
 				if (light.type == DynamicLightTypeLinear)
 					aabb += light.point2;
@@ -298,7 +311,7 @@ namespace spades {
 			}
 
 			void RenderModel(IModel& model, const ModelRenderParam& _p) {
-				if (capture) {
+				if (capture && !mirror) {
 					auto it = modelFiles.find(&model);
 					if (it != modelFiles.end())
 						capture->emplace_back(it->second, _p.matrix);
@@ -331,17 +344,28 @@ namespace spades {
 
 				IModel& drawn = HeldItem(model);
 				auto bounds = (p.matrix * OBB3(drawn.GetBoundingBox())).GetBoundingAABB();
-				if (CheckVisibility(bounds))
-					base->RenderModel(drawn, p);
+				if (!CheckVisibility(bounds))
+					return;
+				if (mirror) {
+					p.matrix = *mirror * p.matrix;
+					p.depthHack = true; // over the world, as a mirror's picture is
+					p.castShadow = false;
+					p.xray = false;
+				}
+				base->RenderModel(drawn, p);
 			}
 			void AddDebugLine(Vector3 a, Vector3 b, Vector4 color) { OnProhibitedAction(); }
 
 			void AddSprite(IImage& image, Vector3 center, float radius, float rotation) {
+				if (mirror)
+					return;
 				Vector3 rad(radius * 1.5F, radius * 1.5F, radius * 1.5F);
 				if (CheckVisibility(AABB3(center - rad, center + rad)))
 					base->AddSprite(image, center, radius, rotation);
 			}
 			void AddLongSprite(IImage& image, Vector3 p1, Vector3 p2, float radius) {
+				if (mirror)
+					return;
 				Vector3 rad(radius * 1.5F, radius * 1.5F, radius * 1.5F);
 				AABB3 bounds1(p1 - rad, p1 + rad);
 				AABB3 bounds2(p2 - rad, p2 + rad);
@@ -350,10 +374,14 @@ namespace spades {
 					base->AddLongSprite(image, p1, p2, radius);
 			}
 			void AddGlare(IImage& image, const GlareParam& param) {
+				if (mirror)
+					return;
 				if (CheckVisibility(AABB3(param.origin, param.origin)))
 					base->AddGlare(image, param);
 			}
 			void AddImagePlane(IImage& image, Vector3 origin, Vector3 axisU, Vector3 axisV) {
+				if (mirror)
+					return;
 				AABB3 bounds(origin, origin);
 				bounds += origin + axisU;
 				bounds += origin + axisV;
@@ -1815,7 +1843,7 @@ namespace spades {
 		                             const Vector3 handAxes[2][3], int toolHand, bool drawHead,
 		                             bool drawUpperArms, const ModelRenderParam& baseParam,
 		                             const Matrix4* torso) {
-			IRenderer& renderer = client.GetRenderer();
+			IRenderer& renderer = VRBodyRenderer();
 			std::string modelPath = "Models/Player/";
 			if (!cg_classicPlayerModels)
 				modelPath += player.GetWeapon().GetName() + "/";
@@ -1973,7 +2001,7 @@ namespace spades {
 					vrSkin.SetVRHand(true);
 				// A skin of your gun that does not give its sights (a mod's, made
 				// before VR): the models it draws, to find them from
-				const bool fitSights = player.IsLocalPlayer() &&
+				const bool fitSights = player.IsLocalPlayer() && !vrMirrorPass &&
 				                       currentTool == Player::ToolWeapon &&
 				                       !vrSkin.ImplementsInterface();
 				std::vector<std::pair<std::string, Matrix4>> drawn;
@@ -2007,6 +2035,132 @@ namespace spades {
 				param.matrix = Matrix4::FromAxis(ax[1], -ax[0], ax[2], handPos[offHand]) *
 				               Matrix4::Scale(0.05F) * Matrix4::Scale(-1, -1, 1);
 				renderer.RenderModel(*mag, param);
+			}
+		}
+
+		void ClientPlayer::AddVRHolsterItems() {
+			// A belt round the waist through both hip holsters (VRHolsterPlace),
+			// with what it carries where a hand takes it: on the other hip a loop
+			// for each grenade, filled while you have it and empty once thrown, so
+			// the count is seen going down; on the gun hand's hip a row of blocks
+			// in the colour picked, fewer as they run out. The one a hand is at
+			// stands out a little. Only in your own view.
+			Player& p = player;
+			const auto& rig = client.vrRig;
+			if (!(int)vr_holsters || !(int)vr_holsterItems || !p.IsAlive() ||
+			    p.IsSpectator() || client.vrTable.active ||
+			    !rig.holsterValid[VRHolsterBlocks] || !rig.holsterValid[VRHolsterGrenades])
+				return;
+			IRenderer& renderer = VRBodyRenderer();
+			const float s = rig.scale; // blocks per metre
+			const Vector3 f = rig.holsterForward;
+			// Model axes: x along, y across, z down (right-handed: a mirrored
+			// matrix turns a model inside out)
+			const Vector3 down = MakeVector3(0, 0, 1);
+			auto frameAlong = [&](const Vector3& along, const Vector3& size, const Vector3& at) {
+				const Vector3 x = along.Normalize();
+				const Vector3 y = Vector3::Cross(down, x);
+				return Matrix4::FromAxis(x * size.x, y * size.y, down * size.z, at);
+			};
+			auto pop = [&](int slot) { return rig.holsterHover == slot ? 1.15F : 1.0F; };
+
+			// The belt: an ellipse through both hips, a little deeper than wide
+			// is narrow, its centre between them
+			const Vector3 blocksAt = rig.holsterPos[VRHolsterBlocks];
+			const Vector3 grenadesAt = rig.holsterPos[VRHolsterGrenades];
+			const Vector3 centre = (blocksAt + grenadesAt) * 0.5F;
+			const Vector3 toBlocks = (blocksAt - centre);
+			const float halfWidth = toBlocks.GetLength();
+			if (halfWidth < 1.0E-4F)
+				return;
+			const Vector3 side = toBlocks / halfWidth; // towards the blocks' hip
+			const float halfDepth = 0.13F * s;
+			if (!beltModel) {
+				auto m = Handle<VoxelModel>::New(1, 1, 1);
+				m->SetSolid(0, 0, 0, 0x1E2633); // dark leather (the map's colour order)
+				beltModel = renderer.CreateModel(*m);
+				auto l = Handle<VoxelModel>::New(1, 1, 1);
+				l->SetSolid(0, 0, 0, 0x141A22);
+				loopModel = renderer.CreateModel(*l);
+			}
+			auto onBelt = [&](float a) {
+				return centre + side * (halfWidth * std::cos(a)) + f * (halfDepth * std::sin(a));
+			};
+			ModelRenderParam strap;
+			// Stepped, as voxels are (testers: a smooth oval did not fit the
+			// game's look): the ellipse drawn on a grid of 2.5 cm cells across
+			// the body, each cell on its edge a block of belt.
+			{
+				const float cell = 0.025F * s;
+				const int nx = static_cast<int>(std::ceil(halfWidth / cell)) + 1;
+				const int ny = static_cast<int>(std::ceil(halfDepth / cell)) + 1;
+				auto inside = [&](int i, int j) {
+					const float x = i * cell / halfWidth, y = j * cell / halfDepth;
+					return x * x + y * y <= 1.0F;
+				};
+				for (int i = -nx; i <= nx; i++)
+					for (int j = -ny; j <= ny; j++) {
+						if (!inside(i, j))
+							continue;
+						if (inside(i + 1, j) && inside(i - 1, j) && inside(i, j + 1) &&
+						    inside(i, j - 1))
+							continue; // within the belt, not on it
+						const Vector3 at = centre + side * (i * cell) + f * (j * cell);
+						strap.matrix =
+						  frameAlong(side, MakeVector3(cell, cell, 0.045F * s), at);
+						renderer.RenderModel(*beltModel, strap);
+					}
+			}
+			// The buckle, at the front
+			strap.matrix = frameAlong(side, MakeVector3(0.06F * s, 0.02F * s, 0.05F * s),
+			                          onBelt(1.5707963F) + f * (0.01F * s));
+			renderer.RenderModel(*loopModel, strap);
+
+			// Grenades: a loop per grenade carried when full (three), along the
+			// belt at the hip, the grenade hanging from it, just outside
+			{
+				int have = p.GetNumGrenades();
+				// The one in the hand is not on the hip
+				if (p.GetTool() == Player::ToolGrenade && have > 0)
+					have--;
+				// Grenade.kv6 is 6 voxels wide (7.3 cm here): 8.5 cm apart, four at
+				// most along the hip (at 6.5 cm they overlapped and flickered,
+				// testers)
+				const int loops = std::max(3, std::min(have, 4));
+				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
+				// 9 voxels tall: 11 cm
+				const float voxel = 0.11F / 9.0F * s * pop(VRHolsterGrenades);
+				const Vector3 out = -side * (0.04F * s); // the grenades' hip is the other side
+				ModelRenderParam param;
+				for (int i = 0; i < loops; i++) {
+					const Vector3 along = f * ((i - (loops - 1) * 0.5F) * 0.085F * s);
+					// The loop: a thin strap over the belt, a little proud of it
+					strap.matrix = frameAlong(f, MakeVector3(0.018F * s, 0.008F * s, 0.055F * s),
+					                          grenadesAt - side * (0.012F * s) + along);
+					renderer.RenderModel(*loopModel, strap);
+					// The grenade hangs from it, outside the belt
+					if (i < have) {
+						param.matrix = frameAlong(f, MakeVector3(voxel, voxel, voxel),
+						                          grenadesAt + out + along + down * (0.03F * s));
+						renderer.RenderModel(*model, param);
+					}
+				}
+			}
+			// Blocks: up to three in a row on the belt at the other hip
+			if (p.GetNumBlocks() > 0) {
+				const int n = std::min(3, (p.GetNumBlocks() + 16) / 17);
+				Handle<IModel> model = renderer.RegisterModel("Models/Weapons/Block/Block.kv6");
+				// 10 voxels across: 6 cm
+				const float voxel = 0.06F / 10.0F * s * pop(VRHolsterBlocks);
+				const Vector3 out = side * (0.035F * s);
+				ModelRenderParam param;
+				param.customColor = ConvertColorRGB(p.GetBlockColor());
+				for (int i = 0; i < n; i++) {
+					const Vector3 at = blocksAt + out + f * ((i - (n - 1) * 0.5F) * 0.065F * s) +
+					                   down * (0.03F * s);
+					param.matrix = frameAlong(f, MakeVector3(voxel, voxel, voxel), at);
+					renderer.RenderModel(*model, param);
+				}
 			}
 		}
 
@@ -2056,6 +2210,9 @@ namespace spades {
 					client.vrRig.reflexCenter = sights.reflexCenter;
 					client.vrRig.reflexDir = along.Normalize();
 					client.vrRig.reflexRadius = sights.reflexRadius;
+					const Matrix4 gunFrame = VRToolOriginMatrix(pos[toolHand], axes[toolHand]);
+					client.vrRig.reflexRight = gunFrame.GetAxis(0).Normalize();
+					client.vrRig.reflexUp = (gunFrame.GetAxis(2) * -1.0F).Normalize();
 				}
 			}
 			// The tool in the hand (currentTool), not the one chosen: the hand
@@ -2254,6 +2411,8 @@ namespace spades {
 			// server has, which in a headset is the head's.
 			AddFlashlightToScene(client.vrRig.camera - client.vrRig.headAxes[2] * 0.08F, true);
 
+			AddVRHolsterItems();
+
 			ModelRenderParam param;
 			param.customColor = ConvertColorRGB(p.GetColor());
 			const bool body = (int)vr_showBody != 0;
@@ -2262,6 +2421,84 @@ namespace spades {
 			// With a body, the arms run from its shoulders.
 			AddVRBody(client.vrRig.camera, client.vrRig.headAxes, valid, pos, axes, toolHand, false,
 			          body, param);
+
+			if (p.IsLocalPlayer() && client.vrMirror.shown)
+				AddVRMirror(valid, pos, axes, toolHand);
+		}
+
+		IRenderer& ClientPlayer::VRBodyRenderer() {
+			if (vrMirrorPass)
+				return *sandboxedRenderer;
+			return client.GetRenderer();
+		}
+
+		void ClientPlayer::AddVRMirror(const bool valid[2], const Vector3 pos[2],
+		                               const Vector3 axes[2][3], int toolHand) {
+			// The body mirror (Client::UpdateVRMirror): your body again, reflected,
+			// beside the menu panel: the belt and what is on it, the tools on your
+			// shoulders, your arms and head, as the settings have them now (Hip
+			// Height, Show Your Body, Your Arms...). Only the body, no world.
+			// It all goes through the sandbox, which reflects it; its box round
+			// the eyes is checked where each model is drawn from, before that.
+			const Matrix4 m = client.vrMirror.matrix;
+			sandboxedRenderer->SetMirror(&m);
+			vrMirrorPass = true;
+
+			AddVRHolsterItems();
+			AddVRShoulderTools();
+			ModelRenderParam param;
+			param.customColor = ConvertColorRGB(player.GetColor());
+			const bool body = (int)vr_showBody != 0;
+			if (body)
+				AddVRLocalBody(param);
+			// The head too, which your own view never draws
+			AddVRBody(client.vrRig.camera, client.vrRig.headAxes, valid, pos, axes, toolHand, true,
+			          body, param);
+
+			vrMirrorPass = false;
+			sandboxedRenderer->SetMirror(nullptr);
+		}
+
+		void ClientPlayer::AddVRShoulderTools() {
+			// The gun and the spade where they are taken from, over the shoulders
+			// (VRHolsterPlace), standing up behind the shoulder; the one in
+			// the hand is not there. Only the mirror shows them.
+			const auto& rig = client.vrRig;
+			if (!(int)vr_holsters)
+				return;
+			IRenderer& renderer = VRBodyRenderer();
+			const Vector3 up = MakeVector3(0, 0, -1);
+			const Vector3 back = rig.holsterForward * -1.0F;
+			auto place = [&](const char* path, int slot, bool longAlongZ) {
+				if (!rig.holsterValid[slot])
+					return;
+				Handle<IModel> model = renderer.RegisterModel(path);
+				if (!model)
+					return;
+				const AABB3 box = model->GetBoundingBox();
+				const Vector3 mid = (box.min + box.max) * 0.5F;
+				// Model axes: x right, y forward, z down, as held. A gun is long
+				// along y: its muzzle up here, its underside to the back. The
+				// spade is long along z: as it hangs, the handle up.
+				ModelRenderParam param;
+				param.matrix = (longAlongZ ? Matrix4::FromAxis(rig.holsterRight, back, up * -1.0F,
+				                                               rig.holsterPos[slot])
+				                           : Matrix4::FromAxis(rig.holsterRight, up, back,
+				                                               rig.holsterPos[slot])) *
+				               Matrix4::Scale(0.05F) * Matrix4::Translate(mid * -1.0F);
+				renderer.RenderModel(*model, param);
+			};
+			if (currentTool != Player::ToolWeapon) {
+				const char* gun = "Models/Weapons/Rifle/Weapon.kv6";
+				switch (player.GetWeaponType()) {
+					case SMG_WEAPON: gun = "Models/Weapons/SMG/Weapon.kv6"; break;
+					case SHOTGUN_WEAPON: gun = "Models/Weapons/Shotgun/Weapon.kv6"; break;
+					default: break;
+				}
+				place(gun, VRHolsterGun, false);
+			}
+			if (currentTool != Player::ToolSpade)
+				place("Models/Weapons/Spade/Spade.kv6", VRHolsterSpade, true);
 		}
 
 		void ClientPlayer::AddVRLocalBody(const ModelRenderParam& baseParam) {
@@ -2270,7 +2507,7 @@ namespace spades {
 			// behind the head, as a real one does, so looking down shows your chest
 			// and not the inside of your neck; the head itself is not drawn.
 			Player& p = player;
-			IRenderer& renderer = client.GetRenderer();
+			IRenderer& renderer = VRBodyRenderer();
 			std::string modelPath = "Models/Player/";
 			if (!cg_classicPlayerModels)
 				modelPath += p.GetWeapon().GetName() + "/";
@@ -2281,7 +2518,9 @@ namespace spades {
 			// by 65. (The head's forward has z down.)
 			{
 				const float down = std::asin(Clamp(client.vrRig.headAxes[0].z, -1.0F, 1.0F));
-				const float fade = Clamp((down - DEG2RAD(40.0F)) / DEG2RAD(25.0F), 0.0F, 1.0F);
+				const float fade =
+				  vrMirrorPass ? 0.0F // the mirror shows it whole, wherever you look
+				               : Clamp((down - DEG2RAD(40.0F)) / DEG2RAD(25.0F), 0.0F, 1.0F);
 				if (fade > 0.95F)
 					return;
 				if (fade > 0.0F) {
@@ -2360,10 +2599,11 @@ namespace spades {
 			if (p.GetFront().GetSquaredLength() < 0.01F)
 				return;
 
-			// distance cull
+			// distance cull (not on the table view, whose eye is off the map
+			// and which shows all of it)
 			const auto& viewOrigin = client.GetLastSceneDef().viewOrigin;
 			float distSqr = (p.GetOrigin() - viewOrigin).GetSquaredLength2D();
-			if (distSqr > FOG_DISTANCE_SQ)
+			if (distSqr > FOG_DISTANCE_SQ && !client.vrTable.active)
 				return;
 
 			bool isThirdPerson = ShouldRenderInThirdPersonView();
@@ -2786,7 +3026,7 @@ namespace spades {
 			// distance cull
 			const auto& viewOrigin = client.GetLastSceneDef().viewOrigin;
 			float distSqr = (p.GetOrigin() - viewOrigin).GetSquaredLength2D();
-			if (distSqr > FOG_DISTANCE_SQ)
+			if (distSqr > FOG_DISTANCE_SQ && !client.vrTable.active)
 				return;
 
 			Handle<IModel> model;

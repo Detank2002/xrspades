@@ -30,6 +30,7 @@
 namespace spades {
 	namespace client {
 		class FontManager;
+		struct VRFrameState;
 	}
 	namespace gui {
 		class MainScreenHelper;
@@ -66,6 +67,22 @@ namespace spades {
 			bool vrMenuAnchored = false;
 			Vector3 vrMenuAnchor; // the head where the menu scene began, tracking space
 			Vector3 vrMenuEye;    // where that head is in the world
+			// Walking about the menu map (MoveInVRMenu): the turn the sticks have
+			// added, the last frame's time, a snap turn held.
+			void MoveInVRMenu(const client::VRFrameState& fs, float scale);
+			float vrMenuYaw = 0.0F;
+			// A standalone headset too slow in the menu (CheckVRMenuSpeed): the
+			// time and frames counted, and whether it was checked this run.
+			void CheckVRMenuSpeed(float dt);
+			/** This start made it (cl_startGuard): nine seconds of frames, in the
+			 * menu or a game. */
+			void ClearStartGuard(float dt);
+			float startGuardTime = 0.0F;
+			float vrSpeedTime = 0.0F;
+			int vrSpeedFrames = 0;
+			bool vrSpeedChecked = false;
+			double vrMenuLastTime = 0.0;
+			bool vrMenuTurnLatched = false;
 			void DrawVRMenuScene();
 
 			std::string Connect(const ServerAddress &host);

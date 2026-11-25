@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026 ZeroSpades X contributors
+ Copyright (c) 2026 XRSpades contributors
 
  This file is part of ZeroSpades, a fork of OpenSpades.
 

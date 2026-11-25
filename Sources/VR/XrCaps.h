@@ -58,6 +58,11 @@ namespace spades {
 			TouchControllerPro,        // XR_FB_touch_controller_pro: Quest Pro bindings
 			TouchControllerPlus,       // XR_META_touch_controller_plus: Quest 3 bindings
 			TouchControllerProximity,  // XR_FB_touch_controller_proximity: finger near a button
+			FrameController,           // XR_VALVE_frame_controller_interaction: Steam Frame
+			PicoController,            // XR_BD_controller_interaction: Pico 4, Neo 3
+			Focus3Controller,          // XR_HTC_vive_focus3_controller_interaction: Focus 3, XR Elite
+			CosmosController,          // XR_HTC_vive_cosmos_controller_interaction: Vive Cosmos
+			HpController,              // XR_EXT_hp_mixed_reality_controller: HP Reverb G2
 			AndroidCreateInstance,     // XR_KHR_android_create_instance: Android only
 			Count
 		};
