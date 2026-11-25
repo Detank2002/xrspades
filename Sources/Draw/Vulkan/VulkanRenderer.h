@@ -284,6 +284,8 @@ namespace spades {
 			bool directEyes = false;
 			VkFormat directEyeFormat = VK_FORMAT_UNDEFINED;
 			bool vrDirectFrame = false; // this frame's eyes went straight in
+			// The scene's targets made subsampled (WillSubsampleEyes), at start
+			bool directSubsampledTargets = false;
 			int vrDirectLogged = -1;    // the last way logged: 0 copies, 1 direct
 			/** Picks this frame's way for the eyes, and the headset image for
 			 * the direct one (taken here, before the scene is drawn into it). */
@@ -293,6 +295,13 @@ namespace spades {
 			 * COLOR_ATTACHMENT for the runtime). */
 			bool RecordDirectEyeOverlays(VkCommandBuffer cmd, uint32_t frameIndex);
 			void DestroyDirectEyeFramebuffers();
+			/** The direct eyes' overlay pass, made on first use: reading the
+			 * runtime's density map when the eye images are subsampled */
+			VkRenderPass EnsureEyeDirectRenderPass();
+			/** The pass the eyes' 2D pipelines are made for this frame: the
+			 * overlay pass when it reads a density map, else null (the UI's) */
+			VkRenderPass EyeOverlayRenderPass();
+			bool eyeDirectSubsampled = false;
 			VkRenderPass eyeDirectRenderPass = VK_NULL_HANDLE;
 			// A view and framebuffer for each headset image's layer: [image * 2 + eye]
 			std::vector<VkImageView> eyeDirectViews;

@@ -39,6 +39,7 @@ namespace spades {
 			  "XR_FB_foveation_configuration",
 			  "XR_FB_foveation_vulkan",
 			  "XR_FB_swapchain_update_state",
+			  "XR_META_vulkan_swapchain_create_info",
 			  "XR_FB_space_warp",
 			  "XR_FB_passthrough",
 			  "XR_EXT_hand_tracking",

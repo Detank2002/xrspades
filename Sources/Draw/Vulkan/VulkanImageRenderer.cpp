@@ -36,10 +36,11 @@
 
 namespace spades {
 	namespace draw {
-		VulkanImageRenderer::VulkanImageRenderer(VulkanRenderer& r)
+		VulkanImageRenderer::VulkanImageRenderer(VulkanRenderer& r, VkRenderPass renderPass)
 		    : renderer(r),
 		      device(r.GetDevice()),
 		      image(nullptr),
+		      renderPassMadeFor(renderPass != VK_NULL_HANDLE ? renderPass : r.GetRenderPass()),
 		      pipeline(VK_NULL_HANDLE),
 		      pipelineLayout(VK_NULL_HANDLE),
 		      descriptorSetLayout(VK_NULL_HANDLE) {
@@ -256,7 +257,7 @@ namespace spades {
 			pipelineInfo.pColorBlendState = &colorBlending;
 			pipelineInfo.pDynamicState = &dynamicState;
 			pipelineInfo.layout = pipelineLayout;
-			pipelineInfo.renderPass = renderer.GetRenderPass();
+			pipelineInfo.renderPass = renderPassMadeFor;
 			pipelineInfo.subpass = 0;
 
 			result = vkCreateGraphicsPipelines(vkDevice, renderer.GetPipelineCache(), 1, &pipelineInfo, nullptr, &pipeline);

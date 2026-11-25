@@ -73,6 +73,13 @@ DEFINE_SPADES_SETTING(vr_foveation, "0");
 // default: the edges of the view changing their detail as the load does is
 // what made a tester feel sick (a steady level is easier on the eyes).
 DEFINE_SPADES_SETTING(vr_foveationDynamic, "0");
+// 1: the foveated eye images stored subsampled, the coarse parts at the size
+// they were shaded at, which the headset filters up as it shows them, rather
+// than each coarse fragment copied into its block of pixels: smooth edges where
+// the blocks' stair steps crawled (testers: flicker at the voxels' edges, and
+// sick). Meta's recommended layout. Read at start. Off by default until seen
+// in a headset: a Quest 3's screen capture showed one flat colour with it.
+DEFINE_SPADES_SETTING(vr_foveationSubsampled, "0");
 // For tests: "yaw pitch" in degrees replaces the headset's head direction with a
 // fixed one (pitch below 0 looks down), so every run sees the same picture. The
 // eyes keep their spacing. Empty: the headset's own.
@@ -824,6 +831,12 @@ namespace spades {
 			// ApplyFoveation gives it
 			XrSwapchainCreateInfoFoveationFB fov{XR_TYPE_SWAPCHAIN_CREATE_INFO_FOVEATION_FB};
 			fov.flags = XR_SWAPCHAIN_CREATE_FOVEATION_FRAGMENT_DENSITY_MAP_BIT_FB;
+			XrVulkanSwapchainCreateInfoMETA meta{XR_TYPE_VULKAN_SWAPCHAIN_CREATE_INFO_META};
+			meta.additionalCreateFlags = VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT;
+			const bool subsampled =
+			  foveated && (bool)vr_foveationSubsampled && caps[XrCap::VulkanSwapchainCreateInfo];
+			if (subsampled)
+				fov.next = &meta;
 			if (foveated)
 				ci.next = &fov;
 			if (!Check(xrCreateSwapchain(session, &ci, &sc.handle), "xrCreateSwapchain"))
@@ -858,6 +871,7 @@ namespace spades {
 				sc.densityHeight = d.height;
 			}
 			sc.layers = layers;
+			sc.subsampled = subsampled && !sc.densityImages.empty();
 			sc.format = static_cast<VkFormat>(format);
 			sc.width = width;
 			sc.height = height;
@@ -914,8 +928,9 @@ namespace spades {
 			eyeSwapchainGeneration++;
 			appliedFoveation = -1;
 			if (!eyeSwapchains[0].densityImages.empty())
-				SPLog("[OpenXR] Eye density maps %ux%u, from the runtime",
-				      eyeSwapchains[0].densityWidth, eyeSwapchains[0].densityHeight);
+				SPLog("[OpenXR] Eye density maps %ux%u, from the runtime%s",
+				      eyeSwapchains[0].densityWidth, eyeSwapchains[0].densityHeight,
+				      eyeSwapchains[0].subsampled ? "; the eye images subsampled" : "");
 			frameState.eyeWidth = static_cast<int>(w);
 			frameState.eyeHeight = static_cast<int>(h);
 			if (symmetricFrustum)
@@ -1553,6 +1568,11 @@ namespace spades {
 		bool OpenXRSystem::CanFoveate() const {
 			return caps[XrCap::Foveation] && caps[XrCap::FoveationConfiguration] &&
 			       caps[XrCap::FoveationVulkan] && caps[XrCap::SwapchainUpdateState];
+		}
+
+		bool OpenXRSystem::WillSubsampleEyes() const {
+			return eyesFoveated && (bool)vr_foveationSubsampled &&
+			       caps[XrCap::VulkanSwapchainCreateInfo];
 		}
 
 		VkFormat OpenXRSystem::GetPlannedEyeFormat() const {

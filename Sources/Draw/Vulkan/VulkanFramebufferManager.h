@@ -210,7 +210,8 @@ namespace spades {
 			VulkanFramebufferManager(Handle<gui::SDLVulkanDevice> device, VulkanSettings& settings,
 			                         int renderWidth, int renderHeight, int viewCount = 1,
 			                         int foveation = 0, bool resolveInPass = false,
-			                         VkFormat colorFormat = VK_FORMAT_UNDEFINED);
+			                         VkFormat colorFormat = VK_FORMAT_UNDEFINED,
+			                         bool subsampled = false);
 			~VulkanFramebufferManager();
 
 			/** Sets up for scene rendering. */

@@ -50,6 +50,9 @@ DEFINE_SPADES_SETTING(cg_playerName, "Deuce");
 
 // In a headset, the menus stand on a generated map instead of in a void.
 DEFINE_SPADES_SETTING(vr_menuScene, "1");
+// For tests: the menu's map read from this path (e.g. Maps/Babel.vxl in the user
+// resources) instead of one of Maps/Menu's
+DEFINE_SPADES_SETTING(vr_debugMenuMap, "");
 SPADES_SETTING(vr_worldScale);
 SPADES_SETTING(vr_snapTurn);
 SPADES_SETTING(vr_smoothTurnSpeed);
@@ -148,6 +151,17 @@ namespace spades {
 				                                        "Maps/Menu/MashesswoodIsland.vxl"};
 				const int n = sizeof(kMenuMaps) / sizeof(kMenuMaps[0]);
 				std::string bytes;
+				// vr_debugMenuMap: a map of one's own instead, for tests (what a
+				// map costs to draw, measured with no game running)
+				const std::string own = vr_debugMenuMap;
+				if (!own.empty() && FileManager::FileExists(own.c_str())) {
+					try {
+						bytes = FileManager::ReadAllBytes(own.c_str());
+						SPLog("[VR] Menu scene: %s (vr_debugMenuMap)", own.c_str());
+					} catch (const std::exception& ex) {
+						SPLog("[VR] Menu scene: %s: %s", own.c_str(), ex.what());
+					}
+				}
 				const int first = static_cast<int>(std::chrono::steady_clock::now()
 				                                     .time_since_epoch()
 				                                     .count() %

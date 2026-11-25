@@ -30,7 +30,7 @@ namespace spades {
 		VulkanImage::VulkanImage(Handle<gui::SDLVulkanDevice> dev, uint32_t w, uint32_t h,
 		                         VkFormat fmt, VkImageTiling tiling, VkImageUsageFlags usage,
 		                         VkMemoryPropertyFlags properties, VkSampleCountFlagBits samp,
-		                         uint32_t layers)
+		                         uint32_t layers, VkImageCreateFlags createFlags)
 		: device(std::move(dev)),
 		  image(VK_NULL_HANDLE),
 		  allocation(VK_NULL_HANDLE),
@@ -52,6 +52,7 @@ namespace spades {
 			// Create image
 			VkImageCreateInfo imageInfo{};
 			imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+			imageInfo.flags = createFlags;
 			imageInfo.imageType = VK_IMAGE_TYPE_2D;
 			imageInfo.extent.width = width;
 			imageInfo.extent.height = height;

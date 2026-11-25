@@ -390,8 +390,17 @@ struct Server::Impl {
 
     // --- the map ----------------------------------------------------------
     void load_map() {
-        generate_training_map(map);
-        generate_aim_arena(map, static_cast<int>(cfg.scenario));
+        std::string err;
+        if (!cfg.map_vxl.empty() &&
+            map.load_vxl(reinterpret_cast<const uint8_t*>(cfg.map_vxl.data()), cfg.map_vxl.size(),
+                         err)) {
+            log("the course replaced by a map of the player's (cg_debugTrainingMap)");
+        } else {
+            if (!cfg.map_vxl.empty())
+                log("cg_debugTrainingMap: %s", err.c_str());
+            generate_training_map(map);
+            generate_aim_arena(map, static_cast<int>(cfg.scenario));
+        }
         map.to_solid_map(phys_map);
     }
     bool aim_mode() const { return cfg.mode == training::Mode::Aim; }

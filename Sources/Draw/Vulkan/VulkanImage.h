@@ -65,7 +65,7 @@ namespace spades {
 			            VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
 			            VkMemoryPropertyFlags properties,
 			            VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT,
-			            uint32_t layers = 1);
+			            uint32_t layers = 1, VkImageCreateFlags createFlags = 0);
 
 			// Create 2D array image with memory allocation
 			VulkanImage(Handle<gui::SDLVulkanDevice> device, uint32_t width, uint32_t height,

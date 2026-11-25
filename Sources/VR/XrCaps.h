@@ -45,6 +45,7 @@ namespace spades {
 			FoveationConfiguration,    // XR_FB_foveation_configuration: fixed levels
 			FoveationVulkan,           // XR_FB_foveation_vulkan: density-map images
 			SwapchainUpdateState,      // XR_FB_swapchain_update_state: what foveation sets
+			VulkanSwapchainCreateInfo, // XR_META_vulkan_swapchain_create_info: subsampled eyes
 			SpaceWarp,                 // XR_FB_space_warp: AppSW
 			Passthrough,               // XR_FB_passthrough: the lobby on Quest
 			HandTracking,              // XR_EXT_hand_tracking

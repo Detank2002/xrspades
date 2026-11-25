@@ -117,6 +117,9 @@ namespace spades {
 			void Advance(float dt);
 
 			void AddGrenade(std::unique_ptr<Grenade>);
+			/** cg_debugDigBench: random surface blocks broken through the
+			 * floating-block search, timed (tests only) */
+			void DigBench(int count);
 			const std::list<std::unique_ptr<Grenade>>& GetAllGrenades() { return grenades; }
 
 			void MarkBlockForRegeneration(const IntVector3& blockLocation);

@@ -19,6 +19,7 @@
 
  */
 
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <deque>
@@ -39,6 +40,10 @@
 #include <Core/Settings.h>
 
 DEFINE_SPADES_SETTING(cg_debugHitTest, "0");
+// For tests: once a map is loaded, this many random surface blocks broken through
+// the floating-block search (GameMapWrapper::RemoveBlocks), each timed, the
+// result logged. It leaves holes the server knows nothing of: tests only.
+DEFINE_SPADES_SETTING(cg_debugDigBench, "0");
 
 SPADES_SETTING(cg_orientationSmoothing);
 
@@ -120,9 +125,71 @@ namespace spades {
 
 			map = newMap;
 			if (map) {
+				const auto t0 = std::chrono::steady_clock::now();
 				mapWrapper = stmp::make_unique<GameMapWrapper>(*map);
 				mapWrapper->Rebuild();
+				SPLog("Map support links built in %.0f ms",
+				      std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+				        .count());
+				if ((int)cg_debugDigBench > 0)
+					DigBench(static_cast<int>(cg_debugDigBench));
 			}
+		}
+
+		void World::DigBench(int count) {
+			// Surface blocks (solid, air beside), picked uniformly
+			const int w = map->Width(), h = map->Height(), d = map->Depth();
+			std::vector<CellPos> picks;
+			uint64_t seen = 0;
+			uint32_t rng = 12345;
+			auto next = [&]() {
+				rng = rng * 1664525U + 1013904223U;
+				return rng;
+			};
+			for (int x = 0; x < w; x++)
+				for (int y = 0; y < h; y++)
+					for (int z = 0; z < d - 2; z++) {
+						// Well above the ground (the bottom 16 levels left out):
+						// what hangs or stands up, where a search can be long
+						if (z > d - 16 || !map->IsSolid(x, y, z))
+							continue;
+						const bool air = (x > 0 && !map->IsSolid(x - 1, y, z)) ||
+						                 (x < w - 1 && !map->IsSolid(x + 1, y, z)) ||
+						                 (y > 0 && !map->IsSolid(x, y - 1, z)) ||
+						                 (y < h - 1 && !map->IsSolid(x, y + 1, z)) ||
+						                 (z > 0 && !map->IsSolid(x, y, z - 1));
+						if (!air)
+							continue;
+						seen++;
+						if (picks.size() < static_cast<size_t>(count))
+							picks.push_back(CellPos(x, y, z));
+						else {
+							const uint64_t j = next() % seen;
+							if (j < static_cast<uint64_t>(count))
+								picks[static_cast<size_t>(j)] = CellPos(x, y, z);
+						}
+					}
+			double total = 0, worst = 0;
+			int over2 = 0, over8 = 0;
+			size_t floating = 0;
+			for (const CellPos& p : picks) {
+				if (!map->IsSolid(p.x, p.y, p.z))
+					continue;
+				const auto t0 = std::chrono::steady_clock::now();
+				const auto fall = mapWrapper->RemoveBlocks({p});
+				const double ms =
+				  std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+				    .count();
+				total += ms;
+				worst = std::max(worst, ms);
+				over2 += ms > 2.0 ? 1 : 0;
+				over8 += ms > 8.0 ? 1 : 0;
+				floating += fall.size();
+			}
+			SPLog("cg_debugDigBench: %zu of %llu surface blocks broken: %.2f ms each, worst "
+			      "%.1f, %d over 2 ms, %d over 8 ms; %zu blocks left floating",
+			      picks.size(), static_cast<unsigned long long>(seen),
+			      picks.empty() ? 0.0 : total / picks.size(), worst, over2, over8, floating);
 		}
 
 		void World::AddGrenade(std::unique_ptr<Grenade> g) {

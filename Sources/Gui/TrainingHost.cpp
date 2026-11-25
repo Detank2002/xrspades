@@ -25,10 +25,14 @@
 #include <thread>
 
 #include <Core/Debug.h>
+#include <Core/FileManager.h>
 #include <Core/Settings.h>
 #include <Training/Server.h>
 
 DEFINE_SPADES_SETTING(cg_localPort, "32890");
+// For tests: a .vxl the training server plays on instead of its course (what
+// a map costs in a game, without a server to join)
+DEFINE_SPADES_SETTING(cg_debugTrainingMap, "");
 
 namespace spades {
 	namespace gui {
@@ -113,13 +117,25 @@ namespace spades {
 			Impl* self = impl.get();
 			const int listenPort = port;
 			const Launch run = what;
-			impl->thread = std::thread([self, listenPort, run]() {
+			std::string testMap;
+			{
+				const std::string path = cg_debugTrainingMap;
+				if (!path.empty() && FileManager::FileExists(path.c_str())) {
+					try {
+						testMap = FileManager::ReadAllBytes(path.c_str());
+					} catch (const std::exception& ex) {
+						SPLog("cg_debugTrainingMap: %s", ex.what());
+					}
+				}
+			}
+			impl->thread = std::thread([self, listenPort, run, testMap]() {
 				host::HostConfig cfg;
 				cfg.port = static_cast<uint16_t>(listenPort);
 				cfg.mode = run.mode;
 				cfg.scenario = run.scenario;
 				cfg.highlight_targets = run.highlight;
 				cfg.aim = self->aim;
+				cfg.map_vxl = testMap;
 				cfg.log = [](const std::string& line) { SPLog("[Training] %s", line.c_str()); };
 				try {
 					host::Server server(cfg);

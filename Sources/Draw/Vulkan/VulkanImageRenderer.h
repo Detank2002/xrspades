@@ -86,6 +86,7 @@ namespace spades {
 			VulkanRenderer& renderer;
 			Handle<gui::SDLVulkanDevice> device;
 			VulkanImage* image;
+			VkRenderPass renderPassMadeFor = VK_NULL_HANDLE;
 			// The vertices added now are plain colour (SetSolidImage)
 			bool solidMode = false;
 			void MarkSolid(size_t firstVertex);
@@ -127,7 +128,10 @@ namespace spades {
 			VkExtent2D SurfaceExtent() const;
 
 		public:
-			VulkanImageRenderer(VulkanRenderer& r);
+			/** `renderPass`: the pass its pipeline draws in (one compatible with
+			 * it), the UI's when null */
+			VulkanImageRenderer(VulkanRenderer& r, VkRenderPass renderPass = VK_NULL_HANDLE);
+			VkRenderPass GetRenderPassMadeFor() const { return renderPassMadeFor; }
 			~VulkanImageRenderer();
 
 			// Records the queued draws. `target` is the size of the surface being

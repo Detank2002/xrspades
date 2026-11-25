@@ -42,6 +42,9 @@ struct HostConfig {
     // Aim: the run's status for the HUD, and its restart requests. Shared with
     // the game, which runs this server on a thread of its own.
     std::shared_ptr<training::AimShared> aim;
+    // For tests: a .vxl's bytes, played on instead of the course (an empty
+    // string: the course)
+    std::string map_vxl;
 };
 
 class Server {
