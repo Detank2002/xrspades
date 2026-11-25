@@ -68,6 +68,9 @@ DEFINE_SPADES_SETTING(vr_symmetricFrustum, "0");
 // the level is applied as it changes. Only where the eyes are drawn at once,
 // straight into the headset's images (VulkanRenderer's direct eyes).
 DEFINE_SPADES_SETTING(vr_foveation, "0");
+// For tests: "WxH", the eye images that size whatever the runtime recommends (a
+// Quest 3's runtime gave 2400x2514 one launch and 1680x1760 the next)
+DEFINE_SPADES_SETTING(vr_debugEyeSize, "");
 // 1: the runtime lowers the foveation below vr_foveation's level while the GPU
 // has time to spare, and takes it back up to it when it has not. Off by
 // default: the edges of the view changing their detail as the load does is
@@ -911,6 +914,14 @@ namespace spades {
 			                  viewConfigs[0].maxImageRectWidth, growX);
 			uint32_t h = size(viewConfigs[0].recommendedImageRectHeight,
 			                  viewConfigs[0].maxImageRectHeight, growY);
+			{
+				unsigned fw = 0, fh = 0;
+				const std::string fixed = vr_debugEyeSize;
+				if (std::sscanf(fixed.c_str(), "%ux%u", &fw, &fh) == 2 && fw >= 64 && fh >= 64) {
+					w = std::min(fw, viewConfigs[0].maxImageRectWidth) & ~1U;
+					h = std::min(fh, viewConfigs[0].maxImageRectHeight) & ~1U;
+				}
+			}
 
 			std::vector<int64_t> formats = {VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_SRGB};
 			// Both eyes in one two-layer image when they are drawn at once, else

@@ -285,6 +285,12 @@ namespace spades {
 			// The view the pass sees the world through (set 3)
 			renderer.BindSceneView(commandBuffer, pipelineLayout);
 
+			// The textures (set 0), the same for every chunk: once, not a chunk
+			// at a time (a map in many small chunks made it thousands of binds)
+			if (textureDescriptorSet != VK_NULL_HANDLE)
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+				                        pipelineLayout, 0, 1, &textureDescriptorSet, 0, nullptr);
+
 			// The whole map once, unwrapped (a VR table view sees it from outside,
 			// where the wrap would show copies of it all round)
 			if (renderer.GetSceneDef().wholeMap) {
