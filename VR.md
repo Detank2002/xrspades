@@ -543,8 +543,12 @@ crashed a Quest 2's driver in `vkEndCommandBuffer` on the first frame, and so
 did 0.5.0's first build with colour correction on, whose frames went the
 copied way through that own map. So while foveation is on, the eyes always go
 straight in: no filter runs after their scene (`BuildPostSteps`), and Hold The
-Frame Rate never draws them smaller (`UpdateVRResolution`). The scope still
-draws through the own map; it is yet to be tried on a Quest 2.
+Frame Rate never draws them smaller (`UpdateVRResolution`). The scope and
+frames outside the eyes' (the menus, the headset off) still read the own map,
+and crashed a Quest 2 the same way; in each, the crashing frame was the first
+to use a new map, uploaded in its own command buffer. The own map is now
+uploaded on its own when it is made (`CreateDensityMap`), and with foveation
+on a Quest (no window) the frames outside the eyes' draw no scene at all.
 | `vr_mirrorEye` | 0 | which eye the monitor shows: 0 left, 1 right |
 | `vr_debugFixedLook` | (empty) | for tests: "yaw pitch" in degrees holds the head in that direction |
 | `vr_menuScene` | 1 | the menus stand on a generated map instead of in a void |

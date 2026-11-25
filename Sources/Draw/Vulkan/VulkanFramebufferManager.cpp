@@ -846,6 +846,40 @@ namespace spades {
 			  device, texels.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 			densityMapUpload->UpdateData(texels.data(), texels.size());
+
+			// Its contents go up now, in a submission of their own, waited for:
+			// never in a frame that also draws with it. Every Quest 2 crash
+			// (Adreno 650, in vkEndCommandBuffer: October, and with foveation on,
+			// the scope and the menus' frames) was the first frame to use a new
+			// map, uploaded in that same command buffer.
+			{
+				VkDevice vkDevice = device->GetDevice();
+				VkCommandBufferAllocateInfo ai{};
+				ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+				ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+				ai.commandPool = device->GetCommandPool();
+				ai.commandBufferCount = 1;
+				VkCommandBuffer cb = VK_NULL_HANDLE;
+				if (vkAllocateCommandBuffers(vkDevice, &ai, &cb) == VK_SUCCESS) {
+					VkCommandBufferBeginInfo bi{};
+					bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+					bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+					if (vkBeginCommandBuffer(cb, &bi) == VK_SUCCESS) {
+						RecordDensityMapUpload(cb);
+						vkEndCommandBuffer(cb);
+						VkSubmitInfo si{};
+						si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+						si.commandBufferCount = 1;
+						si.pCommandBuffers = &cb;
+						if (vkQueueSubmit(device->GetGraphicsQueue(), 1, &si, VK_NULL_HANDLE) ==
+						    VK_SUCCESS)
+							vkQueueWaitIdle(device->GetGraphicsQueue());
+						else
+							densityMapUploaded = false; // the first frame does it, then
+					}
+					vkFreeCommandBuffers(vkDevice, device->GetCommandPool(), 1, &cb);
+				}
+			}
 			SPLog("Foveation: the scene passes read a density map (own: %ux%u, %ux%u pixels a "
 			      "texel)",
 			      w, h, texel.width, texel.height);

@@ -1588,7 +1588,12 @@ namespace spades {
 			// reset (so the next StartScene wait returns immediately), and clearing
 			// sceneUsedInThisFrame routes Flip down its guarded 2D path rather than
 			// presenting an invalid image index.
-			if (currentImageIndex == UINT32_MAX || currentImageIndex >= commandBuffers.size()) {
+			// Or a frame no one sees: a headset with no window (a Quest), outside
+			// its eyes' frames (in the menus, the headset off), with foveation on,
+			// whose scene passes read the manager's own density map, which a
+			// Quest 2's driver crashed on. Only the 2D layer goes on.
+			if (currentImageIndex == UINT32_MAX || currentImageIndex >= commandBuffers.size() ||
+			    (foveation > 0 && device->IsHeadless())) {
 				// Discard the scene content queued this frame; it is normally
 				// consumed (and cleared) while recording the scene pass, which is
 				// skipped here. Without this, sustained drops (a resize storm) grow
