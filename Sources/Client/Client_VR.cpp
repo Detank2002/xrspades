@@ -107,6 +107,9 @@ DEFINE_SPADES_SETTING(vr_holsters, "1");
 DEFINE_SPADES_SETTING(vr_hipHeight, "0");
 // The body mirror: 0 never, 1 while a menu is up in a game, 2 always
 DEFINE_SPADES_SETTING(vr_bodyMirror, "1");
+// For tests: the menu's Setup screen opened once the local player is alive in a
+// game, as if chosen (its cost measured without hands to open it)
+DEFINE_SPADES_SETTING(cg_debugOpenSetup, "0");
 // How far round from the menu panel it stands, in degrees (0: in front)
 DEFINE_SPADES_SETTING(vr_bodyMirrorAngle, "50");
 // 1: the holsters turn with every turn of the head, as before 0.4.0. 0: they face
@@ -309,6 +312,14 @@ namespace spades {
 				SetVRToolForward(vrRig.aimFilter.Get());
 			ApplyVRRecoil();
 			ApplyVRToolCollision();
+			if ((int)cg_debugOpenSetup && !debugSetupOpened && world) {
+				auto p = world->GetLocalPlayer();
+				if (p && p->IsAlive() && !p->IsSpectator()) {
+					debugSetupOpened = true;
+					SPLog("[VR] cg_debugOpenSetup: the Setup screen opened");
+					scriptedUI->EnterSetup();
+				}
+			}
 			UpdateVRMirror(fs);
 		}
 

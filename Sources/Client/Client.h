@@ -1009,6 +1009,7 @@ namespace spades {
 				bool shown = false;
 				Matrix4 matrix = Matrix4::Identity();
 			} vrMirror;
+			bool debugSetupOpened = false; // cg_debugOpenSetup, once
 			void UpdateVRMirror(const VRFrameState& fs);
 			bool vrSettling = false;
 			float vrSettleTime = 0.0F, vrSettleSteady = 0.0F, vrSettleWorst = 0.0F;

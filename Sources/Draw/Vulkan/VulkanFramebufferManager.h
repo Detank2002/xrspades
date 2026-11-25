@@ -127,7 +127,10 @@ namespace spades {
 			Handle<VulkanImage> densityMapImage;
 			Handle<VulkanBuffer> densityMapUpload;
 			bool densityMapUploaded = false;
-			void CreateDensityMap(bool foveated);
+			/** `foveation` 1: full density everywhere; 2, the scope's: full
+			 * inside the round lens of the first layer, the coarsest outside it
+			 * and on all of the second (only the first is shown) */
+			void CreateDensityMap(int foveation);
 
 			// The headset's eye images the scene pass resolves straight into
 			// (SetDirectTargets): each wrapped, with the runtime's density map's

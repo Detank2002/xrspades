@@ -517,8 +517,8 @@ far as a normal throw.
 | `vr_symmetricFrustum` | 0 | 1: draw each eye with a centred frustum covering the runtime's (10-20% more pixels; the old way) |
 | `r_debugOffCentre` | 0 | a test: draw the monitor's view off-centre, as a headset eye is (1 = its right half, stretched) |
 | `vr_multiview` | 0 | 1: draw both eyes in one pass (VK_KHR_multiview), as a standalone headset needs; read at start |
-| `vr_foveation` | 0 | foveated rendering by the headset's runtime (`XR_FB_foveation`): each eye's edges shaded at lower density, 0 off, 1 low, 2 medium, 3 high. On or off is read at start (the scene's passes are made with a density map or not, and the device enables `VK_EXT_fragment_density_map` only then); the level applies at once. Only with the direct eyes (below) |
-| `vr_foveationDynamic` | 1 | 1: the runtime takes the foveation below `vr_foveation`'s level while the GPU has time to spare, back up to it when it has not |
+| `vr_foveation` | 0 | foveated rendering by the headset's runtime (`XR_FB_foveation`): each eye's edges shaded at lower density, 0 off, 1 low, 2 medium, 3 high, 4 high top (Meta's: high, coarser still at the top). On or off is read at start (the scene's passes are made with a density map or not, and the device enables `VK_EXT_fragment_density_map` only then); the level applies at once. Only with the direct eyes (below) |
+| `vr_foveationDynamic` | 0 | 1: the runtime takes the foveation below `vr_foveation`'s level while the GPU has time to spare, back up to it when it has not. Off by default: the edges changing their detail with the load made a tester feel sick |
 
 **Direct eyes.** With both eyes in one pass and a scene pass that resolves
 itself (`r_resolveInPass`, no depth read after it: the headset's Performance

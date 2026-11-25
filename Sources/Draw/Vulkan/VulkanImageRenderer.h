@@ -79,11 +79,16 @@ namespace spades {
 				std::vector<ImageVertex> vertices;
 				std::vector<uint32_t> indices;
 				BatchClip clip;
+				// What its vertices cover, in layout pixels (FinishCurrentBatch)
+				float minX, minY, maxX, maxY;
 			};
 
 			VulkanRenderer& renderer;
 			Handle<gui::SDLVulkanDevice> device;
 			VulkanImage* image;
+			// The vertices added now are plain colour (SetSolidImage)
+			bool solidMode = false;
+			void MarkSolid(size_t firstVertex);
 
 			std::vector<ImageVertex> vertices;
 			std::vector<uint32_t> indices;
@@ -141,6 +146,12 @@ namespace spades {
 
 			void SetSurfaceExtent(VkExtent2D extent) { fixedExtent = extent; }
 			void SetImage(VulkanImage* img);
+			/** A plain colour next (`white`, the white image): drawn in the
+			 * current draw, whatever its image, rather than ending it (the
+			 * shader draws those vertices untextured). A screen of text on boxes
+			 * otherwise swaps image at every box, and each swap is a draw a
+			 * tiled GPU replays for every tile. */
+			void SetSolidImage(VulkanImage* white);
 
 			// 2D clipping. Circle and rect cannot be nested or combined, which
 			// matches what IRenderer documents.

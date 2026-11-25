@@ -780,11 +780,13 @@ namespace spades {
 			l.AddToggleField(_Tr("Preferences", "Both Eyes In One Pass (Next Start)"), "vr_multiview");
 			l.AddChoiceField(_Tr("Preferences", "Foveated Rendering"), "vr_foveation",
 			                 {_Tr("Preferences", "OFF"), _Tr("Preferences", "LOW"),
-			                  _Tr("Preferences", "MEDIUM"), _Tr("Preferences", "HIGH")},
-			                 {0, 1, 2, 3});
+			                  _Tr("Preferences", "MEDIUM"), _Tr("Preferences", "HIGH"),
+			                  _Tr("Preferences", "HIGH TOP")},
+			                 {0, 1, 2, 3, 4});
 			l.AddHelp(_Tr("Preferences",
 				"Draws the edges of each eye in less detail, where the lenses blur "
-				"anyway, so the headset has more time for the rest. Turning it on or "
+				"anyway, so the headset has more time for the rest. High Top is "
+				"High with the top of each eye coarser still, where you seldom look. Turning it on or "
 				"off takes effect at the next start; the level changes at once. Needs "
 				"both eyes in one pass, and not the Quality preset. While it is on, "
 				"the eyes stay at full resolution (Hold The Frame Rate does not lower "

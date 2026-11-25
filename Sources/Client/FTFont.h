@@ -122,8 +122,17 @@ namespace spades {
 			std::shared_ptr<FTFontSet> fontSet;
 
 			struct Bin;
+			// Glyphs larger than the shared pages (text drawn very large)
 			std::list<Bin> bins;
 			int binSize;
+			// The pages every font on this renderer shares (SharedPages): a menu
+			// written in several fonts then draws its text from one image, in a
+			// few draws instead of one each time the font changes
+		public:
+			struct SharedPages;
+
+		private:
+			std::shared_ptr<SharedPages> shared;
 
 			stmp::optional<Glyph &> GetGlyph(uint32_t code);
 			template <class T, class T2, class T3>

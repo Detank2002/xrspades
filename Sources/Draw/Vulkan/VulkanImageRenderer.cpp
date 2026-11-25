@@ -323,11 +323,63 @@ namespace spades {
 			if (!image || vertices.empty())
 				return;
 
+			float minX = vertices[0].x, minY = vertices[0].y;
+			float maxX = minX, maxY = minY;
+			for (const ImageVertex& v : vertices) {
+				minX = std::min(minX, v.x);
+				minY = std::min(minY, v.y);
+				maxX = std::max(maxX, v.x);
+				maxY = std::max(maxY, v.y);
+			}
+
+			// Into an earlier draw of the same image and clip, when nothing drawn
+			// since overlaps it: the order on screen is the same, and the draws
+			// are far fewer. A tiled GPU replays every draw for each tile; the
+			// Setup screen's text, a font a row's label and another its value,
+			// was 600 draws of 4 glyph images and 2 ms of a Quest 3's GPU.
+			auto sameClip = [](const BatchClip& a, const BatchClip& b) {
+				return a.hasScissor == b.hasScissor && a.circleRadius == b.circleRadius &&
+				       (!a.hasScissor ||
+				        (a.rect.min.x == b.rect.min.x && a.rect.min.y == b.rect.min.y &&
+				         a.rect.max.x == b.rect.max.x && a.rect.max.y == b.rect.max.y)) &&
+				       (a.circleRadius <= 0.0f || (a.circleCenter.x == b.circleCenter.x &&
+				                                   a.circleCenter.y == b.circleCenter.y));
+			};
+			constexpr int kMergeLookBack = 64;
+			for (int i = static_cast<int>(batches.size()) - 1, steps = 0;
+			     i >= 0 && steps < kMergeLookBack; --i, ++steps) {
+				Batch& b = batches[static_cast<size_t>(i)];
+				if (b.image == image && sameClip(b.clip, currentClip)) {
+					const uint32_t base = static_cast<uint32_t>(b.vertices.size());
+					b.vertices.insert(b.vertices.end(), vertices.begin(), vertices.end());
+					for (uint32_t idx : indices)
+						b.indices.push_back(base + idx);
+					b.minX = std::min(b.minX, minX);
+					b.minY = std::min(b.minY, minY);
+					b.maxX = std::max(b.maxX, maxX);
+					b.maxY = std::max(b.maxY, maxY);
+					// The batch holds its own reference to the image
+					image->Release();
+					vertices.clear();
+					indices.clear();
+					image = nullptr;
+					solidMode = false;
+					return;
+				}
+				// Drawn after it and under the new one: it must stay after
+				if (b.minX < maxX && minX < b.maxX && b.minY < maxY && minY < b.maxY)
+					break;
+			}
+
 			Batch batch;
 			batch.image = image;
 			batch.vertices = std::move(vertices);
 			batch.indices = std::move(indices);
 			batch.clip = currentClip;
+			batch.minX = minX;
+			batch.minY = minY;
+			batch.maxX = maxX;
+			batch.maxY = maxY;
 			batches.push_back(std::move(batch));
 
 			// The batch takes over the reference 'image' was holding, so no
@@ -335,12 +387,39 @@ namespace spades {
 			vertices.clear();
 			indices.clear();
 			image = nullptr;
+			solidMode = false;
+		}
+
+		// What a plain colour's vertices carry for texture coordinates: far
+		// outside any image even after BasicImage.vert divides by its size,
+		// which BasicImage.frag takes for untextured
+		static constexpr float kSolidTexCoord = -1.0E9F;
+
+		void VulkanImageRenderer::MarkSolid(size_t firstVertex) {
+			if (!solidMode)
+				return;
+			for (size_t i = firstVertex; i < vertices.size(); i++)
+				vertices[i].u = vertices[i].v = kSolidTexCoord;
+		}
+
+		void VulkanImageRenderer::SetSolidImage(VulkanImage* white) {
+			if (image && image != white && !vertices.empty()) {
+				solidMode = true;
+				return;
+			}
+			SetImage(white);
 		}
 
 		void VulkanImageRenderer::SetClipCircle(const Vector2& center, float radius) {
 			SPADES_MARK_FUNCTION();
 
-			// Everything queued so far keeps the previous clip.
+			// Everything queued so far keeps the previous clip. The same clip
+			// again ends nothing: each break is a draw of its own, and a tiled
+			// GPU replays every draw for each tile (the Setup screen was 600
+			// draws, 2 ms of a Quest 3's GPU).
+			if (currentClip.circleRadius == radius && currentClip.circleCenter.x == center.x &&
+			    currentClip.circleCenter.y == center.y)
+				return;
 			FinishCurrentBatch();
 			currentClip.circleCenter = center;
 			currentClip.circleRadius = radius;
@@ -349,6 +428,8 @@ namespace spades {
 		void VulkanImageRenderer::ClearClipCircle() {
 			SPADES_MARK_FUNCTION();
 
+			if (currentClip.circleRadius <= 0.0f)
+				return;
 			FinishCurrentBatch();
 			currentClip.circleRadius = 0.0f;
 		}
@@ -356,6 +437,10 @@ namespace spades {
 		void VulkanImageRenderer::SetClipRect(const AABB2& rect) {
 			SPADES_MARK_FUNCTION();
 
+			if (currentClip.hasScissor && currentClip.rect.min.x == rect.min.x &&
+			    currentClip.rect.min.y == rect.min.y && currentClip.rect.max.x == rect.max.x &&
+			    currentClip.rect.max.y == rect.max.y)
+				return;
 			FinishCurrentBatch();
 
 			// Kept in layout pixels; Flush turns it into a scissor on whatever
@@ -367,11 +452,14 @@ namespace spades {
 		void VulkanImageRenderer::ClearClipRect() {
 			SPADES_MARK_FUNCTION();
 
+			if (!currentClip.hasScissor)
+				return;
 			FinishCurrentBatch();
 			currentClip.hasScissor = false;
 		}
 
 		void VulkanImageRenderer::SetImage(VulkanImage* img) {
+			solidMode = false;
 			if (img == image)
 				return;
 
@@ -432,6 +520,7 @@ namespace spades {
 			indices.push_back(idx);
 			indices.push_back(idx + 2);
 			indices.push_back(idx + 3);
+			MarkSolid(idx);
 		}
 
 		void VulkanImageRenderer::AddShadedTriangle(const Vector2& p1, const Vector2& p2,
@@ -457,6 +546,7 @@ namespace spades {
 			indices.push_back(idx);
 			indices.push_back(idx + 1);
 			indices.push_back(idx + 2);
+			MarkSolid(idx);
 		}
 
 		void VulkanImageRenderer::AddTriangle(float dx1, float dy1, float dx2, float dy2, float dx3,
@@ -486,6 +576,7 @@ namespace spades {
 			indices.push_back(idx);
 			indices.push_back(idx + 1);
 			indices.push_back(idx + 2);
+			MarkSolid(idx);
 		}
 
 		void VulkanImageRenderer::AddGradient(float dx1, float dy1, float dx2, float dy2, float dx3,
@@ -578,6 +669,7 @@ namespace spades {
 			indices.push_back(idx);
 			indices.push_back(idx + 2);
 			indices.push_back(idx + 3);
+			MarkSolid(idx);
 		}
 
 	void VulkanImageRenderer::Flush(VkCommandBuffer commandBuffer, uint32_t frameIndex,

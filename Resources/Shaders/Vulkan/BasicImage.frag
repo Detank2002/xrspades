@@ -62,7 +62,10 @@ void main() {
 			discard;
 	}
 
-	vec4 col = texture(mainTexture, texCoord);
+	// Texture coordinates far outside any image: a plain colour drawn in
+	// another image's draw (VulkanImageRenderer::SetSolidImage), as white
+	vec4 tex = texture(mainTexture, texCoord);
+	vec4 col = texCoord.x < -1000.0 ? vec4(1.0) : tex;
 	col.xyz *= col.w;
 	col *= color;
 	fragColor = vec4(srgbToLinear(col.xyz), col.w);

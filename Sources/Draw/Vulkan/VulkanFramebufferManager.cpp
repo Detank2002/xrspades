@@ -134,7 +134,7 @@ namespace spades {
 				}
 			}
 
-			CreateDensityMap(foveation > 0);
+			CreateDensityMap(foveation);
 			if (resolveInPass)
 				SPLog("The scene pass resolves its colour itself and keeps no depth");
 			CreateRenderPass((int)settings.r_water >= 3);
@@ -821,8 +821,8 @@ namespace spades {
 			return true;
 		}
 
-		void VulkanFramebufferManager::CreateDensityMap(bool foveated) {
-			if (!foveated || !device->HasFragmentDensityMap())
+		void VulkanFramebufferManager::CreateDensityMap(int foveation) {
+			if (foveation <= 0 || !device->HasFragmentDensityMap())
 				return;
 			const VkExtent2D texel = device->GetFragmentDensityTexelSize();
 			if (texel.width == 0 || texel.height == 0)
@@ -842,6 +842,20 @@ namespace spades {
 			// only when the headset's images cannot be (the eyes scaled down, or a
 			// filter after the scene), and are not foveated
 			std::vector<uint8_t> texels(static_cast<size_t>(w) * h * 2 * viewCount, 255);
+			// The scope's (2): drawn into both layers at once (multiview), of
+			// which only the first is shown, and that only inside its round
+			// lens. The rest at the coarsest density (a quarter each way, or
+			// the device's coarsest): the scope cost 1.4 ms of a Quest 3's GPU,
+			// half of it a picture no one sees.
+			if (foveation == 2)
+				for (uint32_t layer = 0; layer < viewCount; layer++)
+					for (uint32_t y = 0; y < h; y++)
+						for (uint32_t x = 0; x < w; x++) {
+							const float u = (x + 0.5F) / w - 0.5F, v = (y + 0.5F) / h - 0.5F;
+							const bool seen = layer == 0 && u * u + v * v < 0.53F * 0.53F;
+							uint8_t* t = &texels[((static_cast<size_t>(layer) * h + y) * w + x) * 2];
+							t[0] = t[1] = seen ? 255 : 64;
+						}
 			densityMapUpload = Handle<VulkanBuffer>::New(
 			  device, texels.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);

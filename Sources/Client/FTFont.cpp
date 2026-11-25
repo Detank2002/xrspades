@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <ft2build.h>
 
 #include FT_FREETYPE_H
@@ -211,6 +212,26 @@ namespace spades {
 
 		FTFont::~FTFont() { SPADES_MARK_FUNCTION(); }
 
+		struct FTFont::SharedPages {
+			std::list<Bin> bins;
+			int size;
+		};
+
+		namespace {
+			// By renderer and page size; a page set lives while a font uses it
+			std::map<std::pair<client::IRenderer*, int>, std::weak_ptr<FTFont::SharedPages>>&
+			SharedPageSets() {
+				static std::map<std::pair<client::IRenderer*, int>,
+				                std::weak_ptr<FTFont::SharedPages>>
+				  sets;
+				return sets;
+			}
+			// The shared pages' size: a menu's fonts in one page or two (a tiled
+			// GPU replays every draw for each of its tiles: the Setup screen's
+			// four fonts on their own 256x256 pages made 600 draws)
+			constexpr int kSharedPageSize = 1024;
+		} // namespace
+
 		namespace {
 			// A density this far from the last one is a display of its own.
 			constexpr float kDensityStep = 0.01F;
@@ -233,11 +254,21 @@ namespace spades {
 				entry.second.rasters.clear();
 			sizes.clear();
 			bins.clear();
-			binSize = 256;
+			binSize = kSharedPageSize;
 			const int targetSize = static_cast<int>(std::min(height * density * 4.0F, 4000.0F));
 			while (binSize < targetSize)
 				binSize <<= 1;
-			bins.emplace_back(binSize, binSize, *renderer);
+			// The pages of every font on this renderer at this size; glyphs of
+			// a density gone stay in them unused until they are let go
+			auto& sets = SharedPageSets();
+			auto& slot = sets[{renderer.GetPointerOrNull(), binSize}];
+			shared = slot.lock();
+			if (!shared) {
+				shared = std::make_shared<SharedPages>();
+				shared->size = binSize;
+				shared->bins.emplace_back(binSize, binSize, *renderer);
+				slot = shared;
+			}
 		}
 
 		Vector2 FTFont::SnapToPixel(const Vector2& target) const {
@@ -282,10 +313,11 @@ namespace spades {
 				           offset);
 				return;
 			}
-			auto result = bins.back().Place(bmp);
-			if (!result) { // bin full
-				bins.emplace_back(binSize, binSize, *renderer);
-				result = bins.back().Place(bmp);
+			auto& pages = shared->bins;
+			auto result = pages.back().Place(bmp);
+			if (!result) { // page full
+				pages.emplace_back(binSize, binSize, *renderer);
+				result = pages.back().Place(bmp);
 				SPAssert(result);
 			}
 			slot.reset((*result).image,

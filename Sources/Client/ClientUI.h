@@ -134,6 +134,9 @@ namespace spades {
 			bool IsChatEnabled();
 
 			void EnterClientMenu();
+			/** The menu's Setup screen, opened as if chosen (for tests:
+			 * cg_debugOpenSetup) */
+			void EnterSetup();
 			void EnterGlobalChatWindow();
 			void EnterTeamChatWindow();
 			void EnterChatLogWindow();

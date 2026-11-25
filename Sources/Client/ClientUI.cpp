@@ -181,6 +181,12 @@ namespace spades {
 			SetActiveUI(clientMenu.GetPointerOrNull());
 		}
 
+		void ClientUI::EnterSetup() {
+			EnterClientMenu();
+			if (clientMenu)
+				clientMenu->OpenSetup();
+		}
+
 		void ClientUI::EnterTeamChatWindow() {
 			Handle<ClientChatWindow> wnd =
 			    Handle<ClientChatWindow>::New(this, true, ChatWindowMode::Docked);

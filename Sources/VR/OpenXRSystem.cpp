@@ -61,14 +61,18 @@ DEFINE_SPADES_SETTING(vr_refreshRate, "0");
 // the asymmetric path, and a way back if a runtime mishandles it.
 DEFINE_SPADES_SETTING(vr_symmetricFrustum, "0");
 // Foveated rendering, by the headset's runtime (XR_FB_foveation): each eye's
-// edges shaded at lower density, 0 off, 1 low, 2 medium, 3 high. Whether it is
+// edges shaded at lower density, 0 off, 1 low, 2 medium, 3 high, 4 high top
+// (high, and more off the top of each eye, which a player seldom looks at; Meta's
+// runtime knows it, though OpenXR's headers stop at high). Whether it is
 // on at all is read at start (the renderer's passes are made for it or not);
 // the level is applied as it changes. Only where the eyes are drawn at once,
 // straight into the headset's images (VulkanRenderer's direct eyes).
 DEFINE_SPADES_SETTING(vr_foveation, "0");
 // 1: the runtime lowers the foveation below vr_foveation's level while the GPU
-// has time to spare, and takes it back up to it when it has not
-DEFINE_SPADES_SETTING(vr_foveationDynamic, "1");
+// has time to spare, and takes it back up to it when it has not. Off by
+// default: the edges of the view changing their detail as the load does is
+// what made a tester feel sick (a steady level is easier on the eyes).
+DEFINE_SPADES_SETTING(vr_foveationDynamic, "0");
 // For tests: "yaw pitch" in degrees replaces the headset's head direction with a
 // fixed one (pitch below 0 looks down), so every run sees the same picture. The
 // eyes keep their spacing. Empty: the headset's own.
@@ -1564,9 +1568,9 @@ namespace spades {
 			const XRSwapchain& sc = eyeSwapchains[0];
 			if (sc.handle == XR_NULL_HANDLE || sc.densityImages.empty())
 				return;
-			const int level = std::max(0, std::min(3, (int)vr_foveation));
+			const int level = std::max(0, std::min(4, (int)vr_foveation));
 			const bool dynamic = level > 0 && (bool)vr_foveationDynamic;
-			const int want = level + (dynamic ? 4 : 0);
+			const int want = level + (dynamic ? 8 : 0);
 			if (want == appliedFoveation)
 				return;
 			appliedFoveation = want;
@@ -1580,9 +1584,12 @@ namespace spades {
 			}
 			if (!pfnCreateFoveationProfile || !pfnDestroyFoveationProfile || !pfnUpdateSwapchain)
 				return;
+			// High top: Meta's XR_FOVEATION_LEVEL_HIGH_TOP_FB, not in OpenXR's
+			// headers. A runtime that does not know it refuses the profile, and
+			// the level before stays.
 			static const XrFoveationLevelFB kLevels[] = {
 			  XR_FOVEATION_LEVEL_NONE_FB, XR_FOVEATION_LEVEL_LOW_FB, XR_FOVEATION_LEVEL_MEDIUM_FB,
-			  XR_FOVEATION_LEVEL_HIGH_FB};
+			  XR_FOVEATION_LEVEL_HIGH_FB, static_cast<XrFoveationLevelFB>(4)};
 			XrFoveationLevelProfileCreateInfoFB li{XR_TYPE_FOVEATION_LEVEL_PROFILE_CREATE_INFO_FB};
 			li.level = kLevels[level];
 			li.verticalOffset = 0.0F;

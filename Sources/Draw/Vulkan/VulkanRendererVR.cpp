@@ -214,9 +214,11 @@ namespace spades {
 			const uint32_t s = static_cast<uint32_t>(size);
 			// Foveated as the eyes' are: the two render passes must match for the
 			// eyes' pipelines to draw the scope
+			// Its density map (2) leaves the corners round the lens and the second
+			// layer, never shown, at the coarsest
 			scopeFramebufferManager = stmp::make_unique<VulkanFramebufferManager>(
-			  device, settings, size, size, multiview ? 2 : 1, foveation, SceneResolvesInPass(),
-			  directEyeFormat);
+			  device, settings, size, size, multiview ? 2 : 1, foveation > 0 ? 2 : 0,
+			  SceneResolvesInPass(), directEyeFormat);
 			// Sampled too, though it is only copied: every VulkanImage gets a view,
 			// and a view needs a usage beyond the transfers (validation)
 			scopeSrgbImage = Handle<VulkanImage>(

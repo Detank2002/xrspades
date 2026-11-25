@@ -257,7 +257,7 @@ namespace spades {
 			uint32_t eyeSwapchainGeneration = 0;
 			bool eyesLayered = false;
 			bool eyesFoveated = false;
-			// The level (and 4 if dynamic) last given to the runtime: -1 none yet
+			// The level (and 8 if dynamic) last given to the runtime: -1 none yet
 			int appliedFoveation = -1;
 			XrFoveationProfileFB foveationProfile = XR_NULL_HANDLE;
 			PFN_xrCreateFoveationProfileFB pfnCreateFoveationProfile = nullptr;

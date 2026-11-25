@@ -1754,7 +1754,11 @@ namespace spades {
 				return;
 			}
 
-			Canvas2D()->SetImage(img);
+			// A plain colour joins the draw in progress (SetSolidImage)
+			if (image)
+				Canvas2D()->SetImage(img);
+			else
+				Canvas2D()->SetSolidImage(img);
 
 			Vector4 col = drawColorAlphaPremultiplied;
 			if (legacyColorPremultiply) {
@@ -1781,7 +1785,7 @@ namespace spades {
 			if (!img || !Canvas2D())
 				return;
 
-			Canvas2D()->SetImage(img);
+			Canvas2D()->SetSolidImage(img);
 
 			Vector4 col = drawColorAlphaPremultiplied;
 			if (legacyColorPremultiply) {
@@ -1807,7 +1811,7 @@ namespace spades {
 
 			// The colours arrive alpha-premultiplied and the draw colour is not
 			// used, as in GLRenderer.
-			imageRenderer->SetImage(img);
+			imageRenderer->SetSolidImage(img);
 			imageRenderer->AddShadedTriangle(v0, v1, v2, c0, c1, c2);
 		}
 
@@ -1824,7 +1828,7 @@ namespace spades {
 			if (!img || !Canvas2D())
 				return;
 
-			Canvas2D()->SetImage(img);
+			Canvas2D()->SetSolidImage(img);
 
 			// Unlike DrawFilledTriangle, the gradient colours arrive already
 			// alpha-premultiplied from the caller, so legacyColorPremultiply does

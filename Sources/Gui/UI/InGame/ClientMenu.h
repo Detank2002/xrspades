@@ -53,6 +53,8 @@ namespace spades {
 		public:
 			ClientMenu(ClientUI* ui);
 			bool IsForVR() const { return forVR; }
+			/** The Setup screen, as its button opens it (cg_debugOpenSetup) */
+			void OpenSetup() { OnSetup(*this); }
 			void HotKey(const std::string& key) override;
 
 			// IModalMenu implementation (UIElement handles input/drawing)
