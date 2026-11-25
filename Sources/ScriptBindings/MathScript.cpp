@@ -821,7 +821,7 @@ namespace spades {
 												  asMETHOD(Matrix4, Inversed), asCALL_THISCALL);
 					ScriptManager::CheckError(r);
 
-					r = eng->RegisterObjectMethod("Matrix4", "float get_InvertedFast() const property",
+					r = eng->RegisterObjectMethod("Matrix4", "Matrix4 get_InvertedFast() const property",
 												  asMETHOD(Matrix4, InversedFast), asCALL_THISCALL);
 					ScriptManager::CheckError(r);
 

@@ -2443,6 +2443,17 @@ namespace spades {
 			const Matrix4 m = client.vrMirror.matrix;
 			sandboxedRenderer->SetMirror(&m);
 			vrMirrorPass = true;
+			// Restore the sandbox even if a model fails to load mid-pass. A
+			// thrown exception tears down the whole view, but leaving the
+			// mirror set would still reflect any model drawn during unwinding.
+			struct MirrorGuard {
+				SandboxedRenderer& sandbox;
+				bool& pass;
+				~MirrorGuard() {
+					pass = false;
+					sandbox.SetMirror(nullptr);
+				}
+			} guard{*sandboxedRenderer, vrMirrorPass};
 
 			AddVRHolsterItems();
 			AddVRShoulderTools();
@@ -2454,9 +2465,6 @@ namespace spades {
 			// The head too, which your own view never draws
 			AddVRBody(client.vrRig.camera, client.vrRig.headAxes, valid, pos, axes, toolHand, true,
 			          body, param);
-
-			vrMirrorPass = false;
-			sandboxedRenderer->SetMirror(nullptr);
 		}
 
 		void ClientPlayer::AddVRShoulderTools() {

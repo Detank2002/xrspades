@@ -67,6 +67,14 @@ add_library(zs_preview_test_runtime STATIC EXCLUDE_FROM_ALL
 target_include_directories(zs_preview_test_runtime PRIVATE "${ZS_TEST_SOURCES}")
 target_compile_features(zs_preview_test_runtime PRIVATE cxx_std_17)
 target_link_libraries(zs_preview_test_runtime PUBLIC Angelscript_addons Angelscript Threads::Threads)
+
+# A real AngelScript VM must see InvertedFast as returning Matrix4, not float
+zs_test_executable(math_script_binding_test
+	"${CMAKE_CURRENT_SOURCE_DIR}/math_script_binding_test.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/skin_core_test_support.cpp")
+target_link_libraries(math_script_binding_test PRIVATE zs_preview_test_runtime)
+add_test(NAME math_script_binding COMMAND math_script_binding_test)
+
 zs_test_executable(skin_selection_test
 	"${CMAKE_CURRENT_SOURCE_DIR}/skin_selection_test.cpp"
 	"${ZS_TEST_SOURCES}/Gui/SkinSelection.cpp")
@@ -222,4 +230,4 @@ endif()
 add_custom_target(zs_tests DEPENDS
 	vr_state_test xr_caps_test vr_pose_fixture update_package_test training_server_test
 	server_extension_key_test skin_selection_test voxel_model_preview_test skin_overlay_test
-	font_reload_test skin_preview_fixture ${ZS_VULKAN_TEST_TARGETS})
+	math_script_binding_test font_reload_test skin_preview_fixture ${ZS_VULKAN_TEST_TARGETS})
