@@ -21,6 +21,7 @@
 #pragma once
 
 #include <array>
+#include <climits>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -32,20 +33,29 @@ namespace spades {
 		struct ReleaseVersion {
 			// Not named fields: glibc defines `major` and `minor` as macros.
 			std::array<int, 3> components{}; // major, minor, patch
+			/** A beta's number (`-beta.2`), 0 for a release. A beta is older than
+			 * its release and newer than the one before. */
+			int beta = 0;
 
 			/** The version this build was compiled as. */
 			static ReleaseVersion Current();
 
 			/**
-			 * Parses a release tag such as `v0.1.0`, `0.1` or `v0.1.0-rc1`. A leading
-			 * `v` and any suffix after the numeric part are ignored; missing trailing
+			 * Parses a release tag such as `v0.1.0`, `0.1`, `v0.5.0-beta.1` or
+			 * `v0.1.0-rc1`. A leading `v` is ignored, and so is any suffix after the
+			 * numeric part but `-beta.<n>` (or `-beta<n>`); missing trailing
 			 * components are zero.
 			 */
 			static std::optional<ReleaseVersion> Parse(const std::string& tag);
 
 			std::string ToString() const;
 
-			bool operator<(const ReleaseVersion& o) const { return components < o.components; }
+			bool operator<(const ReleaseVersion& o) const {
+				if (components != o.components)
+					return components < o.components;
+				// The release itself after all its betas
+				return (beta > 0 ? beta : INT_MAX) < (o.beta > 0 ? o.beta : INT_MAX);
+			}
 		};
 
 		/**

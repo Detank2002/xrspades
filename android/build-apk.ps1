@@ -93,7 +93,8 @@ if (-not $Version) {
 	}) -join '.'
 }
 $Version = $Version.TrimStart('v')
-$parts = $Version.Split('.') | ForEach-Object { [int]$_ }
+# A beta's "-beta.N" is in the name only, not the code
+$parts = $Version.Split('-')[0].Split('.') | ForEach-Object { [int]$_ }
 $versionCode = $parts[0] * 10000 + $parts[1] * 100 + $parts[2]
 Write-Host "Version $Version (code $versionCode)"
 & "$bt\aapt2.exe" link -o "$work\base.apk" --manifest "$PSScriptRoot\AndroidManifest.xml" -I $androidJar `

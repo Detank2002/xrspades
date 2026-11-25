@@ -4,11 +4,14 @@ name: Release
 # release key), then tags the commit and publishes "XRSpades 0.5.0" with
 # every package and their SHA256SUMS. The version must be CMakeLists.txt's
 # ZEROSPADES_VERSION_*: the game and its update checker read that one.
+# A beta is tagged v0.5.0-beta.1 and needs ZEROSPADES_VERSION_BETA 1: it is
+# published as a pre-release, which the game's update check (GitHub's
+# "latest release") never offers; a release needs ZEROSPADES_VERSION_BETA 0.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release tag, e.g. v0.3.0"
+        description: "Release tag, e.g. v0.3.0, or v0.3.0-beta.1 for a beta (a pre-release)"
         required: true
 
 jobs:
@@ -23,21 +26,29 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::the version must look like v0.3.0, not '$VERSION'"
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::the version must look like v0.3.0 or v0.3.0-beta.1, not '$VERSION'"
             exit 1
           fi
+          base="${VERSION%%-*}"
+          beta=0
+          [[ "$VERSION" == *-beta.* ]] && beta="${VERSION##*-beta.}"
           cmake_version="$(for p in MAJOR MINOR PATCH; do
             sed -n "s/^set(ZEROSPADES_VERSION_$p \([0-9]*\))$/\1/p" CMakeLists.txt
           done | paste -sd.)"
-          if [ "v$cmake_version" != "$VERSION" ]; then
-            echo "::error::CMakeLists.txt says $cmake_version; set ZEROSPADES_VERSION_* to ${VERSION#v} first"
+          if [ "v$cmake_version" != "$base" ]; then
+            echo "::error::CMakeLists.txt says $cmake_version; set ZEROSPADES_VERSION_* to ${base#v} first"
             exit 1
           fi
-          # The release's notes start with its CHANGELOG.md section, which the
-          # game shows when it offers the update
-          if [ -z "$(awk -v v="## ${VERSION#v}" '$0 == v {on=1; next} /^## / {on=0} on && /^- /' CHANGELOG.md)" ]; then
-            echo "::error::CHANGELOG.md has no '## ${VERSION#v}' section with '- ' lines"
+          cmake_beta="$(sed -n 's/^set(ZEROSPADES_VERSION_BETA \([0-9]*\))$/\1/p' CMakeLists.txt)"
+          if [ "$cmake_beta" != "$beta" ]; then
+            echo "::error::CMakeLists.txt has ZEROSPADES_VERSION_BETA ${cmake_beta:-(none)}; $VERSION needs $beta"
+            exit 1
+          fi
+          # The release's notes start with its CHANGELOG.md section (a beta's,
+          # its release's), which the game shows when it offers the update
+          if [ -z "$(awk -v v="## ${base#v}" '$0 == v {on=1; next} /^## / {on=0} on && /^- /' CHANGELOG.md)" ]; then
+            echo "::error::CHANGELOG.md has no '## ${base#v}' section with '- ' lines"
             exit 1
           fi
           if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
@@ -147,8 +158,11 @@ jobs:
           rm -f signing.pub
           [ "$built_in" = "$signing" ] || { echo "::error::UPDATE_SIGNING_KEY is not the key built into the game"; exit 1; }
           # What's new first: the game shows these lines when it offers the update
-          changes="$(awk -v v="## ${VERSION#v}" '$0 == v {on=1; next} /^## / {on=0} on' CHANGELOG.md | sed '/^[[:space:]]*$/d')"
-          printf "## What's new\n%s\n\n## Downloads\n%s\nChecksums are in SHA256SUMS, signed in SHA256SUMS.sig by the release key.\n" "$changes" "$list" > notes.md
+          base="${VERSION%%-*}"
+          changes="$(awk -v v="## ${base#v}" '$0 == v {on=1; next} /^## / {on=0} on' CHANGELOG.md | sed '/^[[:space:]]*$/d')"
+          intro=""
+          [[ "$VERSION" == *-beta.* ]] && intro="**A beta, for testing.** The game won't offer it as an update: download and install it by hand. When ${base#v} itself is released, the game offers it to this beta as usual."$'\n\n'
+          printf "%s## What's new\n%s\n\n## Downloads\n%s\nChecksums are in SHA256SUMS, signed in SHA256SUMS.sig by the release key.\n" "$intro" "$changes" "$list" > notes.md
           cat notes.md
 
       - name: Publish
@@ -156,9 +170,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
+          # A beta: a pre-release, never the latest, so no game offers it
+          kind=()
+          title="XRSpades ${VERSION#v}"
+          if [[ "$VERSION" == *-beta.* ]]; then
+            kind=(--prerelease --latest=false)
+            title="XRSpades ${VERSION%%-*} beta ${VERSION##*-beta.}"
+            title="${title/XRSpades v/XRSpades }"
+          fi
           gh release create "$VERSION" \
+            "${kind[@]}" \
             --repo "${{ github.repository }}" \
-            --title "XRSpades ${VERSION#v}" \
+            --title "$title" \
             --target "${{ github.sha }}" \
             --generate-notes \
             --notes-file notes.md \

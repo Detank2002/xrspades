@@ -50,7 +50,9 @@ for f in "$bt/aapt2" "$bt/zipalign" "$bt/d8" "$bt/apksigner" "$android_jar" "$st
 done
 
 # 0.3.0 -> 300, 1.12.4 -> 11204: rises with every release, as Android needs
-IFS=. read -r major minor patch <<<"${version#v}"
+# A beta's "-beta.N" is in the name only: it installs over the release before
+# it, and the release over it
+IFS=. read -r major minor patch <<<"$(v="${version#v}"; echo "${v%%-*}")"
 version_code=$(( major * 10000 + minor * 100 + patch ))
 
 work="$(mktemp -d)"

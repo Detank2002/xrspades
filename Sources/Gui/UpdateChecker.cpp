@@ -84,6 +84,7 @@ namespace spades {
 			ReleaseVersion v;
 			v.components = {ZEROSPADES_VERSION_MAJOR, ZEROSPADES_VERSION_MINOR,
 			                ZEROSPADES_VERSION_PATCH};
+			v.beta = ZEROSPADES_VERSION_BETA;
 			return v;
 		}
 
@@ -115,12 +116,27 @@ namespace spades {
 
 			if (count == 0)
 				return {};
+			// A beta: "-beta.2" or "-beta2" (a bare "-beta" is the first)
+			static const char kBeta[] = "-beta";
+			if (tag.compare(i, sizeof(kBeta) - 1, kBeta) == 0) {
+				i += sizeof(kBeta) - 1;
+				if (i < tag.size() && tag[i] == '.')
+					++i;
+				int n = 0;
+				while (i < tag.size() && std::isdigit(static_cast<unsigned char>(tag[i])) &&
+				       n <= 100000)
+					n = n * 10 + (tag[i++] - '0');
+				v.beta = n > 0 ? n : 1;
+			}
 			return v;
 		}
 
 		std::string ReleaseVersion::ToString() const {
-			return std::to_string(components[0]) + "." + std::to_string(components[1]) + "." +
-			       std::to_string(components[2]);
+			std::string s = std::to_string(components[0]) + "." + std::to_string(components[1]) +
+			                "." + std::to_string(components[2]);
+			if (beta > 0)
+				s += "-beta." + std::to_string(beta);
+			return s;
 		}
 
 		class UpdateChecker::Query final : public Thread {

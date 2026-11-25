@@ -22,6 +22,16 @@ set(ZEROSPADES_VERSION_MAJOR 0)
 set(ZEROSPADES_VERSION_MINOR 5)
 set(ZEROSPADES_VERSION_PATCH 0)
 set(ZEROSPADES_VERSION_FULL "${ZEROSPADES_VERSION_MAJOR}.${ZEROSPADES_VERSION_MINOR}.${ZEROSPADES_VERSION_PATCH}")
+# A beta of that version: its number, or 0 for the release itself. A beta is
+# published as a GitHub pre-release tagged v<version>-beta.<n> (release.yml),
+# which the update check never offers; a beta counts as older than its
+# release, so the release is offered to it. Back to 0 before releasing.
+set(ZEROSPADES_VERSION_BETA 0)
+if(ZEROSPADES_VERSION_BETA)
+	set(ZEROSPADES_VERSION_LABEL "${ZEROSPADES_VERSION_FULL}-beta.${ZEROSPADES_VERSION_BETA}")
+else()
+	set(ZEROSPADES_VERSION_LABEL "${ZEROSPADES_VERSION_FULL}")
+endif()
 
 set(OS_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
