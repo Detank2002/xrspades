@@ -51,6 +51,13 @@ jobs:
             echo "::error::CHANGELOG.md has no '## ${base#v}' section with '- ' lines"
             exit 1
           fi
+          # Its first six lines are all an older game's update prompt shows,
+          # each cut at 90 characters: the headline, whole
+          long="$(awk -v v="## ${base#v}" '$0 == v {on=1; next} /^## / {on=0} on && /^- /' CHANGELOG.md | head -n 6 | awk 'length($0) > 92')"
+          if [ -n "$long" ]; then
+            echo "::error::CHANGELOG.md's first six lines for ${base#v} are the update prompt's headline: keep each to 90 characters: $long"
+            exit 1
+          fi
           if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
             echo "::error::$VERSION is already tagged"
             exit 1

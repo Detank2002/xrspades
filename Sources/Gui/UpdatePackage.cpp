@@ -90,11 +90,14 @@ namespace spades {
 		}
 
 		std::vector<std::string> ReleaseChanges(const std::string& notes, std::size_t maxLines,
-		                                        std::size_t maxChars) {
+		                                        std::size_t maxChars, std::size_t* total) {
 			std::vector<std::string> out;
 			bool inSection = false;
 			std::size_t start = 0;
-			while (start < notes.size() && out.size() < maxLines) {
+			std::size_t count = 0;
+			if (total)
+				*total = 0;
+			while (start < notes.size() && (total || out.size() < maxLines)) {
 				std::size_t nl = notes.find('\n', start);
 				std::string line =
 				  notes.substr(start, (nl == std::string::npos ? notes.size() : nl) - start);
@@ -122,6 +125,10 @@ namespace spades {
 				    at + 1 >= line.size() || line[at + 1] != ' ')
 					continue;
 				line = line.substr(at + 2);
+				if (total)
+					*total = ++count;
+				if (out.size() >= maxLines)
+					continue;
 
 				// Plain text: links as their words, no emphasis or code marks, no
 				// control characters.

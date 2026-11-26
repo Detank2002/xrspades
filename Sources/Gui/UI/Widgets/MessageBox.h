@@ -47,6 +47,10 @@ namespace spades {
 		protected:
 			/** Shows `text` (e.g. "[Enter]") on the button at `index`, to advertise its hot key. */
 			void SetButtonHotKeyText(size_t index, const std::string& text);
+			/** The button at `index`, as given to the constructor */
+			ui::Button* GetButton(size_t index) {
+				return index < buttonWidgets.size() ? buttonWidgets[index] : nullptr;
+			}
 
 		public:
 			ui::EventHandler closed;

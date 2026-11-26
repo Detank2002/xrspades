@@ -77,9 +77,11 @@ namespace spades {
 		 * section): the "- " items under a "What's new" heading, as plain text,
 		 * at most `maxLines` of them, each cut to `maxChars`. Empty if the notes
 		 * have no such section. The notes are the server's text, so only plain
-		 * text comes out: no Markdown, no control characters.
+		 * text comes out: no Markdown, no control characters. `total`, if
+		 * given, gets how many items the section has, shown or not.
 		 */
 		std::vector<std::string> ReleaseChanges(const std::string& notes, std::size_t maxLines = 6,
-		                                        std::size_t maxChars = 90);
+		                                        std::size_t maxChars = 90,
+		                                        std::size_t* total = nullptr);
 	} // namespace gui
 } // namespace spades

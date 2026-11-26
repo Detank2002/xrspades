@@ -91,7 +91,7 @@ namespace spades {
 			UpdatePromptScreen(ui::UIElement* owner, const std::string& text,
 			                   const std::string& releaseUrl, const std::string& releaseTag,
 			                   bool selfUpdate, std::function<void()> releasePageOpened,
-			                   float height);
+			                   float height, std::vector<std::string> allChanges = {});
 			~UpdatePromptScreen() override;
 
 			void HotKey(const std::string& key) override;

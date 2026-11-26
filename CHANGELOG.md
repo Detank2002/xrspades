@@ -1,21 +1,28 @@
 # Changes
 
-What each release brings, shortest first. The release workflow puts a
-version's section at the top of its release notes, under "What's new", and
-the game shows those lines when it offers the update. Keep each line short:
-one change, in a player's words.
+What each release brings. The release workflow puts a version's section at
+the top of its release notes, under "What's new", and the game shows those
+lines when it offers the update. Keep each line short: one change, in a
+player's words.
+
+The first six lines of a version are its headline: the six biggest things a
+player would care about, each at most 90 characters (the release workflow
+checks). Older versions of the game show only those six in their update
+prompt; newer ones show them and a See all changes button for the rest.
 
 ## 0.5.0
 
 - New: ZeroSpades X is now XRSpades, same game, new name
+- New: on Quest, Foveated Rendering (Settings, VR) for a smoother, sharper game
+- New: pick a skin for each weapon in game, with a picture of each (Esc, Mods, Skins)
+- New: in VR, put the controllers down and use your hands in the menus
+- New: bullets and the spade chip real holes out of blocks
+- New: in VR, watch a game or a demo as a model on a table you can grab and turn
 - New: the menu's links take you to XRSpades' releases, code and Discord
 - New: in VR, getting hit kicks the controller on the side it came from, harder for bigger hits, and reddens the edge of your view
 - New: in VR, a heartbeat at the edge of your view when your health is low
-- New: in VR, watch a game or a demo as a model on a table in front of you: grab it, turn it and zoom with your hands
 - New: in VR, the keyboard stands on its own in front of you, and you can grab it with the grip and put it where you like
 - Improved: the VR keyboard has caps lock (Shift twice), arrow keys to fix typos, a Close key, and Back repeats while held
-- New: in VR, put the controllers down and use your hands in the menus: point, and pinch to click
-- New: bullets and the spade chip real holes out of blocks, pits you can see into from any side; they heal with the block or after a while (Options, Effects to turn them off)
 - Improved: in VR, the spade is solid and hits where its tip strikes a block, with a flick instead of a full swing
 - Improved: in VR, reloading by hand takes the magazine anywhere under the front of the gun, without twisting your wrist
 - New: in VR, change what every controller button does, on a picture of your controllers (Controls, Change buttons), and swap the sticks
@@ -38,7 +45,6 @@ one change, in a player's words.
 - Improved: in VR, spectating and demos start on the table view (Settings, VR to turn it off)
 - Improved: in VR, the Cross sight is now a ring reticle that tilts with the gun, and the sight's frame hides only the part of it behind it
 - Improved: in VR, Quest headsets have a little more headroom for keeping a steady frame rate
-- New: in VR on Quest, Foveated Rendering (Settings, VR) draws the edges of each eye in less detail, where the lenses blur anyway, for a smoother game
 - Improved: in VR on Quest, each frame goes straight to the headset, a little faster with or without foveated rendering
 - Improved: a sharper picture on a monitor: High draws the game at 125% and Ultra at 150% instead of blurring it with FXAA, and Render Scale goes up to 200%
 - Fixed: in VR, striking a block with the spade digs it again
@@ -78,7 +84,6 @@ one change, in a player's words.
 - Changed: in VR, the grenades and blocks sit lower on your hips (Hip Height to move them)
 - Fixed: in VR, a line of blocks drawn quickly starts where you began it
 - Changed: a player's body is removed when they respawn, so heavy fighting keeps a steady frame rate (Options, Effects to change it, and how many bodies stay)
-- New: pick a skin for each weapon in game (Esc, Mods, Skins): every mod you have, with a picture of its weapon, on with one click
 - New: star your favourite mods to keep them at the top of the mod lists
 - New: the main menu's mod list shows a picture of each mod's weapon
 - New: the server browser shows every known server list at once, with a filter to pick one

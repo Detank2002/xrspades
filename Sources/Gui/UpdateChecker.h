@@ -87,6 +87,8 @@ namespace spades {
 				/** What the release brings, in a few short plain-text lines (its
 				 * notes' "What's new"); may be empty. */
 				std::vector<std::string> changes;
+				/** All of them, longer lines kept whole (See all changes) */
+				std::vector<std::string> allChanges;
 				/**
 				 * The release page to send the user to; always under the project's
 				 * GitHub releases, whatever the response said.

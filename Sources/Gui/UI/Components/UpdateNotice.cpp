@@ -30,6 +30,7 @@
 #include <Core/ShellApi.h>
 #include <Core/Strings.h>
 #include <Gui/UI/Framework/UIManager.h>
+#include <Gui/UI/Widgets/Button.h>
 #include <Gui/UI/Widgets/DrawUtils.h>
 #include <Gui/SelfUpdater.h>
 #include <Gui/UpdateChecker.h>
@@ -259,6 +260,12 @@ namespace spades {
 				for (const std::string& change : result.changes)
 					text += "\n- " + change;
 				height += 22.0F * static_cast<float>(result.changes.size() + 2);
+				// The rest behind See all changes
+				if (result.allChanges.size() > result.changes.size()) {
+					text += "\n" + _Tr("MainScreen", "...and {0} more.",
+					                   std::to_string(result.allChanges.size() - result.changes.size()));
+					height += 22.0F;
+				}
 			}
 			text += "\n\n";
 			text += selfUpdate
@@ -271,7 +278,9 @@ namespace spades {
 
 			Handle<UpdatePromptScreen> prompt = Handle<UpdatePromptScreen>::New(
 			  owner, text, result.releaseUrl, result.latestTag, selfUpdate,
-			  std::move(releasePageOpened), height);
+			  std::move(releasePageOpened), height,
+			  result.allChanges.size() > result.changes.size() ? result.allChanges
+			                                                     : std::vector<std::string>());
 			prompt->Run();
 		}
 
@@ -279,12 +288,31 @@ namespace spades {
 		                                       const std::string& releaseUrl,
 		                                       const std::string& releaseTag, bool selfUpdate,
 		                                       std::function<void()> releasePageOpened,
-		                                       float height)
-		    : MessageBoxScreen(owner, text,
-		                       {selfUpdate ? _Tr("MainScreen", "Update Now")
-		                                   : _Tr("MainScreen", "Open Release Page"),
-		                        _Tr("MainScreen", "Later")},
-		                       height, true) {
+		                                       float height, std::vector<std::string> allChanges)
+		    : MessageBoxScreen(
+		        owner, text,
+		        allChanges.empty()
+		          ? std::vector<std::string>{selfUpdate ? _Tr("MainScreen", "Update Now")
+		                                                : _Tr("MainScreen", "Open Release Page"),
+		                                     _Tr("MainScreen", "Later")}
+		          : std::vector<std::string>{selfUpdate ? _Tr("MainScreen", "Update Now")
+		                                                : _Tr("MainScreen", "Open Release Page"),
+		                                     _Tr("MainScreen", "Later"),
+		                                     _Tr("MainScreen", "See all changes")},
+		        height, true) {
+			// See all changes: every line, in a list that scrolls, over this
+			// prompt, which stays
+			if (ui::Button* all = GetButton(2)) {
+				all->activated = [this, allChanges](ui::UIElement&) {
+					std::string list = _Tr("MainScreen", "What's new:");
+					for (const std::string& change : allChanges)
+						list += "\n- " + change;
+					const float h = std::min(GetManager().screenHeight - 80.0F,
+					                         60.0F + 22.0F * static_cast<float>(allChanges.size() + 2));
+					Handle<AlertScreen> alert = Handle<AlertScreen>::New(this, list, h);
+					alert->Run();
+				};
+			}
 			closed = [releaseUrl, releaseTag, selfUpdate,
 			          releasePageOpened](ui::UIElement& sender) {
 				if (static_cast<UpdatePromptScreen&>(sender).resultIndex != 0)
