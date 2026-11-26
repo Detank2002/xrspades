@@ -36,8 +36,7 @@ namespace spades {
 		                                                   VulkanSettings& settings,
 		                                                   int renderWidth, int renderHeight,
 		                                                   int views, int foveation,
-		                                                   bool inPassResolve, VkFormat colorFormat,
-		                                                   bool subsampled)
+		                                                   bool inPassResolve, VkFormat colorFormat)
 		    : device(dev),
 		      doingPostProcessing(false),
 		      renderWidth(renderWidth),
@@ -142,20 +141,12 @@ namespace spades {
 
 			// Create main render framebuffer
 			SPLog("Creating main render framebuffer");
-			// Subsampled like the headset's eye images it resolves into, when they
-			// are (vr_foveationSubsampled): a pass with a density map wants all its
-			// targets laid out alike (resolved into a subsampled image from
-			// ordinary ones, a Quest 3 showed one flat colour)
-			const VkImageCreateFlags targetFlags =
-			  subsampled ? VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT : 0;
-			if (subsampled)
-				SPLog("The scene's targets subsampled, as the headset's eye images");
 			renderColorImage = Handle<VulkanImage>::New(
 			    device, renderWidth, renderHeight, fbColorFormat,
 			    VK_IMAGE_TILING_OPTIMAL,
 			    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
 			        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, viewCount, targetFlags);
+			    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, viewCount);
 			renderColorImage->CreateImageView(VK_IMAGE_ASPECT_COLOR_BIT);
 			renderColorImage->CreateSampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR,
 			                                VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
@@ -173,7 +164,7 @@ namespace spades {
 				renderDepthImage = Handle<VulkanImage>::New(
 				    device, renderWidth, renderHeight, fbDepthFormat,
 				    VK_IMAGE_TILING_OPTIMAL, depthUsage,
-				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, viewCount, targetFlags);
+				    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, viewCount);
 				renderDepthImage->CreateImageView(VK_IMAGE_ASPECT_DEPTH_BIT);
 				// The framebuffer needs the stencil aspect too, and a sampled view
 				// may carry only one aspect, so the attachment gets its own view.

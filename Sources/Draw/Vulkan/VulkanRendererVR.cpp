@@ -467,14 +467,9 @@ namespace spades {
 			vr::OpenXRSystem* xr = vr::GetOpenXRSystem();
 			if (!xr)
 				return VK_NULL_HANDLE;
-			// Subsampled eye images (vr_foveationSubsampled) are drawn into only
-			// by passes that read their density map: the scene's, and this one
-			eyeDirectSubsampled = xr->GetEyeSwapchain().subsampled;
 			// Over what the scene's pass resolved, left as the runtime takes it
-			// back. The UI pass's format and samples, for the 2D pipelines; made
-			// for this pass when it reads a density map (EyeOverlayRenderPass).
-			VkAttachmentDescription attachments[2]{};
-			VkAttachmentDescription& color = attachments[0];
+			// back. The UI pass's format and samples, for the 2D pipelines.
+			VkAttachmentDescription color{};
 			color.format = device->GetSwapchainImageFormat();
 			color.samples = VK_SAMPLE_COUNT_1_BIT;
 			color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -483,15 +478,6 @@ namespace spades {
 			color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			color.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			color.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			VkAttachmentDescription& density = attachments[1];
-			density.format = VK_FORMAT_R8G8_UNORM;
-			density.samples = VK_SAMPLE_COUNT_1_BIT;
-			density.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-			density.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			density.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-			density.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			density.initialLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT;
-			density.finalLayout = VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT;
 			VkAttachmentReference ref{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
 			VkSubpassDescription subpass{};
 			subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -511,15 +497,10 @@ namespace spades {
 			deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			deps[1].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 			deps[1].dstAccessMask = 0;
-			VkRenderPassFragmentDensityMapCreateInfoEXT densityInfo{};
-			densityInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_FRAGMENT_DENSITY_MAP_CREATE_INFO_EXT;
-			densityInfo.fragmentDensityMapAttachment = {
-			  1, VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT};
 			VkRenderPassCreateInfo rpi{};
 			rpi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-			rpi.pNext = eyeDirectSubsampled ? &densityInfo : nullptr;
-			rpi.attachmentCount = eyeDirectSubsampled ? 2 : 1;
-			rpi.pAttachments = attachments;
+			rpi.attachmentCount = 1;
+			rpi.pAttachments = &color;
 			rpi.subpassCount = 1;
 			rpi.pSubpasses = &subpass;
 			rpi.dependencyCount = 2;
@@ -531,15 +512,6 @@ namespace spades {
 #else
 			return VK_NULL_HANDLE;
 #endif
-		}
-
-		VkRenderPass VulkanRenderer::EyeOverlayRenderPass() {
-			// Into subsampled eye images, the 2D pipelines are made for the pass
-			// reading their density map; else the UI pass's serve
-			if (!vrDirectFrame)
-				return VK_NULL_HANDLE;
-			EnsureEyeDirectRenderPass();
-			return eyeDirectSubsampled ? eyeDirectRenderPass : VK_NULL_HANDLE;
 		}
 
 		bool VulkanRenderer::RecordDirectEyeOverlays(VkCommandBuffer cmd, uint32_t frameIndex) {
@@ -566,19 +538,11 @@ namespace spades {
 						VkImageView views[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
 						VkFramebuffer fb = VK_NULL_HANDLE;
 						bool ok = vkCreateImageView(dev, &vi, nullptr, &views[0]) == VK_SUCCESS;
-						// Subsampled: this eye's layer of the runtime's map too
-						if (ok && eyeDirectSubsampled) {
-							vi.image = img < sc.densityImages.size() ? sc.densityImages[img]
-							                                         : VK_NULL_HANDLE;
-							vi.format = VK_FORMAT_R8G8_UNORM;
-							ok = vi.image != VK_NULL_HANDLE &&
-							     vkCreateImageView(dev, &vi, nullptr, &views[1]) == VK_SUCCESS;
-						}
 						if (ok) {
 							VkFramebufferCreateInfo fi{};
 							fi.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 							fi.renderPass = eyeDirectRenderPass;
-							fi.attachmentCount = eyeDirectSubsampled ? 2 : 1;
+							fi.attachmentCount = 1;
 							fi.pAttachments = views;
 							fi.width = sc.width;
 							fi.height = sc.height;
@@ -1642,10 +1606,7 @@ namespace spades {
 			const int mirrorEye = (int)vr_mirrorEye == 1 ? 1 : 0;
 			if (vrEyesRendered && fs.shouldRender && vrDirectFrame) {
 				eyesOut = RecordDirectEyeOverlays(cmd, cbIndex);
-			} else if (vrEyesRendered && fs.shouldRender && vrEyeImages[0] && vrEyeImages[1] &&
-			           !xr->GetEyeSwapchain().subsampled) {
-				// (Subsampled eye images cannot be blitted into: a frame that did
-				// not go straight in sends no eyes)
+			} else if (vrEyesRendered && fs.shouldRender && vrEyeImages[0] && vrEyeImages[1]) {
 				VkImage targets[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
 				eyesOut = xr->AcquireEyeImage(0, targets[0]) && xr->AcquireEyeImage(1, targets[1]);
 				// The eyes in one two-layer image: each blitted into its layer,

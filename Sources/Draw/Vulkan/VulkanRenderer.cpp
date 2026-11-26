@@ -223,8 +223,6 @@ namespace spades {
 					directEyeFormat = VK_FORMAT_UNDEFINED;
 				if (headset)
 					xr->SetEyeLayout(multiview, foveation > 0);
-				// The scene's targets subsampled like the eye images they resolve into
-				directSubsampledTargets = headset && foveation > 0 && xr->WillSubsampleEyes();
 				if ((int)vr_foveation > 0 && headset && !foveation)
 					SPLog("Foveation: not here (%s)",
 					      !directEyes ? "the eyes are not drawn straight into the headset's images"
@@ -248,7 +246,7 @@ namespace spades {
 			// Create framebuffer manager for offscreen rendering
 			framebufferManager = stmp::make_unique<VulkanFramebufferManager>(
 			  device, settings, renderWidth, renderHeight, multiview ? 2 : 1, foveation,
-			  SceneResolvesInPass(), directEyeFormat, directSubsampledTargets);
+			  SceneResolvesInPass(), directEyeFormat);
 
 			CreateRenderPass();  // Must create render pass before framebuffers
 			CreateFramebuffers();
@@ -735,7 +733,7 @@ namespace spades {
 		framebufferManager =
 		  stmp::make_unique<VulkanFramebufferManager>(device, settings, renderWidth, renderHeight,
 		                                              multiview ? 2 : 1, foveation,
-		                                              SceneResolvesInPass(), directEyeFormat, directSubsampledTargets);
+		                                              SceneResolvesInPass(), directEyeFormat);
 		waterRenderer = stmp::make_unique<VulkanWaterRenderer>(*this, map);
 		ConfigureAmbientOcclusion();
 
@@ -2266,15 +2264,13 @@ namespace spades {
 				    (!vrEyeImages[e] && !vrDirectFrame))
 					return false;
 				auto& r = canvas < 4 ? eyeImageRenderers[e] : eyeComfortRenderers[e];
-				// Its pipeline made for the pass it draws in (subsampled eye
-				// images: the overlay pass reading their density map)
-				const VkRenderPass pass = EyeOverlayRenderPass();
-				if (r && r->GetRenderPassMadeFor() != (pass ? pass : GetRenderPass())) {
+				// Its pipeline made for the UI's pass
+				if (r && r->GetRenderPassMadeFor() != GetRenderPass()) {
 					vkDeviceWaitIdle(device->GetDevice());
 					r.reset();
 				}
 				if (!r)
-					r = stmp::make_unique<VulkanImageRenderer>(*this, pass);
+					r = stmp::make_unique<VulkanImageRenderer>(*this);
 				r->SetSurfaceExtent(EyeCanvasLayout(e));
 				vrCanvas = canvas;
 				(canvas < 4 ? eyeCanvasUsed : eyeComfortUsed)[e] = true;

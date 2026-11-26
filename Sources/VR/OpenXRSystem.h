@@ -59,12 +59,6 @@ namespace spades {
 			std::vector<VkImage> densityImages;
 			uint32_t densityWidth = 0;
 			uint32_t densityHeight = 0;
-			/** Made VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT (XR_META_vulkan_swapchain_
-			 * create_info): the foveated parts stored at the size they were
-			 * shaded at, and filtered up by the compositor. Every pass that draws
-			 * into them must read their density map, and they cannot be blitted
-			 * or copied into. */
-			bool subsampled = false;
 			/** Index of the image acquired this frame, or UINT32_MAX. */
 			uint32_t acquired = UINT32_MAX;
 		};
@@ -147,9 +141,6 @@ namespace spades {
 			/** Whether the runtime can foveate the eye images (its foveation
 			 * extensions are all on). */
 			bool CanFoveate() const;
-			/** Whether the eye images will be made subsampled (foveated, with
-			 * vr_foveationSubsampled and XR_META_vulkan_swapchain_create_info) */
-			bool WillSubsampleEyes() const;
 			/** The format the eye images get: the first sRGB one the runtime
 			 * offers. Known once the session exists. */
 			VkFormat GetPlannedEyeFormat() const;
