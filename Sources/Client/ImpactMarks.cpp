@@ -73,9 +73,11 @@ namespace spades {
 			// pits with walls and floors, from any side, on any face. A face with
 			// a solid block against it is never cut into: the map draws no face
 			// between two solid blocks, so a gap there was a slit through the
-			// wall (testers saw through chipped edges). A face open to the air
-			// is, to its edges, which chip off; the corners stay. No pit goes
-			// deeper than kMaxDepth voxels, so a solid core is always left.
+			// wall (testers saw through chipped edges). Nor is an edge or a
+			// corner, open to the air or not: a pit is cut only inside a face, so
+			// the block keeps its whole outline and no two pits, on two faces or
+			// two blocks, ever meet at a corner to open a way through. No pit
+			// goes deeper than kMaxDepth voxels, so a solid core is always left.
 			constexpr int kCells = 8;
 			constexpr int kMaxDepth = 3; // the spade's; a bullet's is 2
 			constexpr std::size_t kMaxBlocks = 300;
@@ -358,11 +360,12 @@ namespace spades {
 			const float radius = spade ? 2.0F + 0.6F * Noise(impl->seed, 1, 2)
 			                           : 1.15F + 0.45F * Noise(impl->seed, 3, 4);
 			// Kept in from an edge whose other face has a block against it, so
-			// no pit opens onto it; up to one open to the air, which chips.
+			// no pit opens onto it; an edge open to the air may be reached, but
+			// its own cells stay (below), so a pit there stops a cell short.
 			const int open = ImpactMarksImpl::OpenFaces(*map, block);
 			d.openFaces = open;
 			auto margin = [&](int q, bool high) {
-				return (open & (1 << (q * 2 + (high ? 0 : 1)))) ? 0.5F : radius + 0.4F;
+				return (open & (1 << (q * 2 + (high ? 0 : 1)))) ? 1.5F : radius + 0.4F;
 			};
 			const Vector3 local = (hitPos - MakeVector3(block)) * static_cast<float>(kCells);
 			auto centre = [&](int q) {
@@ -384,12 +387,13 @@ namespace spades {
 						cell[axis] = positive ? kCells - 1 - k : k;
 						cell[a1] = i;
 						cell[a2] = j;
-						// Never a corner, nor on a face with a block against it
+						// Never an edge or a corner (a cell on two faces or three),
+						// nor on a face with a block against it
 						const int faces = ImpactMarksImpl::CellFaces(cell);
 						int onSurface = 0;
 						for (int q = 0; q < 3; q++)
 							onSurface += (cell[q] == 0 || cell[q] == kCells - 1) ? 1 : 0;
-						if (onSurface >= 3 || (faces & ~open) != 0)
+						if (onSurface >= 2 || (faces & ~open) != 0)
 							continue;
 						d.removed[cell[0]][cell[1]][cell[2]] = true;
 					}

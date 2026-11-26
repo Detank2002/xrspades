@@ -32,7 +32,7 @@ namespace spades {
 		/**
 		 * Bullet and spade holes in blocks (cg_impactMarks). A block hit is drawn
 		 * as a small voxel model of itself with real pits cut into whichever of
-		 * its faces were hit, its edges and a solid core always left, the map's
+		 * its faces were hit, its edges, corners and a solid core always left, the map's
 		 * own faces of it left out; a renderer that cannot leave them out gets a
 		 * flat chipped mark on the face instead. Gone when the block is, or
 		 * changes (rebuilt in another colour), and after a while; only the newest
