@@ -562,6 +562,9 @@ namespace spades {
 			l.AddChoiceField(_Tr("Preferences", "Anti-Aliasing, MSAA (Next Start)"),
 			                 "r_multisamples",
 			                 {_Tr("Preferences", "OFF"), "2x", "4x", "8x"}, {0, 2, 4, 8});
+			l.AddHelp(_Tr("Preferences",
+				"Smooths the edges of blocks. In a headset 2x draws the map about a fifth "
+				"faster than 4x, with a little more shimmer on far edges."));
 			l.AddToggleField(_Tr("Preferences", "FXAA Anti-Aliasing"), "r_fxaa");
 			l.AddToggleField(_Tr("Preferences", "Temporal Anti-Aliasing"), "r_temporalAA");
 			l.AddChoiceField(_Tr("Preferences", "Shadow Detail"), "r_shadowMapSize",

@@ -95,6 +95,9 @@ namespace spades {
 			// Quality the soft particles, which bring the depth read back (9.6 ms,
 			// still 72 FPS there). Not the reflecting water: with it a Quest 3
 			// fell to 50 FPS, its CPU and GPU levels raised or not.
+			// Performance has 2x MSAA, the others 4x: on a Quest 3 the map's
+			// pass took 21% less at 2x (Lost Valley 5.75 -> 4.53 ms), its cost
+			// being the triangles' samples.
 			static const std::vector<std::string> keys = {
 			  "r_multisamples", "r_fxaa",          "r_bloom",        "r_hdr",
 			  "r_fogShadow",    "r_softParticles", "r_outlines",     "r_lensFlare",
@@ -107,7 +110,7 @@ namespace spades {
 			  "cg_particleSize"};
 			static const std::vector<QualityPreset> presets = {
 			  Level("Performance", keys,
-			        {"4", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "1", "4",
+			        {"2", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "1", "4",
 			         "1024", "1", "1", "1", "1", "24", "2", "0.6"}),
 			  Level("Balanced", keys,
 			        {"4", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "1", "8",
