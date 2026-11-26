@@ -834,12 +834,18 @@ namespace spades {
 			// ApplyFoveation gives it
 			XrSwapchainCreateInfoFoveationFB fov{XR_TYPE_SWAPCHAIN_CREATE_INFO_FOVEATION_FB};
 			fov.flags = XR_SWAPCHAIN_CREATE_FOVEATION_FRAGMENT_DENSITY_MAP_BIT_FB;
+			// Subsampled only where the OpenXR headers know the extension (Linux
+			// distributions' older ones do not)
+#ifdef XR_META_vulkan_swapchain_create_info
 			XrVulkanSwapchainCreateInfoMETA meta{XR_TYPE_VULKAN_SWAPCHAIN_CREATE_INFO_META};
 			meta.additionalCreateFlags = VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT;
 			const bool subsampled =
 			  foveated && (bool)vr_foveationSubsampled && caps[XrCap::VulkanSwapchainCreateInfo];
 			if (subsampled)
 				fov.next = &meta;
+#else
+			const bool subsampled = false;
+#endif
 			if (foveated)
 				ci.next = &fov;
 			if (!Check(xrCreateSwapchain(session, &ci, &sc.handle), "xrCreateSwapchain"))
@@ -1594,8 +1600,12 @@ namespace spades {
 		}
 
 		bool OpenXRSystem::WillSubsampleEyes() const {
+#ifdef XR_META_vulkan_swapchain_create_info
 			return eyesFoveated && (bool)vr_foveationSubsampled &&
 			       caps[XrCap::VulkanSwapchainCreateInfo];
+#else
+			return false;
+#endif
 		}
 
 		VkFormat OpenXRSystem::GetPlannedEyeFormat() const {
