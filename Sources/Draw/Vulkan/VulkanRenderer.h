@@ -765,6 +765,8 @@ namespace spades {
 			/** vr_multiview: both eyes drawn in one pass. Fixed for the renderer's
 			 * life (every pipeline is built for it). */
 			bool IsMultiview() const { return multiview; }
+			/** Drawing for a headset this frame (OpenXR running) */
+			bool IsInHeadset() const { return IsHeadsetFrame(); }
 			/** Multiview: eye `i`'s view this frame (valid while it is recorded). */
 			const client::SceneDefinition& GetMultiviewEye(int i) const { return vrMultiviewEyes[i]; }
 			/** The eyes' views as a set of their own (ZsViews in the .mv shaders),

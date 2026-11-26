@@ -37,8 +37,22 @@
 #include <Core/Settings.h>
 #include <Core/FileManager.h>
 #include <Core/IStream.h>
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <vector>
+
+// How long, in ms a frame, changed map chunks may take to build again: the
+// nearest go first, the rest wait for the next frames (0: no limit)
+DEFINE_SPADES_SETTING(r_mapRebuildBudget, "2");
+// Logs the frames whose chunk building took long (2 ms, or 8 chunks)
+DEFINE_SPADES_SETTING(r_debugMapRebuild, "0");
+// In a headset, map chunks this many blocks or more from the eye are drawn from
+// 2x2x2 cells (VulkanMapChunk::BuildCoarse): a quarter the faces, the view as
+// far as ever (the fog). On a Quest the map's cost is its triangles, most of
+// them far off, each block there a few pixels. 0: all in full detail. Not on a
+// monitor, where a scope's zoom would show it.
+DEFINE_SPADES_SETTING(vr_farDetail, "80");
 
 namespace spades {
 	namespace draw {
@@ -171,9 +185,19 @@ namespace spades {
 			int cy = y >> VulkanMapChunk::SizeBits;
 			int cz = z >> VulkanMapChunk::SizeBits;
 
-			for (int dx = -1; dx <= 1; dx++) {
-				for (int dy = -1; dy <= 1; dy++) {
-					for (int dz = -1; dz <= 1; dz++) {
+			// A block changes the faces and the corners' AO of the blocks within
+			// one of it (VulkanMapChunk::Update, calcAOID), so a chunk beside its
+			// own needs building again only if the block is on their shared edge.
+			// It was all 27 round it, for every block placed or broken: a
+			// grenade's worth was dozens of chunks built again in one frame.
+			constexpr int kLast = VulkanMapChunk::Size - 1;
+			const int lx = x & kLast, ly = y & kLast, lz = z & kLast;
+			const int x0 = lx == 0 ? -1 : 0, x1 = lx == kLast ? 1 : 0;
+			const int y0 = ly == 0 ? -1 : 0, y1 = ly == kLast ? 1 : 0;
+			const int z0 = lz == 0 ? -1 : 0, z1 = lz == kLast ? 1 : 0;
+			for (int dx = x0; dx <= x1; dx++) {
+				for (int dy = y0; dy <= y1; dy++) {
+					for (int dz = z0; dz <= z1; dz++) {
 						int xx = (cx + dx) & (numChunkWidth - 1);
 						int yy = (cy + dy) & (numChunkHeight - 1);
 						int zz = cz + dz;
@@ -221,13 +245,76 @@ namespace spades {
 				}
 			}
 
-			// Update realized chunks that need updates (must be done outside render passes)
-			for (int i = 0; i < numChunks; i++) {
-				VulkanMapChunk* chunk = chunks[i];
-				if (chunk && chunk->IsRealized()) {
-					chunk->UpdateIfNeeded();
+			// Far chunks in half detail (vr_farDetail), a little nearer to come back
+			// than to go, so one on the line does not flip every step
+			{
+				const float start = (float)vr_farDetail;
+				const bool use = start > 0.0F && !whole && renderer.IsInHeadset();
+				for (int i = 0; i < numChunks; i++) {
+					VulkanMapChunk* chunk = chunks[i];
+					if (!chunk || !chunk->IsRealized())
+						continue;
+					const float d = chunkInfos[i].distance;
+					if (!use)
+						chunk->SetFarDetail(false);
+					else if (d > start + 4.0F)
+						chunk->SetFarDetail(true);
+					else if (d < start - 4.0F)
+						chunk->SetFarDetail(false);
 				}
 			}
+
+			// Build again the realized chunks that changed (outside render passes),
+			// the nearest first, within a budget a frame: all of them in one frame
+			// was a hitch whenever much of the map changed at once (1% lows). A
+			// great many (a map loading, or coming into range) are built at once,
+			// as before: nothing is drawn meanwhile in a headset.
+			// r_debugMapRebuild 2: about once a second, the 27 chunks round the eye
+			// marked changed, as every block placed or broken did until 0.5.0
+			if ((int)r_debugMapRebuild >= 2 && ++debugRebuildFrame % 72 == 0) {
+				const IntVector3 e = eye.Floor();
+				for (int dx = -1; dx <= 1; dx++)
+					for (int dy = -1; dy <= 1; dy++)
+						for (int dz = -1; dz <= 1; dz++) {
+							const int zz = (e.z >> VulkanMapChunk::SizeBits) + dz;
+							if (zz < 0 || zz >= numChunkDepth)
+								continue;
+							if (VulkanMapChunk* c = GetChunk(
+							      ((e.x >> VulkanMapChunk::SizeBits) + dx) & (numChunkWidth - 1),
+							      ((e.y >> VulkanMapChunk::SizeBits) + dy) & (numChunkHeight - 1), zz))
+								c->SetNeedsUpdate();
+						}
+			}
+			dirtyChunks.clear();
+			for (int i = 0; i < numChunks; i++) {
+				VulkanMapChunk* chunk = chunks[i];
+				if (chunk && chunk->NeedsUpdate())
+					dirtyChunks.push_back(i);
+			}
+			if (dirtyChunks.empty())
+				return;
+			const bool all = whole || dirtyChunks.size() > 96;
+			if (!all)
+				std::sort(dirtyChunks.begin(), dirtyChunks.end(), [&](int a, int b) {
+					return chunkInfos[a].distance < chunkInfos[b].distance;
+				});
+			const double budgetMs = std::max(0.0, (double)(float)r_mapRebuildBudget);
+			const auto start = std::chrono::steady_clock::now();
+			std::size_t built = 0;
+			double ms = 0.0;
+			for (int i : dirtyChunks) {
+				// The nearest always, whatever the budget
+				if (!all && built > 0 && budgetMs > 0.0 && ms >= budgetMs)
+					break;
+				chunks[i]->UpdateIfNeeded();
+				built++;
+				ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+				                                               start)
+				       .count();
+			}
+			if ((int)r_debugMapRebuild && (ms >= 2.0 || built >= 8))
+				SPLog("Map chunks built again: %d of %d in %.2f ms", (int)built,
+				      (int)dirtyChunks.size(), ms);
 		}
 
 		void VulkanMapRenderer::RenderSunlightPass(VkCommandBuffer commandBuffer) {

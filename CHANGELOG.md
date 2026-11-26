@@ -13,7 +13,7 @@ prompt; newer ones show them and a See all changes button for the rest.
 ## 0.5.0
 
 - New: ZeroSpades X is now XRSpades, same game, new name
-- New: on Quest, Foveated Rendering (Settings, VR) for a smoother, sharper game
+- New: on Quest, Foveated Rendering, on by default, for a smoother game (Settings, VR)
 - New: pick a skin for each weapon in game, with a picture of each (Esc, Mods, Skins)
 - New: in VR, put the controllers down and use your hands in the menus
 - New: bullets and the spade chip real holes out of blocks
@@ -95,6 +95,8 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Fixed: on Quest 2, foveated rendering no longer crashes, with or without colour correction
 - New: High Top foveated rendering, which keeps more detail above the middle of your view
 - Changed: foveated rendering stays at the level you set instead of changing with load, which some found made them feel sick
+- Improved: in VR, far-off parts of the map are drawn in less detail, for a smoother game with the same view distance
+- Improved: placing and breaking blocks no longer makes the game stutter
 
 ## 0.3.6
 

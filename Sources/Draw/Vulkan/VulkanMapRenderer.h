@@ -103,6 +103,8 @@ namespace spades {
 			void RealizeChunks(Vector3 eye);
 
 			void DrawColumn(VkCommandBuffer commandBuffer, int cx, int cy, int cz);
+			std::vector<int> dirtyChunks; // RealizeChunks' scratch
+			unsigned debugRebuildFrame = 0; // r_debugMapRebuild 2
 
 			/** Draws the chunks in view, nearest first, with `pipeline`, whose
 			 * layout is the lit pipelines' */
