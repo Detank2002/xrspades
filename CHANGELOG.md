@@ -78,6 +78,18 @@ one change, in a player's words.
 - Changed: in VR, the grenades and blocks sit lower on your hips (Hip Height to move them)
 - Fixed: in VR, a line of blocks drawn quickly starts where you began it
 - Changed: a player's body is removed when they respawn, so heavy fighting keeps a steady frame rate (Options, Effects to change it, and how many bodies stay)
+- New: pick a skin for each weapon in game (Esc, Mods, Skins): every mod you have, with a picture of its weapon, on with one click
+- New: star your favourite mods to keep them at the top of the mod lists
+- New: the main menu's mod list shows a picture of each mod's weapon
+- New: the server browser shows every known server list at once, with a filter to pick one
+- Improved: the minimap darkens the area outside the map
+- Improved: a new spade digging animation
+- Fixed: the last settings in a Settings tab can be scrolled to again
+- Fixed: in VR, the menu stays still while you turn to look at the body mirror
+- Fixed: in VR, the settings menu and the scope keep a steadier frame rate
+- Fixed: on Quest 2, foveated rendering no longer crashes, with or without colour correction
+- New: High Top foveated rendering, which keeps more detail above the middle of your view
+- Changed: foveated rendering stays at the level you set instead of changing with load, which some found made them feel sick
 
 ## 0.3.6
 
