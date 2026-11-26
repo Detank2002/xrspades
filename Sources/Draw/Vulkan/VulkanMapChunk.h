@@ -36,23 +36,29 @@ namespace spades {
 		class VulkanBuffer;
 
 		class VulkanMapChunk {
-			struct Vertex {
+		public:
+			// A vertex, 8 bytes (it was 20), the rest worked out by the shader from
+			// the face it is a corner of (Shaders/Vulkan/MapVertex.glsl). A tiled
+			// GPU reads each vertex to bin it and again in every tile it is drawn
+			// in: the less, the cheaper every triangle. Where it is...
+			struct VertexPosition {
 				uint8_t x, y, z;
-				uint8_t pad;
-
-				uint16_t aoX, aoY;
-
-				uint8_t colorRed;
-				uint8_t colorGreen;
-				uint8_t colorBlue;
-				uint8_t shading;
-
-				int8_t nx, ny, nz;
-				uint8_t pad2;
-
-				int8_t sx, sy, sz;
-				uint8_t pad3;
+				uint8_t face; // direction 0..5 | corner (0..3) << 3
 			};
+			// ...and what it looks like
+			struct VertexSurface {
+				uint8_t r, g, b;
+				uint8_t ao; // the face's tile in the AO atlas
+			};
+			/**
+			 * r_mapVertexStreams: 2 (the default), the positions in a stream of
+			 * their own, ahead of the rest in the buffer, so binning reads only
+			 * them; 1, each vertex's 8 bytes together. Read once: the pipelines
+			 * are made for it.
+			 */
+			static bool SeparatePositions();
+
+		private:
 
 			VulkanMapRenderer& renderer;
 			Handle<gui::SDLVulkanDevice> device;
@@ -63,7 +69,9 @@ namespace spades {
 			Vector3 centerPos;
 			float radius;
 
-			std::vector<Vertex> vertices;
+			std::vector<VertexPosition> positions;
+			std::vector<VertexSurface> surfaces;
+			VkDeviceSize surfaceOffset = 0; // where the surfaces start in vertexBuffer
 			std::vector<uint16_t> indices;
 			Handle<VulkanBuffer> vertexBuffer;
 			Handle<VulkanBuffer> indexBuffer;

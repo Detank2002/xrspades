@@ -22,6 +22,7 @@
 #include "VulkanSettings.h"
 #include "VulkanSpirvCache.h"
 #include "VulkanRenderer.h"
+#include "VulkanMapChunk.h"
 #include "VulkanMapRenderer.h"
 #include "VulkanModelRenderer.h"
 #include "VulkanImage.h"
@@ -333,7 +334,9 @@ namespace spades {
 			// The map chunk vertex buffer has stride 20 bytes, with uint8 x,y,z at offset 0
 			VkVertexInputBindingDescription bindingDescription{};
 			bindingDescription.binding = 0;
-			bindingDescription.stride = 20; // Same as VulkanMapChunk::Vertex
+			// VulkanMapChunk::VertexPosition: the position stream alone, or
+			// the first half of each 8-byte vertex (r_mapVertexStreams)
+			bindingDescription.stride = VulkanMapChunk::SeparatePositions() ? 4 : 8;
 			bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
 			VkVertexInputAttributeDescription attributeDescription{};

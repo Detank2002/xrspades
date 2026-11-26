@@ -33,11 +33,7 @@ layout(push_constant) uniform DrawConstants {
 	vec3 modelOrigin;
 } draw;
 
-layout(location = 0) in uvec3 positionAttribute;
-layout(location = 1) in uvec2 aoCoordAttribute;
-layout(location = 2) in uvec3 colorAttribute;
-layout(location = 3) in ivec3 normalAttribute;
-layout(location = 4) in ivec3 fixedPositionAttribute; // face-center * 2 (chunk-local)
+#include "MapVertex.glsl"
 
 layout(location = 0) out vec4 color;           // xyz = linearized vertex color, w = sun lambert (may be negative)
 layout(location = 1) out vec3 ambientLight;    // hemisphere ambient fallback
@@ -59,18 +55,19 @@ layout(location = 12) out vec2 ambientOcclusionCoord; // 2D coords into the AO a
 invariant gl_Position;
 
 void main() {
-	vec3 position = vec3(positionAttribute);
+	MapVertex mapVertex = DecodeMapVertex();
+	vec3 position = mapVertex.position;
 	vec4 worldPos = vec4(position + draw.modelOrigin, 1.0);
 	gl_Position = sceneView.projectionView * worldPos;
 
-	vec3 normalFloat = normalize(vec3(normalAttribute));
+	vec3 normalFloat = mapVertex.normal;
 
 	// Sun direction from the renderer (single source of truth, GetSunDirection)
 	vec3 sunDir = normalize(sceneView.sunDirection.xyz);
 	float lambert = dot(normalFloat, sunDir); // NOT clamped - physical shader needs raw dot
 
 	// Linearize vertex color
-	vec3 vertexColor = vec3(colorAttribute) / 255.0;
+	vec3 vertexColor = vec3(mapVertex.color) / 255.0;
 	vertexColor *= vertexColor;
 
 	// Ambient color matching GL GLShadowShader: fog * 0.5 with a minimum
@@ -91,7 +88,7 @@ void main() {
 	// The 0.1 lift is the shadow lookup's own, so keep it out of wPos, which
 	// the AO and radiosity coords below also use. GL derives those from a
 	// different base — see the note on aoCoord in BasicMap.vert.
-	vec3 wPos = vec3(fixedPositionAttribute) * 0.5 + draw.modelOrigin;
+	vec3 wPos = mapVertex.fixedPosition * 0.5 + draw.modelOrigin;
 	vec3 shadowPos = wPos + normalFloat * 0.1;
 	shadowCoord = vec3(shadowPos.x / 512.0, (shadowPos.y - shadowPos.z) / 512.0,
 	                   shadowPos.z / 255.0);
@@ -112,7 +109,7 @@ void main() {
 	// Radiosity 3D-texture coords (matches GL MapRadiosity.vs).
 	radiosityTextureCoord = wPos / vec3(512.0, 512.0, 64.0);
 	// The face's own ambient occlusion, from the atlas (GL BasicBlockPhys.vs)
-	ambientOcclusionCoord = (vec2(aoCoordAttribute) + 0.5) * (1.0 / 256.0);
+	ambientOcclusionCoord = (vec2(mapVertex.aoCoord) + 0.5) * (1.0 / 256.0);
 	normalVarying = normalFloat;
 	worldPosition = worldPos.xyz;
 	gl_Position = ZS_CORRECT(gl_Position);

@@ -1672,7 +1672,23 @@ the GPU's own counters (`ovrgpuprofiler`):
     96x96 depth picture an eye): 0.6-1 ms of CPU for 20-34% of chunks left
     out and no measurable GPU saving: the hidden chunks' pixels were already
     rejected by the early depth test, and a forest's canopies have no solid
-    boxes to hide anything with.
+    boxes to hide anything with;
+  - a depth pre-pass (`r_depthPrepass 1`, a render pass of its own): Lost
+    Valley 5.75 -> 8.45 ms (49 fps), Hallway 3.6 -> 5.4 ms; and the map's
+    depth drawn first inside the scene pass, so the lit map shades each pixel
+    once: worse still, 9.7 ms. Drawing the forest's triangles a second time,
+    depth only with no fragment shader, costs about 4 ms: the cost is
+    rasterizing them (4x MSAA), not shading them.
+- **Vertex size is not it either.** The map's vertex went from 20 bytes to 8
+  (`Shaders/Vulkan/MapVertex.glsl`, the normal, sun shading, face centre and
+  AO corner worked out from a face-and-corner byte), positions in a stream of
+  their own so binning reads 4 bytes a vertex (`r_mapVertexStreams`): the same
+  picture, 60% less vertex memory, and no GPU time saved (Lost Valley 5.76 ->
+  5.75 ms, Hallway 3.59 -> 3.58, Babel 3.58 -> 3.46). The counters say 93% of
+  shading time is fragments; the rest is fixed-function work per triangle.
+  (A Vulkanised 2026 talk on a voxel game on Quest 2/3, DevSH, puts the budget
+  at about a million triangles a frame and found GPU-driven occlusion culling
+  worth +5% on Quest 3.)
 - The early depth test (LRZ) works: billions of hidden pixels a second
   rejected on Lost Valley. The floating-block search on a broken block is
   cheap (worst 1.4 ms on a lattice hung in the sky); joining a map is quick.

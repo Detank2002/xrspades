@@ -39,11 +39,7 @@ layout(set = 1, binding = 0) uniform ShadowSampling {
 	int enabled;
 } shadowSampling;
 
-layout(location = 0) in uvec3 positionAttribute;
-layout(location = 1) in uvec2 aoCoordAttribute;
-layout(location = 2) in uvec4 colorAttribute;  // colorRed, colorGreen, colorBlue, shading
-layout(location = 3) in ivec3 normalAttribute;
-layout(location = 4) in ivec3 fixedPositionAttribute; // face-center * 2 (chunk-local)
+#include "MapVertex.glsl"
 
 layout(location = 0) out vec4 color;          // xyz = linearized vertex color, w = sun lambert
 layout(location = 1) out vec3 ambientLight;    // ambient lighting component (hemisphere fallback)
@@ -71,12 +67,13 @@ invariant gl_Position;
 
 void main() {
 	// Convert uint8 position to float
-	vec3 position = vec3(positionAttribute);
+	MapVertex mapVertex = DecodeMapVertex();
+	vec3 position = mapVertex.position;
 	vec4 worldPos = vec4(position + draw.modelOrigin, 1.0);
 	gl_Position = sceneView.projectionView * worldPos;
 
 	// Convert int8 normal to float and normalize
-	vec3 normalFloat = normalize(vec3(normalAttribute));
+	vec3 normalFloat = mapVertex.normal;
 
 	// Sun response is the per-face "shading" byte the chunk builder bakes into
 	// the vertex (0 for the +Z/+Y/±X faces, 220 for -Z, 255 for -Y), NOT a
@@ -85,10 +82,10 @@ void main() {
 	// dot(normal, sunDirection) here gives every lit face a different
 	// response from GL. (BasicMapPhys.vert does use the dot product, because
 	// GL's BasicBlockPhys.vs does too.)
-	float lambert = float(colorAttribute.w) / 255.0;
+	float lambert = mapVertex.shading / 255.0;
 
 	// Convert color from uint8 [0,255] to float [0,1] and linearize
-	vec3 vertexColor = vec3(colorAttribute.xyz) / 255.0;
+	vec3 vertexColor = vec3(mapVertex.color) / 255.0;
 	vertexColor *= vertexColor;
 
 	// Ambient color matching GL GLShadowShader: fog * 0.5 with a minimum
@@ -119,7 +116,7 @@ void main() {
 	// every face toward shadowed. This 0.1 lift is the SHADOW lookup's own —
 	// keep it out of wPos, which the AO and radiosity coords below also use,
 	// because GL derives those from a different base entirely (see there).
-	vec3 wPos = vec3(fixedPositionAttribute) * 0.5 + draw.modelOrigin;
+	vec3 wPos = mapVertex.fixedPosition * 0.5 + draw.modelOrigin;
 	vec3 shadowPos = wPos + normalFloat * 0.1;
 	shadowCoord = vec3(shadowPos.x / 512.0, (shadowPos.y - shadowPos.z) / 512.0,
 	                   shadowPos.z / 255.0);
@@ -150,7 +147,7 @@ void main() {
 	// 2D AO atlas coords (matches GL BasicBlock.vs). The atlas is 256x256 with
 	// 16x16 precomputed AO tiles; aoCoordAttribute holds tile_x*16 + corner
 	// offset on each axis (range 0..255). +0.5 centres the sample.
-	ambientOcclusionCoord = (vec2(aoCoordAttribute) + 0.5) * (1.0 / 256.0);
+	ambientOcclusionCoord = (vec2(mapVertex.aoCoord) + 0.5) * (1.0 / 256.0);
 
 	// Radiosity 3D-texture coords. GL uses the raw vertex position here, not
 	// the face centre — see the note on aoCoord above.

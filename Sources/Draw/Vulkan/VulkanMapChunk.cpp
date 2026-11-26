@@ -33,9 +33,18 @@
 #include <Core/Debug.h>
 #include <Core/Settings.h>
 
+// 2: the map's vertex positions in a stream of their own (VulkanMapChunk::
+// SeparatePositions); 1: each vertex whole. Read at start.
+DEFINE_SPADES_SETTING(r_mapVertexStreams, "2");
+
 
 namespace spades {
 	namespace draw {
+		bool VulkanMapChunk::SeparatePositions() {
+			static const bool separate = (int)r_mapVertexStreams != 1;
+			return separate;
+		}
+
 		VulkanMapChunk::VulkanMapChunk(VulkanMapRenderer& r, client::GameMap* mp, int cx, int cy, int cz)
 		    : renderer(r),
 		      device(r.renderer.GetDevice()) {
@@ -81,8 +90,10 @@ namespace spades {
 				indexBuffer.Set(nullptr, false);
 
 				// Clear CPU-side data
-				std::vector<Vertex> v;
-				v.swap(vertices);
+				std::vector<VertexPosition> p;
+				p.swap(positions);
+				std::vector<VertexSurface> sf;
+				sf.swap(surfaces);
 
 				std::vector<uint16_t> i;
 				i.swap(indices);
@@ -126,64 +137,27 @@ namespace spades {
 			// Evaluate ambient occlusion
 			unsigned int aoID = calcAOID(aoX, aoY, aoZ, ux, uy, uz, vx, vy, vz);
 
-			Vertex inst;
-			if (nz == 1 || ny == 1)
-				inst.shading = 0;
-			else if (nx == 1 || nx == -1)
-				inst.shading = 0;
-			else if (nz == -1)
-				inst.shading = 220;
-			else
-				inst.shading = 255;
+			// The face's direction, in the order Update emits them; the shader
+			// has each one's u and v (Shaders/Vulkan/MapVertex.glsl), from which
+			// it works out the normal, the sun shading, the face's centre and
+			// each corner's place in the AO atlas
+			const uint8_t face = nz == 1 ? 0 : nz == -1 ? 1 : nx == -1 ? 2 : nx == 1 ? 3 : ny == -1 ? 4 : 5;
+			VertexSurface surface;
+			surface.r = (uint8_t)(color);
+			surface.g = (uint8_t)(color >> 8);
+			surface.b = (uint8_t)(color >> 16);
+			surface.ao = (uint8_t)aoID;
 
-			inst.x = x;
-			inst.y = y;
-			inst.z = z;
-
-			inst.colorRed = (uint8_t)(color);
-			inst.colorGreen = (uint8_t)(color >> 8);
-			inst.colorBlue = (uint8_t)(color >> 16);
-
-			inst.nx = nx;
-			inst.ny = ny;
-			inst.nz = nz;
-
-			// Fixed position to avoid self-shadow glitch
-			inst.sx = (x << 1) + ux + vx;
-			inst.sy = (y << 1) + uy + vy;
-			inst.sz = (z << 1) + uz + vz;
-
-			unsigned int aoTexX = (aoID & 15) * 16;
-			unsigned int aoTexY = (aoID >> 4) * 16;
-
-			uint16_t idx = (uint16_t)vertices.size();
-			inst.x = x;
-			inst.y = y;
-			inst.z = z;
-			inst.aoX = aoTexX;
-			inst.aoY = aoTexY;
-			vertices.push_back(inst);
-
-			inst.x = x + ux;
-			inst.y = y + uy;
-			inst.z = z + uz;
-			inst.aoX = aoTexX + 15;
-			inst.aoY = aoTexY;
-			vertices.push_back(inst);
-
-			inst.x = x + vx;
-			inst.y = y + vy;
-			inst.z = z + vz;
-			inst.aoX = aoTexX;
-			inst.aoY = aoTexY + 15;
-			vertices.push_back(inst);
-
-			inst.x = x + ux + vx;
-			inst.y = y + uy + vy;
-			inst.z = z + uz + vz;
-			inst.aoX = aoTexX + 15;
-			inst.aoY = aoTexY + 15;
-			vertices.push_back(inst);
+			uint16_t idx = (uint16_t)positions.size();
+			auto corner = [&](int px, int py, int pz, int c) {
+				positions.push_back(
+				  {(uint8_t)px, (uint8_t)py, (uint8_t)pz, (uint8_t)(face | (c << 3))});
+				surfaces.push_back(surface);
+			};
+			corner(x, y, z, 0);
+			corner(x + ux, y + uy, z + uz, 1);
+			corner(x + vx, y + vy, z + vz, 2);
+			corner(x + ux + vx, y + uy + vy, z + uz + vz, 3);
 
 			indices.push_back(idx);
 			indices.push_back(idx + 1);
@@ -218,7 +192,8 @@ namespace spades {
 				return;
 
 
-			vertices.clear();
+			positions.clear();
+			surfaces.clear();
 			indices.clear();
 
 			int originX = chunkX << SizeBits;
@@ -304,8 +279,24 @@ namespace spades {
 				std::memcpy(buffer->Map(), data, size);
 				buffer->Unmap();
 			};
-			upload(vertexBuffer, vertices.data(), vertices.size() * sizeof(Vertex),
-			       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+			// One buffer: the positions, then the surfaces (r_mapVertexStreams 2),
+			// or each vertex's two halves together (1)
+			{
+				const std::size_t n = positions.size();
+				std::vector<uint8_t> data(n * 8);
+				if (SeparatePositions()) {
+					std::memcpy(data.data(), positions.data(), n * 4);
+					std::memcpy(data.data() + n * 4, surfaces.data(), n * 4);
+					surfaceOffset = n * 4;
+				} else {
+					for (std::size_t i = 0; i < n; i++) {
+						std::memcpy(&data[i * 8], &positions[i], 4);
+						std::memcpy(&data[i * 8 + 4], &surfaces[i], 4);
+					}
+					surfaceOffset = 0;
+				}
+				upload(vertexBuffer, data.data(), data.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+			}
 			upload(indexBuffer, indices.data(), indices.size() * sizeof(uint16_t),
 			       VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
@@ -375,10 +366,10 @@ namespace spades {
 			// (The textures' set, 0, is the same for every chunk: bound once for
 			// the pass, VulkanMapRenderer::DrawVisibleChunks)
 
-			// Bind vertex buffer
-			VkBuffer vb = vertexBuffer->GetBuffer();
-			VkDeviceSize offsets[] = {0};
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vb, offsets);
+			// The vertices: the positions, and the surfaces after them
+			VkBuffer vb[2] = {vertexBuffer->GetBuffer(), vertexBuffer->GetBuffer()};
+			VkDeviceSize offsets[2] = {0, surfaceOffset};
+			vkCmdBindVertexBuffers(commandBuffer, 0, SeparatePositions() ? 2 : 1, vb, offsets);
 
 			// Bind index buffer
 			vkCmdBindIndexBuffer(commandBuffer, indexBuffer->GetBuffer(), 0, VK_INDEX_TYPE_UINT16);

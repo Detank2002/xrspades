@@ -433,55 +433,32 @@ namespace spades {
 
 			VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-			// Vertex input state - matches VulkanMapChunk::Vertex
-			// Vertex layout: uint8 x,y,z,pad + uint16 aoX,aoY + uint8 r,g,b,shading + int8 nx,ny,nz,pad2 + int8 sx,sy,sz,pad3
-			// Total size: 4 + 4 + 4 + 4 + 4 = 20 bytes
-			VkVertexInputBindingDescription bindingDescription{};
-			bindingDescription.binding = 0;
-			bindingDescription.stride = 20;
-			bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+			// Vertex input: VulkanMapChunk::VertexPosition at location 0 and
+			// VertexSurface at 1 (Shaders/Vulkan/MapVertex.glsl), each 4 bytes; in
+			// two streams, or one of 8 (r_mapVertexStreams)
+			const bool separate = VulkanMapChunk::SeparatePositions();
+			std::array<VkVertexInputBindingDescription, 2> bindingDescriptions{};
+			bindingDescriptions[0].binding = 0;
+			bindingDescriptions[0].stride = separate ? 4 : 8;
+			bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+			bindingDescriptions[1].binding = 1;
+			bindingDescriptions[1].stride = 4;
+			bindingDescriptions[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-			std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
-
-			// Position (location 0) - x, y, z are uint8_t at offset 0
+			std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
 			attributeDescriptions[0].binding = 0;
 			attributeDescriptions[0].location = 0;
-			attributeDescriptions[0].format = VK_FORMAT_R8G8B8_UINT;
+			attributeDescriptions[0].format = VK_FORMAT_R8G8B8A8_UINT;
 			attributeDescriptions[0].offset = 0;
-
-			// AO coordinates (location 1) - aoX, aoY are uint16_t at offset 4
-			attributeDescriptions[1].binding = 0;
+			attributeDescriptions[1].binding = separate ? 1 : 0;
 			attributeDescriptions[1].location = 1;
-			attributeDescriptions[1].format = VK_FORMAT_R16G16_UINT;
-			attributeDescriptions[1].offset = 4;
-
-			// Color (location 2) - colorRed, colorGreen, colorBlue, shading are
-			// uint8_t at offset 8. The 4th component is the per-face sun
-			// shading byte BasicMap.vert reads as color.w (GL parity); shaders
-			// that only need the colour declare a uvec3 and ignore it.
-			attributeDescriptions[2].binding = 0;
-			attributeDescriptions[2].location = 2;
-			attributeDescriptions[2].format = VK_FORMAT_R8G8B8A8_UINT;
-			attributeDescriptions[2].offset = 8;
-
-			// Normal (location 3) - nx, ny, nz are int8_t at offset 12
-			attributeDescriptions[3].binding = 0;
-			attributeDescriptions[3].location = 3;
-			attributeDescriptions[3].format = VK_FORMAT_R8G8B8_SINT;
-			attributeDescriptions[3].offset = 12;
-
-			// Fixed position (location 4) - sx, sy, sz are int8_t at offset 16.
-			// Face-center * 2 (chunk-local); used for map-shadow/AO/radiosity
-			// sampling to avoid voxel-boundary bleed (lit sliver on face edges).
-			attributeDescriptions[4].binding = 0;
-			attributeDescriptions[4].location = 4;
-			attributeDescriptions[4].format = VK_FORMAT_R8G8B8_SINT;
-			attributeDescriptions[4].offset = 16;
+			attributeDescriptions[1].format = VK_FORMAT_R8G8B8A8_UINT;
+			attributeDescriptions[1].offset = separate ? 0 : 4;
 
 			VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 			vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-			vertexInputInfo.vertexBindingDescriptionCount = 1;
-			vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+			vertexInputInfo.vertexBindingDescriptionCount = separate ? 2 : 1;
+			vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
 			vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
 			vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
