@@ -66,8 +66,9 @@ DEFINE_SPADES_SETTING(vr_symmetricFrustum, "0");
 // runtime knows it, though OpenXR's headers stop at high). Whether it is
 // on at all is read at start (the renderer's passes are made for it or not);
 // the level is applied as it changes. Only where the eyes are drawn at once,
-// straight into the headset's images (VulkanRenderer's direct eyes).
-DEFINE_SPADES_SETTING(vr_foveation, "0");
+// straight into the headset's images (VulkanRenderer's direct eyes). Medium by
+// default since 0.5.0 (cl_zsFoveationDefaulted moves a config still off to it).
+DEFINE_SPADES_SETTING(vr_foveation, "2");
 // For tests: "WxH", the eye images that size whatever the runtime recommends (a
 // Quest 3's runtime gave 2400x2514 one launch and 1680x1760 the next)
 DEFINE_SPADES_SETTING(vr_debugEyeSize, "");

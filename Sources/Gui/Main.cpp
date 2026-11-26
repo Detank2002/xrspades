@@ -120,6 +120,10 @@ SPADES_SETTING(r_colorCorrection);
 // Set once a config on 0.4.0's High (the defaults) has had 0.5.0's: no FXAA,
 // which blurred the whole picture, and the scene drawn at 125% instead
 DEFINE_SPADES_SETTING(cl_zsSharpDefaults, "0");
+// Set once a config has had 0.5.0's foveated rendering, Medium, where it was off
+// (every config saved the old default, off)
+DEFINE_SPADES_SETTING(cl_zsFoveationDefaulted, "0");
+SPADES_SETTING(vr_foveation);
 SPADES_SETTING(r_fxaa);
 SPADES_SETTING(r_scale);
 
@@ -1227,6 +1231,11 @@ int main(int argc, char** argv) {
 		if (!static_cast<bool>(cl_zsCorpseDefaulted)) {
 			cg_corpseClearOnRespawn = 1;
 			cl_zsCorpseDefaulted = 1;
+		}
+		if (!static_cast<bool>(cl_zsFoveationDefaulted)) {
+			if ((int)vr_foveation == 0)
+				vr_foveation = 2;
+			cl_zsFoveationDefaulted = 1;
 		}
 #if !defined(__ANDROID__)
 		// 0.4.0's High, the defaults, smoothed edges with FXAA, a blur over the
