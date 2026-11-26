@@ -318,7 +318,14 @@ namespace spades {
 						if (!IsSolid(wx, wy, wz))
 							continue;
 
-						uint32_t color = map->GetColor(wx, wy, wz);
+						// A z=63 block is drawn only under a solid z=62 one (IsSolid's
+						// water rule): it is that block's ground going on under the
+						// water, so it takes its colour. Its own is the sea floor's,
+						// often a light blue, which the water's clear edge at the shore
+						// let show as a bright line along the waterline.
+						const bool underShore =
+						  wz == 63 && (int)renderer.renderer.GetSettings().r_water > 0;
+						uint32_t color = map->GetColor(wx, wy, underShore ? 62 : wz);
 
 						// Apply damage darkening - match OpenGL exactly
 						// Health is stored in upper byte (0xHHBBGGRR format)

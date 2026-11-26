@@ -97,6 +97,7 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Changed: foveated rendering stays at the level you set instead of changing with load, which some found made them feel sick
 - Improved: in VR, far-off parts of the map are drawn in less detail, for a smoother game with the same view distance
 - Improved: placing and breaking blocks no longer makes the game stutter
+- Fixed: a thin bright line along the shore where land meets the water
 
 ## 0.3.6
 
