@@ -1023,9 +1023,15 @@ namespace spades {
 			/** Synthetic keys the controllers are holding down, by key name. */
 			std::unordered_map<std::string, bool> vrHeldKeys;
 
+			// Poses come 20-30 times a second and frames 60-120: shown as they
+			// arrive, the head and hands step every other frame. Shown instead
+			// one interval late, eased from the previous pose to the newest.
 			struct RemoteVRPose {
 				VRNetPose pose;
 				float receivedTime = 0.0F;
+				VRNetPose previous;
+				float previousTime = -1.0F;
+				mutable VRNetPose shown;
 			};
 			std::unordered_map<int, RemoteVRPose> vrRemotePoses;
 			/** What the server's vr_presence script allows (VRConfig flags). */

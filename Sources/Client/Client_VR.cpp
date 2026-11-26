@@ -2423,9 +2423,26 @@ namespace spades {
 
 		void Client::VRPoseReceived(int playerId, const VRNetPose& pose) {
 			RemoteVRPose& r = vrRemotePoses[playerId];
+			// After a gap (a respawn, a second without poses) nothing to ease from
+			const bool fresh = r.previousTime < 0.0F || time - r.receivedTime > 0.5F ||
+			                   time < r.receivedTime;
+			r.previous = fresh ? pose : r.pose;
+			r.previousTime = fresh ? time : r.receivedTime;
 			r.pose = pose;
 			r.receivedTime = time;
 		}
+
+		namespace {
+			VRQuat BlendQuat(VRQuat a, const VRQuat& b, float t) {
+				// The short way round, then normalised: close enough to a slerp
+				// between poses a thirtieth of a second apart
+				if (a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w < 0.0F)
+					a = VRQuat(-a.x, -a.y, -a.z, -a.w);
+				return VRQuat(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t,
+				              a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t)
+				  .Normalized();
+			}
+		} // namespace
 
 		const VRNetPose* Client::GetRemoteVRPose(int playerId) const {
 			auto it = vrRemotePoses.find(playerId);
@@ -2433,9 +2450,26 @@ namespace spades {
 				return nullptr;
 			// A player who took the headset off, or stopped sending, goes back to
 			// the ordinary animation after a second.
-			if (time - it->second.receivedTime > 1.0F || time < it->second.receivedTime)
+			const RemoteVRPose& r = it->second;
+			if (time - r.receivedTime > 1.0F || time < r.receivedTime)
 				return nullptr;
-			return &it->second.pose;
+			const float interval = Clamp(r.receivedTime - r.previousTime, 1.0F / 120.0F, 0.2F);
+			const float t = Clamp((time - r.receivedTime) / interval, 0.0F, 1.0F);
+			const VRNetPose& a = r.previous;
+			const VRNetPose& b = r.pose;
+			VRNetPose& s = r.shown;
+			s = b;
+			s.headOffset = a.headOffset + (b.headOffset - a.headOffset) * t;
+			s.headRotation = BlendQuat(a.headRotation, b.headRotation, t);
+			for (int h = 0; h < 2; h++) {
+				if (!a.HasHand(h) || !b.HasHand(h))
+					continue;
+				s.handOffset[h] = a.handOffset[h] + (b.handOffset[h] - a.handOffset[h]) * t;
+				s.handRotation[h] = BlendQuat(a.handRotation[h], b.handRotation[h], t);
+			}
+			if ((a.flags & VRPoseBody) && (b.flags & VRPoseBody))
+				s.body = a.body + (b.body - a.body) * t;
+			return &s;
 		}
 
 		void Client::VRPresenceConfigured(uint8_t flags, uint8_t maxRate) {

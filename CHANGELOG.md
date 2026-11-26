@@ -99,6 +99,7 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Improved: placing and breaking blocks no longer makes the game stutter
 - Improved: 2x anti-aliasing for headsets, a fifth faster than 4x; the Performance level uses it
 - Fixed: a thin bright line along the shore where land meets the water
+- Improved: other VR players' heads and hands move smoothly instead of in small steps
 
 ## 0.3.6
 
