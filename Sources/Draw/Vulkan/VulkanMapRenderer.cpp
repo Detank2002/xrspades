@@ -190,14 +190,19 @@ namespace spades {
 			// own needs building again only if the block is on their shared edge.
 			// It was all 27 round it, for every block placed or broken: a
 			// grenade's worth was dozens of chunks built again in one frame.
+			// A far chunk (BuildCoarse) looks one 2-block cell beyond its edge,
+			// so it also needs building again for a block one in from it.
 			constexpr int kLast = VulkanMapChunk::Size - 1;
 			const int lx = x & kLast, ly = y & kLast, lz = z & kLast;
-			const int x0 = lx == 0 ? -1 : 0, x1 = lx == kLast ? 1 : 0;
-			const int y0 = ly == 0 ? -1 : 0, y1 = ly == kLast ? 1 : 0;
-			const int z0 = lz == 0 ? -1 : 0, z1 = lz == kLast ? 1 : 0;
-			for (int dx = x0; dx <= x1; dx++) {
-				for (int dy = y0; dy <= y1; dy++) {
-					for (int dz = z0; dz <= z1; dz++) {
+			// How far the block is from the side a neighbour is on: 0 on the
+			// edge, 1 one in, more for neither
+			auto gap = [&](int l, int d) { return d < 0 ? l : d > 0 ? kLast - l : 0; };
+			for (int dx = -1; dx <= 1; dx++) {
+				for (int dy = -1; dy <= 1; dy++) {
+					for (int dz = -1; dz <= 1; dz++) {
+						const int g = std::max({gap(lx, dx), gap(ly, dy), gap(lz, dz)});
+						if (g > 1)
+							continue;
 						int xx = (cx + dx) & (numChunkWidth - 1);
 						int yy = (cy + dy) & (numChunkHeight - 1);
 						int zz = cz + dz;
@@ -206,7 +211,7 @@ namespace spades {
 							continue;
 
 						VulkanMapChunk* chunk = GetChunk(xx, yy, zz);
-						if (chunk) {
+						if (chunk && (g == 0 || chunk->IsFarDetail())) {
 							chunk->SetNeedsUpdate();
 						}
 					}
