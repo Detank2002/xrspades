@@ -51,6 +51,20 @@ namespace spades {
 
 		SPFileNotFound(fn);
 	}
+	std::unique_ptr<IStream>
+	FileManager::OpenForReadingSkipping(const char* fn,
+	                                    const std::function<bool(IFileSystem*)>& skip) {
+		SPADES_MARK_FUNCTION();
+		if (!fn || fn[0] == 0)
+			SPFileNotFound(fn ? fn : "");
+		for (const std::string& name : {std::string(fn), std::string(fn) + ".weak"}) {
+			for (auto* fs : g_fileSystems) {
+				if (!skip(fs) && fs->FileExists(name.c_str()))
+					return fs->OpenForReading(name.c_str());
+			}
+		}
+		SPFileNotFound(fn);
+	}
 	std::unique_ptr<IStream> FileManager::OpenForWriting(const char* fn) {
 		SPADES_MARK_FUNCTION();
 		if (!fn)

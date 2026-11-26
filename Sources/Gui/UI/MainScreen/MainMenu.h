@@ -38,6 +38,7 @@ namespace spades {
 		class MainScreenUI;
 		class MainScreenHelper;
 		class ModsScreenHelper;
+		class ModPreviewCache;
 
 		/** A `SimpleButton` decorated with the refresh arrow icon. */
 		class RefreshButton : public ui::SimpleButton {
@@ -120,6 +121,7 @@ namespace spades {
 
 			// Mods tab state
 			Handle<ModsScreenHelper> modsHelper;
+			Handle<ModPreviewCache> modPreviews; // the mod list's pictures
 			TabPanel* modsPanel;
 			ui::ListView* modsList;
 			ui::Button* modsDownloadButton;

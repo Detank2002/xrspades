@@ -18,9 +18,13 @@
 
  */
 
+#include <algorithm>
+#include <cctype>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <zlib.h>
@@ -33,6 +37,7 @@
 #include <Core/Debug.h>
 #include <Core/DynamicMemoryStream.h>
 #include <Core/FileManager.h>
+#include <Core/IFileSystem.h>
 #include <Core/IStream.h>
 #include <Core/ResourceChanges.h>
 #include <Core/TMPUtils.h>
@@ -42,33 +47,124 @@
 namespace spades {
 	namespace gui {
 		namespace {
+			/**
+			 * A mod pak as mounted: its files, less those of the slots that
+			 * SkinChoices gives to another mod (or to the stock files).
+			 */
+			class ModPakFileSystem : public IFileSystem {
+				ZipFileSystem zip;
+				std::unordered_set<std::string> hidden; // lower case, '/'
+				std::vector<std::string> files;          // the rest, as named in the pak
+
+				static std::string Key(std::string s) {
+					for (char& c : s)
+						c = c == '\\' ? '/'
+						              : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+					return s;
+				}
+				bool Visible(const std::string& path) const {
+					return hidden.empty() || hidden.count(Key(path)) == 0;
+				}
+
+			public:
+				ModPakFileSystem(IStream* stream, const std::function<bool(int)>& slotVisible)
+				    : zip(stream) {
+					for (const std::string& file : zip.GetAllFiles()) {
+						const int slot = SkinSlotOfPath(file);
+						if (slot >= 0 && !slotVisible(slot))
+							hidden.insert(Key(file));
+						else
+							files.push_back(file);
+					}
+				}
+				const std::vector<std::string>& GetFiles() const { return files; }
+
+				std::vector<std::string> EnumFiles(const char* path) override {
+					std::vector<std::string> out = zip.EnumFiles(path);
+					if (!hidden.empty()) {
+						const std::string dir = std::string(path) + "/";
+						out.erase(std::remove_if(out.begin(), out.end(),
+						                         [&](const std::string& f) {
+							                         return !Visible(dir + f);
+						                         }),
+						          out.end());
+					}
+					return out;
+				}
+				std::unique_ptr<IStream> OpenForReading(const char* path) override {
+					if (!Visible(path))
+						SPFileNotFound(path);
+					return zip.OpenForReading(path);
+				}
+				std::unique_ptr<IStream> OpenForWriting(const char* path) override {
+					return zip.OpenForWriting(path);
+				}
+				bool FileExists(const char* path) override {
+					return Visible(path) && zip.FileExists(path);
+				}
+			};
+
 			struct MountedPak {
 				std::string id;                  // path and checksum: equal ids, equal files
-				std::unique_ptr<IStream> stream; // the ZipFileSystem doesn't own it
-				ZipFileSystem* fs;               // owned by FileManager
+				std::unique_ptr<IStream> stream; // the file system doesn't own it
+				ModPakFileSystem* fs;            // owned by FileManager
 			};
 
 			std::vector<MountedPak> g_mountedPaks;
 			std::vector<std::string> g_mountedMods;
+			SkinChoices g_choices;        // what MountSet mounts
+			SkinChoices g_mountedChoices; // what it mounted last
 
 			// The id of the pak each mounted file is read from: the topmost one.
 			std::unordered_map<std::string, std::string> GetWinners() {
 				std::unordered_map<std::string, std::string> winners;
 				for (const MountedPak& pak : g_mountedPaks) {
-					for (const std::string& file : pak.fs->GetAllFiles())
+					for (const std::string& file : pak.fs->GetFiles())
 						winners[file] = pak.id;
 				}
 				return winners;
 			}
 
-			// Mounts `mods` in place of what is mounted, the last one on top.
+			// Mounts `mods` in place of what is mounted, the last one on top, and
+			// over them the mods g_choices picks for a slot that are not enabled.
+			// A slot with a choice is drawn only from the mod chosen (or, for
+			// Default, from none).
 			void MountSet(const std::vector<std::string>& mods) {
 				for (MountedPak& pak : g_mountedPaks)
 					FileManager::RemoveFileSystem(pak.fs);
 				g_mountedPaks.clear();
 				g_mountedMods = mods;
 
-				for (const std::string& path : ModsScreenHelper::GetModPakPaths(mods)) {
+				// A choice of a mod that is gone is no choice
+				SkinChoices choices = g_choices;
+				{
+					const auto installed = Handle<ModsScreenHelper>::New()->GetModNames();
+					for (int i = 0; i < kNumSkinSlots; i++)
+						if (choices.chosen[i] && !choices.mod[i].empty() &&
+						    std::find(installed.begin(), installed.end(), choices.mod[i]) ==
+						      installed.end())
+							choices.chosen[i] = false;
+				}
+				g_mountedChoices = choices;
+				std::vector<std::string> set = mods;
+				for (int i = 0; i < kNumSkinSlots; i++)
+					if (choices.chosen[i] && !choices.mod[i].empty() &&
+					    std::find(set.begin(), set.end(), choices.mod[i]) == set.end())
+						set.push_back(choices.mod[i]);
+
+				std::vector<std::string> owners;
+				const auto paths = ModsScreenHelper::GetModPakPaths(set, &owners);
+				for (std::size_t p = 0; p < paths.size(); p++) {
+					const std::string& path = paths[p];
+					const std::string owner = owners[p];
+					const bool enabled = std::find(mods.begin(), mods.end(), owner) != mods.end();
+					// An enabled mod: every slot not chosen for another. One that is
+					// only chosen: the slots chosen for it.
+					auto slotVisible = [&](int slot) {
+						if (choices.chosen[slot])
+							return choices.mod[slot] == owner;
+						return enabled;
+					};
 					try {
 						// Read the whole pak into memory and mount from there, so the
 						// file on disk is never held open. That lets the mod manager
@@ -83,7 +179,7 @@ namespace spades {
 						                 static_cast<uInt>(bytes.size()));
 						std::string id = path + "#" + std::to_string(crc);
 
-						auto* fs = new ZipFileSystem(stream.get());
+						auto* fs = new ModPakFileSystem(stream.get(), slotVisible);
 						FileManager::PrependFileSystem(fs);
 						g_mountedPaks.push_back({std::move(id), std::move(stream), fs});
 						SPLog("Mod pak mounted (in memory): %s", path.c_str());
@@ -101,7 +197,39 @@ namespace spades {
 			if (g_tryMod)
 				return;
 
+			g_choices = SkinChoices::Load();
 			MountSet(Handle<ModsScreenHelper>::New()->GetEnabledMods());
+		}
+
+		SkinChoices ModOverlay::GetMountedChoices() { return g_mountedChoices; }
+
+		std::unique_ptr<IStream> ModOverlay::OpenStock(const char* path) {
+			return FileManager::OpenForReadingSkipping(path, [](IFileSystem* fs) {
+				for (const MountedPak& pak : g_mountedPaks)
+					if (pak.fs == fs)
+						return true;
+				return false;
+			});
+		}
+
+		ModApplyResult ModOverlay::ApplySkinChoices(const SkinChoices& next,
+		                                            client::IRenderer& renderer,
+		                                            client::IAudioDevice& audio,
+		                                            std::string& error) {
+			SPADES_MARK_FUNCTION();
+			if (g_tryMod) {
+				error = "Skins can't be picked while a mod is tried out (--try-mod).";
+				return ModApplyResult::Refused;
+			}
+			const SkinChoices previous = SkinChoices::Load();
+			if (!next.Save()) {
+				error = "SkinChoices.txt could not be written.";
+				return ModApplyResult::Refused;
+			}
+			const ModApplyResult result = Apply(renderer, audio, error);
+			if (result == ModApplyResult::Refused)
+				previous.Save();
+			return result;
 		}
 
 		ModApplyResult ModOverlay::Apply(client::IRenderer& renderer, client::IAudioDevice& audio,
@@ -110,6 +238,12 @@ namespace spades {
 
 			// A file changed if it is now read from another pak, or from none.
 			std::vector<std::string> previous = g_mountedMods;
+			const SkinChoices previousChoices = g_mountedChoices;
+			// Back to what was mounted before, the choices too
+			auto mountPrevious = [&]() {
+				g_choices = previousChoices;
+				MountSet(previous);
+			};
 			auto before = GetWinners();
 			Mount();
 
@@ -167,7 +301,7 @@ namespace spades {
 						// Not even without any mod: nothing a mod can mend.
 						SPLog("Mods not applied: %s", error.c_str());
 						Handle<ModsScreenHelper>::New()->SetEnabledMods(previous);
-						MountSet(previous);
+						mountPrevious();
 						return ModApplyResult::Refused;
 					}
 					std::string names;
@@ -188,7 +322,7 @@ namespace spades {
 				if (!error.empty()) {
 					SPLog("Mods not applied: %s", error.c_str());
 					Handle<ModsScreenHelper>::New()->SetEnabledMods(previous);
-					MountSet(previous);
+					mountPrevious();
 					return ModApplyResult::Refused;
 				}
 			}
@@ -198,7 +332,7 @@ namespace spades {
 			// What is loaded was built from the previous set, so keep that mounted
 			// until the restart; the enabled set on disk is the new one.
 			if (!live) {
-				MountSet(previous);
+				mountPrevious();
 				return ModApplyResult::NeedsRestart;
 			}
 

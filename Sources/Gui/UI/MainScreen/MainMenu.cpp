@@ -35,7 +35,9 @@
 #include <Gui/TrainingHost.h>
 #include <Client/Client.h>
 #include <Training/TrainingModes.h>
+#include <Gui/ModPreview.h>
 #include <Gui/ModsScreenHelper.h>
+#include <Gui/SkinChoice.h>
 #include <Gui/OfficialMods.h>
 #include <Gui/UpdateChecker.h>
 #include <Gui/UI/Components/OfficialModsNotice.h>
@@ -993,8 +995,17 @@ namespace spades {
 			    &GetManager(), modsHelper.GetPointerOrNull(), std::move(list), std::move(orders),
 			    std::move(exists), modsCheckColWidth, modsOrderColWidth, modsTagColWidth,
 			    modsNameColWidth, modsAuthorColWidth, modsSizeColWidth);
-			modsList->SetModel(model.GetPointerOrNull());
+			if (!modPreviews)
+				modPreviews = Handle<ModPreviewCache>::New();
+			model->previews = modPreviews.GetPointerOrNull();
+			model->favoriteToggled = [this](const std::string& name) {
+				FavoriteMods::Set(name, !FavoriteMods::Contains(name));
+				LoadModList();
+			};
 			model->itemActivated = [this](const std::string& name) { OnModToggle(name); };
+			const int top = modsList->GetTopRowIndex();
+			modsList->SetModel(model.GetPointerOrNull());
+			modsList->ScrollToRow(top);
 			UpdateModsStatus();
 		}
 
@@ -1627,6 +1638,8 @@ namespace spades {
 		}
 
 		void MainScreenMainMenu::Render() {
+			if (modPreviews)
+				modPreviews->NewFrame();
 			CheckServerList();
 			CheckModsRefresh();
 			static bool debugTrainingStarted = false;

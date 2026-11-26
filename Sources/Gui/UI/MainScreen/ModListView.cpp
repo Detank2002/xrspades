@@ -18,12 +18,17 @@
 
  */
 
+#include <algorithm>
+#include <cmath>
+
 #include "ModListView.h"
 #include <Client/IFont.h>
 #include <Client/IImage.h>
 #include <Client/IRenderer.h>
 #include <Core/Strings.h>
+#include <Gui/ModPreview.h>
 #include <Gui/ModsScreenHelper.h>
+#include <Gui/SkinChoice.h>
 #include <Gui/UI/Framework/TextUtils.h>
 #include <Gui/UI/Framework/UIManager.h>
 #include <Gui/UI/Widgets/DrawUtils.h>
@@ -89,6 +94,20 @@ namespace spades {
 
 		void ModListItem::RenderTag(client::IRenderer& r, client::IFont* font, float cellX,
 		                            float cellY, float cellH, const Vector4& fgcolor) {
+			// A picture of the mod's model, where it has one
+			if (previews) {
+				const int slot = previews->FirstModelSlot(modName);
+				if (slot >= 0) {
+					if (client::IImage* img = previews->Get(r, modName, static_cast<SkinSlot>(slot))) {
+						const float h = std::min(cellH - 2.0F, (tagColWidth - 4.0F) * 0.5F);
+						const float w = h * 2.0F;
+						SetColorNP(r, MakeVector4(1.0F, 1.0F, 1.0F, 1.0F));
+						r.DrawImage(img, AABB2(cellX + (tagColWidth - w) * 0.5F,
+						                       cellY + (cellH - h) * 0.5F, w, h));
+						return;
+					}
+				}
+			}
 			if (category.empty())
 				return;
 			std::string iconPath = ModCategoryIcon(category);
@@ -150,6 +169,25 @@ namespace spades {
 				            AABB2(boxX + 3.0F, boxY + 3.0F, boxSize - 6.0F, boxSize - 6.0F));
 			}
 
+			// The favourite star, beside the box
+			{
+				const Vector2 c = MakeVector2(pos.x + kStarX + kStarW * 0.5F, pos.y + sz.y * 0.5F);
+				const float rad = std::min(sz.y * 0.36F, 9.0F);
+				Vector2 p[10];
+				for (int i = 0; i < 10; i++) {
+					const float a = -1.5707963F + 3.14159265F * i / 5.0F;
+					const float rr = (i & 1) ? rad * 0.45F : rad;
+					p[i] = MakeVector2(c.x + std::cos(a) * rr, c.y + std::sin(a) * rr);
+				}
+				SetColorNP(r, favorite ? MakeVector4(1.0F, 0.82F, 0.2F, 1.0F)
+				                       : MakeVector4(1.0F, 1.0F, 1.0F, hover ? 0.4F : 0.18F));
+				for (int i = 0; i < 10; i++)
+					r.DrawLine(p[i], p[(i + 1) % 10], favorite ? 2.0F : 1.0F);
+				if (favorite)
+					for (int i = 0; i < 10; i += 2)
+						r.DrawLine(c, p[i], 2.0F);
+			}
+
 			// Apply-order number (own column, blank when disabled).
 			float x = pos.x + checkColWidth;
 			if (enabled && orderNum > 0)
@@ -196,6 +234,21 @@ namespace spades {
 			}
 		}
 
+		void ModListItem::MouseDown(ui::MouseButton button, Vector2 clientPosition) {
+			starPressed = button == ui::MouseButton::Left && favoriteToggled &&
+			              clientPosition.x >= kStarX && clientPosition.x < kStarX + kStarW;
+			ButtonBase::MouseDown(button, clientPosition);
+		}
+
+		void ModListItem::OnActivated() {
+			if (starPressed) {
+				starPressed = false;
+				favoriteToggled(modName);
+				return;
+			}
+			ButtonBase::OnActivated();
+		}
+
 		// -- ModListModel --
 
 		ModListModel::ModListModel(UIManager* manager, ModsScreenHelper* helper,
@@ -214,6 +267,29 @@ namespace spades {
 		      nameColWidth(nameColWidth),
 		      authorColWidth(authorColWidth),
 		      sizeColWidth(sizeColWidth) {
+			// Favourites first, in the order they were
+			const std::vector<std::string> fav = FavoriteMods::Load();
+			std::vector<std::size_t> order(this->list.size());
+			for (std::size_t i = 0; i < order.size(); i++)
+				order[i] = i;
+			for (std::size_t i = 0; i < this->list.size(); i++)
+				favorites.push_back(std::find(fav.begin(), fav.end(), this->list[i]) != fav.end());
+			std::stable_sort(order.begin(), order.end(), [this](std::size_t a, std::size_t b) {
+				return favorites[a] && !favorites[b];
+			});
+			std::vector<std::string> l;
+			std::vector<int> o;
+			std::vector<bool> e, f;
+			for (std::size_t i : order) {
+				l.push_back(this->list[i]);
+				o.push_back(this->orders[i]);
+				e.push_back(this->exists[i]);
+				f.push_back(favorites[i]);
+			}
+			this->list = std::move(l);
+			this->orders = std::move(o);
+			this->exists = std::move(e);
+			favorites = std::move(f);
 			itemElements.resize(this->list.size());
 		}
 
@@ -236,6 +312,10 @@ namespace spades {
 				    helper->GetModOfficialState(name), orders[row], checkColWidth, orderColWidth,
 				    tagColWidth, nameColWidth, authorColWidth, sizeColWidth);
 				item->activated = [this](UIElement& s) { OnItemClicked(s); };
+				item->favorite = favorites[row];
+				item->previews = previews;
+				if (favoriteToggled)
+					item->favoriteToggled = [this](const std::string& m) { favoriteToggled(m); };
 				itemElements[row] = item;
 			}
 			return itemElements[row].Cast<UIElement>();

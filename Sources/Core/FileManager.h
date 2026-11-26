@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+#include <functional>
 #include <vector>
 
 namespace spades {
@@ -32,6 +33,9 @@ namespace spades {
 
 	public:
 		static std::unique_ptr<IStream> OpenForReading(const char*);
+		/** As OpenForReading, passing over the file systems `skip` says to */
+		static std::unique_ptr<IStream>
+		OpenForReadingSkipping(const char*, const std::function<bool(IFileSystem*)>& skip);
 		static std::unique_ptr<IStream> OpenForWriting(const char*);
 		static bool FileExists(const char*);
 		static bool RemoveFile(const char*);

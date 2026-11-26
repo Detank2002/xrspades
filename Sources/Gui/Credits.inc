@@ -14,6 +14,7 @@ XRSpades
 "ATELSA" - VR testing, ideas
 "Serius_Sim" - the zombie and brute models, the headshot effect
 "siecvi" - the zombie model
+"Kyrope" - the in-game skin picker: a choice for each weapon, cards to click
 The menu's maps: "Influx" (Normandie), "Serious_Sim" (Ghost Town,
 Mashesswood Island), "Detank" (Quarantine)
 "wiktor kurzak" - the launch screen's stunt double: stood on the wrong

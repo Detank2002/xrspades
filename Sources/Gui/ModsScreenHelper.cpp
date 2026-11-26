@@ -922,7 +922,8 @@ namespace spades {
 		}
 
 		std::vector<std::string>
-		ModsScreenHelper::GetModPakPaths(const std::vector<std::string>& modNames) {
+		ModsScreenHelper::GetModPakPaths(const std::vector<std::string>& modNames,
+		                                 std::vector<std::string>* owners) {
 			// Resolve the names to pak paths relative to the resource root, in
 			// the given order. Runs at startup before any instance exists, so a
 			// throwaway helper does the directory scan. Names with no matching
@@ -934,8 +935,11 @@ namespace spades {
 				const ModEntry* m = h->FindMod(name);
 				if (m == nullptr)
 					continue;
-				for (const std::string& pak : m->paks)
+				for (const std::string& pak : m->paks) {
 					out.push_back(std::string(kModsDir) + "/" + pak);
+					if (owners)
+						owners->push_back(name);
+				}
 			}
 			return out;
 		}

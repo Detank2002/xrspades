@@ -95,8 +95,10 @@ namespace spades {
 			// to the resource root (e.g. "Mods/<folder>/<x>.pak"). In the given
 			// order so the caller can prepend each in turn — the last one ends up
 			// on top and wins conflicts. Mods missing from disk are skipped.
+			// `owners`, if given, gets the mod each path is of.
 			static std::vector<std::string>
-			GetModPakPaths(const std::vector<std::string>& modNames);
+			GetModPakPaths(const std::vector<std::string>& modNames,
+			               std::vector<std::string>* owners = nullptr);
 
 		protected:
 			~ModsScreenHelper();

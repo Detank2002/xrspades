@@ -20,9 +20,13 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 
+#include "SkinChoice.h"
+
 namespace spades {
+	class IStream;
 	namespace client {
 		class IAudioDevice;
 		class IRenderer;
@@ -53,6 +57,19 @@ namespace spades {
 			 */
 			static ModApplyResult Apply(client::IRenderer&, client::IAudioDevice&,
 			                            std::string& error);
+
+			/**
+			 * Saves `choices` (which mod each slot is drawn from) and applies
+			 * them as Apply does. On `Refused` the previous ones are kept.
+			 */
+			static ModApplyResult ApplySkinChoices(const SkinChoices& choices, client::IRenderer&,
+			                                       client::IAudioDevice&, std::string& error);
+
+			/** The choices mounted now (what the game shows) */
+			static SkinChoices GetMountedChoices();
+
+			/** A file as the game has it with no mod mounted; throws if none */
+			static std::unique_ptr<IStream> OpenStock(const char* path);
 		};
 	} // namespace gui
 } // namespace spades

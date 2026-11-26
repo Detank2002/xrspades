@@ -36,6 +36,7 @@ namespace spades {
 	} // namespace client
 	namespace gui {
 		class ModsScreenHelper;
+		class ModPreviewCache;
 
 		using ModListItemEventHandler = std::function<void(const std::string& modName)>;
 
@@ -61,8 +62,15 @@ namespace spades {
 			void RenderTag(client::IRenderer& r, client::IFont* font, float cellX, float cellY,
 			               float cellH, const Vector4& fgcolor);
 
+			bool starPressed = false; // the press began on the star
+
 		public:
 			std::string modName;
+			bool favorite = false;
+			ModPreviewCache* previews = nullptr; // weak; pictures in the tag column if set
+			ModListItemEventHandler favoriteToggled;
+			/** The star, in the check column: left of it the box, right of it free */
+			static constexpr float kStarX = 24.0F, kStarW = 28.0F;
 
 			ModListItem(ui::UIManager* manager, const std::string& modName,
 			            const std::string& category, const std::string& displayName,
@@ -71,6 +79,8 @@ namespace spades {
 			            float tagColWidth, float nameColWidth, float authorColWidth,
 			            float sizeColWidth);
 			void Render() override;
+			void MouseDown(ui::MouseButton button, Vector2 clientPosition) override;
+			void OnActivated() override;
 		};
 
 		/** `ListViewModel` for the mod manager. */
@@ -87,11 +97,16 @@ namespace spades {
 			float authorColWidth;
 			float sizeColWidth;
 			std::vector<Handle<ModListItem>> itemElements;
+			std::vector<bool> favorites;
 
 			void OnItemClicked(ui::UIElement& sender);
 
 		public:
 			ModListItemEventHandler itemActivated;
+			/** The star of a row was clicked */
+			ModListItemEventHandler favoriteToggled;
+			/** Pictures of the mods' models in the tag column (weak; none if null) */
+			ModPreviewCache* previews = nullptr;
 
 			ModListModel(ui::UIManager* manager, ModsScreenHelper* helper,
 			             std::vector<std::string> list, std::vector<int> orders,
