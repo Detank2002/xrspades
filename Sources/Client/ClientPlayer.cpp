@@ -1945,6 +1945,16 @@ namespace spades {
 						// Forearm only: it runs back from the controller the way a real
 						// forearm does, which reads better than a guessed shoulder.
 						Vector3 back = (handAxes[h][0] * -0.9F + handAxes[h][2] * 0.35F).Normalize();
+						// With the controller pointing down (a spade chop, a low
+						// throw) "back from the controller" is straight up, into
+						// the face. A forearm runs toward the shoulder instead,
+						// more so the further down the controller points.
+						const Vector3 toShoulder = (shoulder - wrist).Normalize();
+						const float pointingDown =
+						  std::max(0.0F, Vector3::Dot(handAxes[h][0], down));
+						back = (back * (1.0F - 0.8F * pointingDown) +
+						        toShoulder * (0.3F + 1.2F * pointingDown))
+						         .Normalize();
 						elbow = wrist + back * foreLen;
 					}
 
