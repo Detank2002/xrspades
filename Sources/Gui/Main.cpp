@@ -123,7 +123,12 @@ DEFINE_SPADES_SETTING(cl_zsSharpDefaults, "0");
 // Set once a config has had 0.5.0's foveated rendering, Medium, where it was off
 // (every config saved the old default, off)
 DEFINE_SPADES_SETTING(cl_zsFoveationDefaulted, "0");
+// Set once a config has had foveation held steady: 0.5.0 beta 1 saved the
+// edges changing their detail with the load as its default (vr_foveationDynamic 1),
+// which a tester found sickening; the default is off now, and a saved 1 kept it on
+DEFINE_SPADES_SETTING(cl_zsFoveationSteady, "0");
 SPADES_SETTING(vr_foveation);
+SPADES_SETTING(vr_foveationDynamic);
 SPADES_SETTING(r_fxaa);
 SPADES_SETTING(r_scale);
 
@@ -1236,6 +1241,10 @@ int main(int argc, char** argv) {
 			if ((int)vr_foveation == 0)
 				vr_foveation = 2;
 			cl_zsFoveationDefaulted = 1;
+		}
+		if (!static_cast<bool>(cl_zsFoveationSteady)) {
+			vr_foveationDynamic = 0;
+			cl_zsFoveationSteady = 1;
 		}
 #if !defined(__ANDROID__)
 		// 0.4.0's High, the defaults, smoothed edges with FXAA, a blur over the
