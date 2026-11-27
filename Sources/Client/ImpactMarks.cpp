@@ -143,6 +143,16 @@ namespace spades {
 				}
 				return mask;
 			}
+			/** An edge or a corner of the block: a cell with two or more of its
+			 * coordinates on the block's boundary. Whatever its neighbours, open
+			 * or covered, and whatever hit it, such a cell is never removed:
+			 * the outline stays whole and nothing can be seen through the block. */
+			static bool IsOutline(const int cell[3]) {
+				int onBoundary = 0;
+				for (int q = 0; q < 3; q++)
+					onBoundary += (cell[q] == 0 || cell[q] == kCells - 1) ? 1 : 0;
+				return onBoundary >= 2;
+			}
 			std::unordered_map<uint64_t, Damaged> damaged;
 			// Models replaced or dropped, kept a few frames: a frame still in
 			// flight may draw them (every hit rebuilds its block's)
@@ -196,7 +206,8 @@ namespace spades {
 				for (int x = 0; x < kCells; x++)
 					for (int y = 0; y < kCells; y++)
 						for (int z = 0; z < kCells; z++) {
-							if (d.removed[x][y][z])
+							const int at[3] = {x, y, z};
+							if (d.removed[x][y][z] && !IsOutline(at))
 								continue;
 							bool wall = false; // open to a pit
 							for (const auto& o : kFaces)
@@ -388,12 +399,10 @@ namespace spades {
 						cell[a1] = i;
 						cell[a2] = j;
 						// Never an edge or a corner (a cell on two faces or three),
-						// nor on a face with a block against it
+						// whether its faces are open or covered, nor on a face
+						// with a block against it
 						const int faces = ImpactMarksImpl::CellFaces(cell);
-						int onSurface = 0;
-						for (int q = 0; q < 3; q++)
-							onSurface += (cell[q] == 0 || cell[q] == kCells - 1) ? 1 : 0;
-						if (onSurface >= 2 || (faces & ~open) != 0)
+						if (ImpactMarksImpl::IsOutline(cell) || (faces & ~open) != 0)
 							continue;
 						d.removed[cell[0]][cell[1]][cell[2]] = true;
 					}

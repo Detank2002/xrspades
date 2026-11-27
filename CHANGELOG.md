@@ -97,10 +97,14 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Changed: foveated rendering stays at the level you set instead of changing with load, which some found made them feel sick
 - Improved: placing and breaking blocks no longer makes the game stutter
 - Fixed: lines at the edges of the view in a headset
+- Fixed: a block standing on its own could lose its corners to gunfire
 - Improved: 2x anti-aliasing for headsets, a fifth faster than 4x; the Performance level uses it
 - Fixed: a thin bright line along the shore where land meets the water
 - Improved: other VR players' heads and hands move smoothly instead of in small steps
 - Fixed: other VR players' arms no longer stick up in front of their face when they dig or throw
+- Improved: in VR, Color Correction says it is not used while Foveated Rendering is on, instead of doing nothing
+- Fixed: in VR, a setup that had foveated rendering shifting its detail with the load now stays steady
+- Fixed: in VR on Quest, the sky and far blocks are no longer black with Volumetric Fog on
 
 ## 0.3.6
 
