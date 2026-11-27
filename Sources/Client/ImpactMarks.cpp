@@ -77,7 +77,8 @@ namespace spades {
 			// corner, open to the air or not: a pit is cut only inside a face, so
 			// the block keeps its whole outline and no two pits, on two faces or
 			// two blocks, ever meet at a corner to open a way through. No pit
-			// goes deeper than kMaxDepth voxels, so a solid core is always left.
+			// goes deeper than kMaxDepth voxels, and a pit is stepped toward the
+				// middle of its face (MaxCutDepth), so a solid core is always left.
 			constexpr int kCells = 8;
 			constexpr int kMaxDepth = 3; // the spade's; a bullet's is 2
 			constexpr std::size_t kMaxBlocks = 300;
@@ -143,18 +144,24 @@ namespace spades {
 				}
 				return mask;
 			}
-			/** The block's frame: a cell with two or more of its coordinates in
-			 * the two outer layers. Whatever its neighbours, open or covered,
-			 * and whatever hit it, such a cell is never removed. Only the edge
-			 * row itself was kept before, and a pit on one face could still bite
-			 * the cells just under it on the next, which looked like a chipped
-			 * corner on a block standing on its own; with the frame two deep a
-			 * hit only pits a face's middle, and the corners stay square. */
+			/** The block's frame: a cell with two or more of its coordinates on
+			 * the block's boundary (0 or kCells - 1), one cell thick. Whatever its
+			 * neighbours, open or covered, and whatever hit it, such a cell is
+			 * never removed. */
 			static bool IsOutline(const int cell[3]) {
-				int inFrame = 0;
+				int onBoundary = 0;
 				for (int q = 0; q < 3; q++)
-					inFrame += (cell[q] <= 1 || cell[q] >= kCells - 2) ? 1 : 0;
-				return inFrame >= 2;
+					onBoundary += (cell[q] == 0 || cell[q] == kCells - 1) ? 1 : 0;
+				return onBoundary >= 2;
+			}
+			/** How many layers deep a pit may cut at a cell of a face, in-plane
+			 * coordinates (a, b): its ring (0 at the frame, up to 3 at the centre),
+			 * never more than kMaxDepth. Stepped toward the middle, so a cell just
+			 * inside an edge is cut at most one deep from either face and there is
+			 * always solid material behind every edge. */
+			static int MaxCutDepth(int a, int b) {
+				const int ring = std::min({a, kCells - 1 - a, b, kCells - 1 - b});
+				return std::min(ring, kMaxDepth);
 			}
 			std::unordered_map<uint64_t, Damaged> damaged;
 			// Models replaced or dropped, kept a few frames: a frame still in

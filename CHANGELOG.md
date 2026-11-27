@@ -97,7 +97,7 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Changed: foveated rendering stays at the level you set instead of changing with load, which some found made them feel sick
 - Improved: placing and breaking blocks no longer makes the game stutter
 - Fixed: lines at the edges of the view in a headset
-- Fixed: a block standing on its own could lose its corners to gunfire
+- Fixed: gunfire chips a block in steps toward the middle of a face and never cuts through its edges
 - Improved: 2x anti-aliasing for headsets, a fifth faster than 4x; the Performance level uses it
 - Fixed: a thin bright line along the shore where land meets the water
 - Improved: other VR players' heads and hands move smoothly instead of in small steps
