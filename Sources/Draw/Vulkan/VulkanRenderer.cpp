@@ -1143,7 +1143,10 @@ namespace spades {
 			// heightmap shadow that pass samples exists. GL tests
 			// mapShadowRenderer here; testing shadowMapRenderer (the model
 			// cascades) is a different object and gates on the wrong thing.
-			if (settings.r_fogShadow && mapShadowRenderer)
+			// A foveated headset's eyes run no filter after the scene
+			// (BuildPostSteps), so nothing re-adds it: black here would be a black
+			// sky and far blocks fading to black, with Volumetric Fog on.
+			if (settings.r_fogShadow && mapShadowRenderer && !(foveation > 0 && !vrScopePass))
 				return MakeVector3(0, 0, 0);
 			else
 				return GetFullDaylightFogColor();
@@ -2813,7 +2816,8 @@ namespace spades {
 			// Fog1 is what actually runs (the variant selection mirrors
 			// VulkanFogFilter's): r_fogShadow != 0 AND not (Fog2 active).
 			const bool useFog2Pass = settings.UsesFog2();
-			const bool useFog1Pass = ((int)settings.r_fogShadow != 0) && !useFog2Pass;
+			const bool useFog1Pass = ((int)settings.r_fogShadow != 0) && !useFog2Pass &&
+			                         !(foveation > 0 && !vrScopePass);
 			if (!useFog1Pass)
 				RenderSky(commandBuffer);
 
