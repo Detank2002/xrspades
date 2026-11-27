@@ -577,7 +577,9 @@ namespace spades {
 			l.AddChoiceField(_Tr("Preferences", "Water"), "r_water",
 			                 {_Tr("Preferences", "OFF"), "1", "2", "3"}, {0, 1, 2, 3});
 			l.AddToggleField(_Tr("Preferences", "Ambient Occlusion (SSAO)"), "r_ssao");
+#if !defined(__ANDROID__) // froze the picture on a headset
 			l.AddToggleField(_Tr("Preferences", "Global Illumination"), "r_radiosity");
+#endif
 			l.AddToggleField(_Tr("Preferences", "Physically Based Lighting"), "r_physicalLighting");
 			l.AddChoiceField(_Tr("Preferences", "Volumetric Fog"), "r_fogShadow",
 			                 {_Tr("Preferences", "OFF"), "1", "2"}, {0, 1, 2});

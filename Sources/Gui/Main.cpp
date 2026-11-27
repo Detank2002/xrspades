@@ -117,6 +117,7 @@ SPADES_SETTING(cg_muzzleFire);
 DEFINE_SPADES_SETTING(cl_zsCorpseDefaulted, "0");
 SPADES_SETTING(cg_corpseClearOnRespawn);
 SPADES_SETTING(r_colorCorrection);
+SPADES_SETTING(r_radiosity);
 // Set once a config on 0.4.0's High (the defaults) has had 0.5.0's: no FXAA,
 // which blurred the whole picture, and the scene drawn at 125% instead
 DEFINE_SPADES_SETTING(cl_zsSharpDefaults, "0");
@@ -1253,6 +1254,9 @@ int main(int argc, char** argv) {
 			cl_zsFoveationSteady = 1;
 		}
 #if defined(__ANDROID__)
+		// Global Illumination froze the picture on a Quest, and a saved config
+		// kept it on at every start. A headset does not have it, whatever is saved.
+		r_radiosity = 0;
 		if (!static_cast<bool>(cl_zsQuestEffectsOff)) {
 			cg_headshotGore = 0;
 			if ((int)cg_blood >= 2)

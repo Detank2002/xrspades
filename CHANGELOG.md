@@ -54,6 +54,7 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Fixed: in VR, the menu behind the first-time setup no longer takes clicks
 - New: in VR, walk and turn around the main menu's map with the sticks; the menu floats along with you
 - Fixed: in VR, a team ping off to the side shows in both eyes, at the edge of where you look
+- Fixed: on Quest, Global Illumination froze the picture and stayed on after a restart; it is not offered there
 - Fixed: in VR, joining as a spectator opens the table view, as it should by default
 - New: in VR, your hands are shown in the table view
 - Fixed: in VR, the table view no longer shows a patch of water under you that moved with you
