@@ -95,8 +95,8 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Fixed: on Quest 2, foveated rendering no longer crashes, with or without colour correction
 - New: High Top foveated rendering, which keeps more detail above the middle of your view
 - Changed: foveated rendering stays at the level you set instead of changing with load, which some found made them feel sick
-- Improved: in VR, far-off parts of the map are drawn in less detail, for a smoother game with the same view distance
 - Improved: placing and breaking blocks no longer makes the game stutter
+- Fixed: lines at the edges of the view in a headset
 - Improved: 2x anti-aliasing for headsets, a fifth faster than 4x; the Performance level uses it
 - Fixed: a thin bright line along the shore where land meets the water
 - Improved: other VR players' heads and hands move smoothly instead of in small steps

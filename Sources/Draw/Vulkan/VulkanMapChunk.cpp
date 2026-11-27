@@ -136,15 +136,6 @@ namespace spades {
 
 			// Evaluate ambient occlusion
 			unsigned int aoID = calcAOID(aoX, aoY, aoZ, ux, uy, uz, vx, vy, vz);
-			EmitFace(aoID, x, y, z, ux, uy, vx, vy, color, nx, ny, nz, 1);
-		}
-
-		void VulkanMapChunk::EmitFace(unsigned aoID, int x, int y, int z, int ux, int uy, int vx,
-		                              int vy, uint32_t color, int nx, int ny, int nz, int scale) {
-			int uz = (ux == 0 && uy == 0) ? 1 : 0;
-			int vz = (vx == 0 && vy == 0) ? 1 : 0;
-			ux *= scale, uy *= scale, uz *= scale;
-			vx *= scale, vy *= scale, vz *= scale;
 
 			// The face's direction, in the order Update emits them; the shader
 			// has each one's u and v (Shaders/Vulkan/MapVertex.glsl), from which
@@ -159,8 +150,8 @@ namespace spades {
 
 			uint16_t idx = (uint16_t)positions.size();
 			auto corner = [&](int px, int py, int pz, int c) {
-				positions.push_back({(uint8_t)px, (uint8_t)py, (uint8_t)pz,
-				                     (uint8_t)(face | (c << 3) | (scale == 2 ? 0x20 : 0))});
+				positions.push_back(
+				  {(uint8_t)px, (uint8_t)py, (uint8_t)pz, (uint8_t)(face | (c << 3))});
 				surfaces.push_back(surface);
 			};
 			corner(x, y, z, 0);
@@ -194,100 +185,6 @@ namespace spades {
 			return map->IsSolid(x, y, (z == 63 && (int)renderer.renderer.GetSettings().r_water > 0) ? 62 : z);
 		}
 
-		void VulkanMapChunk::BuildCoarse() {
-			// 2x2x2 blocks a cell, solid if any of them is, so the coarse chunk
-			// covers all the detailed one does (no gaps where it meets one), in
-			// the colour of its top block (a ground's grass, not its dirt). The
-			// cells one beyond the chunk too, for its faces and AO at its edges.
-			constexpr int N = Size / 2;
-			constexpr int W = N + 2; // -1 .. N
-			const int ox = chunkX << SizeBits, oy = chunkY << SizeBits, oz = chunkZ << SizeBits;
-			bool solid[W][W][W];
-			bool full[W][W][W]; // all 8 blocks solid (the cells round the chunk)
-			uint32_t colors[N][N][N];
-			for (int cx = -1; cx <= N; cx++)
-				for (int cy = -1; cy <= N; cy++)
-					for (int cz = -1; cz <= N; cz++) {
-						bool any = false;
-						int count = 0;
-						const bool inside = cx >= 0 && cy >= 0 && cz >= 0 && cx < N && cy < N && cz < N;
-						// z grows downwards: the top block first. Inside, the first
-						// solid one is enough; round the chunk, every one is counted
-						for (int dz = 0; dz < 2 && (!any || !inside); dz++)
-							for (int dx = 0; dx < 2; dx++)
-								for (int dy = 0; dy < 2; dy++) {
-									const int wx = ox + cx * 2 + dx, wy = oy + cy * 2 + dy,
-									          wz = oz + cz * 2 + dz;
-									if (!IsSolid(wx, wy, wz))
-										continue;
-									count++;
-									if (!any && inside)
-										colors[cx][cy][cz] = map->GetColor(wx, wy, wz) & 0xFFFFFF;
-									any = true;
-								}
-						solid[cx + 1][cy + 1][cz + 1] = any;
-						full[cx + 1][cy + 1][cz + 1] = count == 8;
-					}
-			auto at = [&](int x, int y, int z) {
-				if (x < -1 || y < -1 || z < -1 || x > N || y > N || z > N)
-					return false;
-				return solid[x + 1][y + 1][z + 1];
-			};
-			// Whether a cell's face toward this one is drawn. Beyond the chunk,
-			// unless all 8 blocks there are solid: the chunk there may be drawn
-			// in full detail, with air between its blocks where this coarse cell
-			// counts it solid, and a face left out on that count was a hole you
-			// saw through (a tree on two chunks, one switched). Not where it is
-			// all solid (the ground's inside): faces there are triangles to draw
-			// for nothing, which is what this is to save.
-			auto open = [&](int x, int y, int z) {
-				if (x < 0 || y < 0 || z < 0 || x >= N || y >= N || z >= N)
-					return !full[x + 1][y + 1][z + 1];
-				return !solid[x + 1][y + 1][z + 1];
-			};
-			// calcAOID's, on the cells
-			auto ao = [&](int x, int y, int z, int ux, int uy, int vx, int vy) {
-				const int uz = (ux == 0 && uy == 0) ? 1 : 0, vz = (vx == 0 && vy == 0) ? 1 : 0;
-				unsigned v = 0;
-				v |= at(x - ux, y - uy, z - uz) ? 1u : 0u;
-				v |= at(x + ux, y + uy, z + uz) ? 2u : 0u;
-				v |= at(x - vx, y - vy, z - vz) ? 4u : 0u;
-				v |= at(x + vx, y + vy, z + vz) ? 8u : 0u;
-				v |= at(x - ux + vx, y - uy + vy, z - uz + vz) ? 16u : 0u;
-				v |= at(x - ux - vx, y - uy - vy, z - uz - vz) ? 32u : 0u;
-				v |= at(x + ux + vx, y + uy + vy, z + uz + vz) ? 64u : 0u;
-				v |= at(x + ux - vx, y + uy - vy, z + uz - vz) ? 128u : 0u;
-				return v;
-			};
-			for (int x = 0; x < N; x++)
-				for (int y = 0; y < N; y++)
-					for (int z = 0; z < N; z++) {
-						if (!at(x, y, z))
-							continue;
-						const uint32_t color = colors[x][y][z];
-						const int X = x * 2, Y = y * 2, Z = z * 2;
-						// As Update's six, each corner twice as far
-						if (open(x, y, z + 1))
-							EmitFace(ao(x, y, z + 1, -1, 0, 0, 1), X + 2, Y, Z + 2, -1, 0, 0, 1,
-							         color, 0, 0, 1, 2);
-						if (open(x, y, z - 1))
-							EmitFace(ao(x, y, z - 1, 1, 0, 0, 1), X, Y, Z, 1, 0, 0, 1, color, 0,
-							         0, -1, 2);
-						if (open(x - 1, y, z))
-							EmitFace(ao(x - 1, y, z, 0, 0, 0, -1), X, Y + 2, Z, 0, 0, 0, -1,
-							         color, -1, 0, 0, 2);
-						if (open(x + 1, y, z))
-							EmitFace(ao(x + 1, y, z, 0, 0, 0, 1), X + 2, Y, Z, 0, 0, 0, 1, color,
-							         1, 0, 0, 2);
-						if (open(x, y - 1, z))
-							EmitFace(ao(x, y - 1, z, 0, 0, 1, 0), X, Y, Z, 0, 0, 1, 0, color, 0,
-							         -1, 0, 2);
-						if (open(x, y + 1, z))
-							EmitFace(ao(x, y + 1, z, 0, 0, -1, 0), X + 2, Y + 2, Z, 0, 0, -1, 0,
-							         color, 0, 1, 0, 2);
-					}
-		}
-
 		void VulkanMapChunk::Update() {
 			SPADES_MARK_FUNCTION();
 
@@ -303,10 +200,6 @@ namespace spades {
 			int originY = chunkY << SizeBits;
 			int originZ = chunkZ << SizeBits;
 
-			builtFar = farDetail;
-			if (farDetail)
-				BuildCoarse();
-			else
 			// Build mesh for this chunk
 			for (int x = 0; x < Size; x++) {
 				for (int y = 0; y < Size; y++) {

@@ -47,13 +47,6 @@
 DEFINE_SPADES_SETTING(r_mapRebuildBudget, "2");
 // Logs the frames whose chunk building took long (2 ms, or 8 chunks)
 DEFINE_SPADES_SETTING(r_debugMapRebuild, "0");
-// In a headset, map chunks this many blocks or more from the eye are drawn from
-// 2x2x2 cells (VulkanMapChunk::BuildCoarse): a quarter the faces, the view as
-// far as ever (the fog). On a Quest the map's cost is its triangles, most of
-// them far off, each block there a few pixels. 0: all in full detail. Not on a
-// monitor, where a scope's zoom would show it.
-DEFINE_SPADES_SETTING(vr_farDetail, "80");
-
 namespace spades {
 	namespace draw {
 
@@ -190,19 +183,14 @@ namespace spades {
 			// own needs building again only if the block is on their shared edge.
 			// It was all 27 round it, for every block placed or broken: a
 			// grenade's worth was dozens of chunks built again in one frame.
-			// A far chunk (BuildCoarse) looks one 2-block cell beyond its edge,
-			// so it also needs building again for a block one in from it.
 			constexpr int kLast = VulkanMapChunk::Size - 1;
 			const int lx = x & kLast, ly = y & kLast, lz = z & kLast;
-			// How far the block is from the side a neighbour is on: 0 on the
-			// edge, 1 one in, more for neither
-			auto gap = [&](int l, int d) { return d < 0 ? l : d > 0 ? kLast - l : 0; };
-			for (int dx = -1; dx <= 1; dx++) {
-				for (int dy = -1; dy <= 1; dy++) {
-					for (int dz = -1; dz <= 1; dz++) {
-						const int g = std::max({gap(lx, dx), gap(ly, dy), gap(lz, dz)});
-						if (g > 1)
-							continue;
+			const int x0 = lx == 0 ? -1 : 0, x1 = lx == kLast ? 1 : 0;
+			const int y0 = ly == 0 ? -1 : 0, y1 = ly == kLast ? 1 : 0;
+			const int z0 = lz == 0 ? -1 : 0, z1 = lz == kLast ? 1 : 0;
+			for (int dx = x0; dx <= x1; dx++) {
+				for (int dy = y0; dy <= y1; dy++) {
+					for (int dz = z0; dz <= z1; dz++) {
 						int xx = (cx + dx) & (numChunkWidth - 1);
 						int yy = (cy + dy) & (numChunkHeight - 1);
 						int zz = cz + dz;
@@ -211,7 +199,7 @@ namespace spades {
 							continue;
 
 						VulkanMapChunk* chunk = GetChunk(xx, yy, zz);
-						if (chunk && (g == 0 || chunk->IsFarDetail())) {
+						if (chunk) {
 							chunk->SetNeedsUpdate();
 						}
 					}
@@ -247,25 +235,6 @@ namespace spades {
 					} else if (dist > releaseDistance) {
 						chunk->SetRealized(false);
 					}
-				}
-			}
-
-			// Far chunks in half detail (vr_farDetail), a little nearer to come back
-			// than to go, so one on the line does not flip every step
-			{
-				const float start = (float)vr_farDetail;
-				const bool use = start > 0.0F && !whole && renderer.IsInHeadset();
-				for (int i = 0; i < numChunks; i++) {
-					VulkanMapChunk* chunk = chunks[i];
-					if (!chunk || !chunk->IsRealized())
-						continue;
-					const float d = chunkInfos[i].distance;
-					if (!use)
-						chunk->SetFarDetail(false);
-					else if (d > start + 4.0F)
-						chunk->SetFarDetail(true);
-					else if (d < start - 4.0F)
-						chunk->SetFarDetail(false);
 				}
 			}
 

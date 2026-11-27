@@ -81,14 +81,6 @@ namespace spades {
 
 			uint8_t calcAOID(int x, int y, int z, int ux, int uy, int uz, int vx, int vy, int vz);
 
-			/** A face from its AO tile on: `scale` blocks a side (2 for a far chunk) */
-			void EmitFace(unsigned aoID, int x, int y, int z, int ux, int uy, int vx, int vy,
-			              uint32_t color, int nx, int ny, int nz, int scale);
-			/** The far version: 2x2x2 blocks a cell (SetFarDetail) */
-			void BuildCoarse();
-			bool farDetail = false; // wanted: built from 2x2x2 cells
-			bool builtFar = false;  // what the buffers hold
-
 			void EmitVertex(int aoX, int aoY, int aoZ, int x, int y, int z, int ux, int uy, int vx,
 			                int vy, uint32_t color, int nx, int ny, int nz);
 
@@ -102,15 +94,6 @@ namespace spades {
 			~VulkanMapChunk();
 
 			void SetNeedsUpdate() { needsUpdate = true; }
-			/** Far from the eye, drawn from 2x2x2 cells: a quarter the faces
-			 * (VulkanMapRenderer::RealizeChunks, vr_farDetail) */
-			void SetFarDetail(bool far) {
-				if (far != farDetail) {
-					farDetail = far;
-					needsUpdate = true;
-				}
-			}
-			bool IsFarDetail() const { return farDetail; }
 			bool NeedsUpdate() const { return needsUpdate && realized; }
 			void UpdateIfNeeded();
 

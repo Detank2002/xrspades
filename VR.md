@@ -1689,14 +1689,10 @@ the GPU's own counters (`ovrgpuprofiler`):
   (A Vulkanised 2026 talk on a voxel game on Quest 2/3, DevSH, puts the budget
   at about a million triangles a frame and found GPU-driven occlusion culling
   worth +5% on Quest 3.)
-- **What did help:** chunks 80 blocks or more from the eye drawn from 2x2x2
-  cells (`vr_farDetail`, a headset only; `VulkanMapChunk::BuildCoarse`): Lost
-  Valley 4.47 -> 3.90 ms (GPU frame 6.74 -> 6.13), Hallway 2.97 -> 2.85, the
-  fog as far as ever. A cell is solid if any of its blocks is, and a coarse
-  chunk draws its edge faces beside a cell that is not all solid, or a tree on
-  two chunks, one in full detail, showed holes you saw through. 2x MSAA took a
-  further ~20% (not the default: it shows a hairline gap at Babel's waterline
-  that 4x hides, cause unknown).
+- **What did help:** 2x MSAA took ~20% off (not the default: it shows a hairline
+  gap at Babel's waterline that 4x hides, cause unknown). Far chunks drawn
+  from 2x2x2 cells (`vr_farDetail`) also saved ~0.5 ms on Lost Valley, but
+  showed lines and seams at the edges of the view and was removed.
 - **Hitches:** a chunk takes ~0.1 ms to build on a Quest 3. A block placed or
   broken built its chunk and the 26 round it again (~2 ms); now only those it
   touches at their edges, the nearest first within `r_mapRebuildBudget` ms a
