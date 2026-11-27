@@ -100,6 +100,7 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Improved: 2x anti-aliasing for headsets, a fifth faster than 4x; the Performance level uses it
 - Fixed: a thin bright line along the shore where land meets the water
 - Improved: other VR players' heads and hands move smoothly instead of in small steps
+- Fixed: other VR players' arms no longer stick up in front of their face when they dig or throw
 
 ## 0.3.6
 
