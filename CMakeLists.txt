@@ -26,7 +26,7 @@ set(ZEROSPADES_VERSION_FULL "${ZEROSPADES_VERSION_MAJOR}.${ZEROSPADES_VERSION_MI
 # published as a GitHub pre-release tagged v<version>-beta.<n> (release.yml),
 # which the update check never offers; a beta counts as older than its
 # release, so the release is offered to it. Back to 0 before releasing.
-set(ZEROSPADES_VERSION_BETA 4)
+set(ZEROSPADES_VERSION_BETA 5)
 if(ZEROSPADES_VERSION_BETA)
 	set(ZEROSPADES_VERSION_LABEL "${ZEROSPADES_VERSION_FULL}-beta.${ZEROSPADES_VERSION_BETA}")
 else()
