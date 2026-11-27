@@ -610,6 +610,11 @@ namespace spades {
 			l.AddToggleField(_Tr("Preferences", "Camera Blur"), "r_cameraBlur");
 			l.SetPlatform(PlatformBoth);
 			l.AddToggleField(_Tr("Preferences", "Color Correction"), "r_colorCorrection");
+			l.SetPlatform(PlatformVR);
+			l.AddHelp(_Tr("Preferences",
+				"In a headset it is not used while Foveated Rendering is on, as it is by "
+				"default; turn Foveated Rendering off (and restart) to see it."));
+			l.SetPlatform(PlatformBoth);
 			l.AddSliderField(_Tr("Preferences", "Sharpening"), "r_sharpen", 0, 1, 0.1F,
 			                 NumberFormatter(1, ""));
 			l.AddSliderField(_Tr("Preferences", "Saturation"), "r_saturation", 0, 2, 0.1F,
@@ -760,8 +765,8 @@ namespace spades {
 			                        _Tr("Preferences", "Custom"));
 			l.AddHelp(_Tr("Preferences",
 				"Sets the graphics for a headset together. Performance is what a "
-				"Quest starts with; Balanced adds sharper shadows, textures and "
-				"colour correction; Quality soft particles, for a Quest 3 or a PC. "
+				"Quest starts with; Balanced adds sharper shadows and textures; "
+				"Quality soft particles, for a Quest 3 or a PC. "
 				"On a PC it changes the Graphics tab too. Takes effect at the next "
 				"map (anti-aliasing and both eyes in one pass at the next start)."));
 			l.AddChoiceField(_Tr("Preferences", "Refresh Rate"), "vr_refreshRate",
