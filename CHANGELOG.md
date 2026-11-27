@@ -22,6 +22,7 @@ prompt; newer ones show them and a See all changes button for the rest.
 - New: in VR, getting hit kicks the controller on the side it came from, harder for bigger hits, and reddens the edge of your view
 - New: in VR, a heartbeat at the edge of your view when your health is low
 - New: in VR, the keyboard stands on its own in front of you, and you can grab it with the grip and put it where you like
+- Improved: on Quest, headshot gore, blood marks and bullet holes in blocks are off by default, for a steadier frame rate (turn them on in the settings)
 - Improved: the VR keyboard has caps lock (Shift twice), arrow keys to fix typos, a Close key, and Back repeats while held
 - Improved: in VR, the spade is solid and hits where its tip strikes a block, with a flick instead of a full swing
 - Improved: in VR, reloading by hand takes the magazine anywhere under the front of the gun, without twisting your wrist

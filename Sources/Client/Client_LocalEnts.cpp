@@ -45,7 +45,12 @@
 
 #include "NetClient.h"
 
+// 2 adds blood marks on blocks, which cost frame rate on a standalone headset.
+#if defined(__ANDROID__)
+DEFINE_SPADES_SETTING(cg_blood, "1");
+#else
 DEFINE_SPADES_SETTING(cg_blood, "2");
+#endif
 DEFINE_SPADES_SETTING(cg_particles, "2");
 DEFINE_SPADES_SETTING(cg_particlesBloodNum, "4");
 DEFINE_SPADES_SETTING(cg_particlesGrenadeNum, "64");

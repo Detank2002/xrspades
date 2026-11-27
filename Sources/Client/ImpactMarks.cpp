@@ -34,7 +34,11 @@
 #include "IRenderer.h"
 #include "ImpactMarks.h"
 
+#if defined(__ANDROID__)
+DEFINE_SPADES_SETTING(cg_impactMarks, "0");
+#else
 DEFINE_SPADES_SETTING(cg_impactMarks, "1");
+#endif
 
 namespace spades {
 	namespace client {

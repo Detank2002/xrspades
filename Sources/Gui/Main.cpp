@@ -127,6 +127,12 @@ DEFINE_SPADES_SETTING(cl_zsFoveationDefaulted, "0");
 // edges changing their detail with the load as its default (vr_foveationDynamic 1),
 // which a tester found sickening; the default is off now, and a saved 1 kept it on
 DEFINE_SPADES_SETTING(cl_zsFoveationSteady, "0");
+// Set once a Quest config has had blood marks, flesh chunks and block holes
+// turned off (0.5.0's defaults there; they cost frame rate on a headset)
+DEFINE_SPADES_SETTING(cl_zsQuestEffectsOff, "0");
+SPADES_SETTING(cg_headshotGore);
+SPADES_SETTING(cg_blood);
+SPADES_SETTING(cg_impactMarks);
 SPADES_SETTING(vr_foveation);
 SPADES_SETTING(vr_foveationDynamic);
 SPADES_SETTING(r_fxaa);
@@ -1246,6 +1252,15 @@ int main(int argc, char** argv) {
 			vr_foveationDynamic = 0;
 			cl_zsFoveationSteady = 1;
 		}
+#if defined(__ANDROID__)
+		if (!static_cast<bool>(cl_zsQuestEffectsOff)) {
+			cg_headshotGore = 0;
+			if ((int)cg_blood >= 2)
+				cg_blood = 1;
+			cg_impactMarks = 0;
+			cl_zsQuestEffectsOff = 1;
+		}
+#endif
 #if !defined(__ANDROID__)
 		// 0.4.0's High, the defaults, smoothed edges with FXAA, a blur over the
 		// whole picture (testers: the cubes soft beside BetterSpades'). A config

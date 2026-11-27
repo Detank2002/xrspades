@@ -34,7 +34,12 @@
 
 // Comic gore: burst the skull into voxel chunks on a headshot kill.
 // Enabled by default; missing models/sound degrade gracefully.
+// Off by default on a standalone headset, where the chunks cost frame rate.
+#if defined(__ANDROID__)
+DEFINE_SPADES_SETTING(cg_headshotGore, "0");
+#else
 DEFINE_SPADES_SETTING(cg_headshotGore, "1");
+#endif
 // Fewer on a standalone headset, whose GPU draws every chunk twice.
 #if defined(__ANDROID__)
 DEFINE_SPADES_SETTING(cg_headshotGoreChunks, "12");

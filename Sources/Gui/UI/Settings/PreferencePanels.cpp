@@ -166,6 +166,8 @@ namespace spades {
 			l.Simple();
 			l.AddHeading(_Tr("Preferences", "Effects"));
 			l.AddToggleField(_Tr("Preferences", "Headshot Gore"), "cg_headshotGore");
+			l.AddHelp(_Tr("Preferences",
+				"Gore, blood marks and block holes cost frame rate on Quest, so they start off there."));
 			l.AddToggleField(_Tr("Preferences", "Bullet And Spade Holes In Blocks"),
 			                 "cg_impactMarks");
 			l.AddChoiceField(_Tr("Preferences", "Blood"), "cg_blood",
