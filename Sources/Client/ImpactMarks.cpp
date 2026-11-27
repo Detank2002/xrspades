@@ -143,15 +143,18 @@ namespace spades {
 				}
 				return mask;
 			}
-			/** An edge or a corner of the block: a cell with two or more of its
-			 * coordinates on the block's boundary. Whatever its neighbours, open
-			 * or covered, and whatever hit it, such a cell is never removed:
-			 * the outline stays whole and nothing can be seen through the block. */
+			/** The block's frame: a cell with two or more of its coordinates in
+			 * the two outer layers. Whatever its neighbours, open or covered,
+			 * and whatever hit it, such a cell is never removed. Only the edge
+			 * row itself was kept before, and a pit on one face could still bite
+			 * the cells just under it on the next, which looked like a chipped
+			 * corner on a block standing on its own; with the frame two deep a
+			 * hit only pits a face's middle, and the corners stay square. */
 			static bool IsOutline(const int cell[3]) {
-				int onBoundary = 0;
+				int inFrame = 0;
 				for (int q = 0; q < 3; q++)
-					onBoundary += (cell[q] == 0 || cell[q] == kCells - 1) ? 1 : 0;
-				return onBoundary >= 2;
+					inFrame += (cell[q] <= 1 || cell[q] >= kCells - 2) ? 1 : 0;
+				return inFrame >= 2;
 			}
 			std::unordered_map<uint64_t, Damaged> damaged;
 			// Models replaced or dropped, kept a few frames: a frame still in
