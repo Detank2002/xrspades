@@ -1,12 +1,12 @@
 name: CI
-# Every push to zerospadesx and every pull request into it builds every platform
+# Every push to xrspades and every pull request into it builds every platform
 # and runs the tests; nothing is published. release.yml calls this same workflow
 # with a version, then publishes what it built (see there).
 on:
   push:
-    branches: [zerospadesx]
+    branches: [xrspades]
   pull_request:
-    branches: [zerospadesx]
+    branches: [xrspades]
   workflow_dispatch:
   workflow_call:
     inputs:
