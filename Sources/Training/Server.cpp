@@ -7411,24 +7411,28 @@ struct Server::Impl {
                 p.ext_flashlight = fl;
                 const bool po = m.offers(proto::Extension::PlayerOutfit);
                 if (po && !p.ext_outfit) {
-                    // Team 1 wears the walking dead: outfit 64, which its
-                    // holders draw from Models/Player/Custom as the grunts.
-                    // An outfit shows at its player's next spawn, and every
-                    // wave the horde raises is one.
-                    ByteWriter outfits_bytes;
-                    proto::write_team_outfit(outfits_bytes, 1, proto::kOutfitZombie);
-                    // The specials already standing are said again, so a
-                    // latecomer sees the true faces of the wave in progress.
-                    for (auto& z : players) {
-                        if (!z || !z->zombie ||
-                            z->outfit == proto::kOutfitZombie)
-                            continue;
-                        proto::write_set_outfit(
-                            outfits_bytes, static_cast<uint8_t>(z->id),
-                            z->outfit);
+                    // Team 1 wears the walking dead in the tower defense
+                    // alone: outfit 64, which its holders draw from
+                    // Models/Player/Custom as the grunts. An outfit shows at
+                    // its player's next spawn, and every wave the horde
+                    // raises is one. The training's targets stand on the
+                    // same team number and stay in the usual parts.
+                    if (tower_defense_mode()) {
+                        ByteWriter outfits_bytes;
+                        proto::write_team_outfit(outfits_bytes, 1, proto::kOutfitZombie);
+                        // The specials already standing are said again, so a
+                        // latecomer sees the true faces of the wave in progress.
+                        for (auto& z : players) {
+                            if (!z || !z->zombie ||
+                                z->outfit == proto::kOutfitZombie)
+                                continue;
+                            proto::write_set_outfit(
+                                outfits_bytes, static_cast<uint8_t>(z->id),
+                                z->outfit);
+                        }
+                        if (p.loading) p.saved.push_back(outfits_bytes.data);
+                        else send(p, outfits_bytes);
                     }
-                    if (p.loading) p.saved.push_back(outfits_bytes.data);
-                    else send(p, outfits_bytes);
                 }
                 p.ext_outfit = po;
                 // The way in's smoke, whatever phase is running: its columns
