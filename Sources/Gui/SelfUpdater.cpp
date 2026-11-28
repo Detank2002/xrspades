@@ -670,22 +670,6 @@ namespace spades {
 				const std::string folder = GameFolder();
 				if (folder.empty())
 					return false;
-#ifndef _WIN32
-				// The game reads ./Resources, so it must run from its own folder
-				// for the paks an update installs to be the ones it reads.
-				char cwd[4096];
-				if (!::getcwd(cwd, sizeof(cwd)))
-					return false;
-				char* real = ::realpath(cwd, nullptr);
-				const bool here = real && folder == real;
-				std::free(real);
-				if (!here) {
-					SPLog("Update: not running from the game's folder (%s); only the release "
-					      "page is offered.",
-					      folder.c_str());
-					return false;
-				}
-#endif
 				// Writable, e.g. not unpacked somewhere only an administrator can write
 				const std::string probe = folder + "/.zsupdate-probe";
 				std::FILE* f = OpenFile(probe, "wb");

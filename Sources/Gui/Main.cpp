@@ -30,6 +30,9 @@
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 #include <utility>
 #include <vector>
 
@@ -1159,7 +1162,32 @@ int main(int argc, char** argv) {
 #else
 		std::string home = getenv("HOME");
 
-		spades::FileManager::AddFileSystem(new spades::DirectoryFileSystem("./Resources", false));
+		// The game's own Resources folder, next to the executable, so the game
+		// runs (and updates itself) when started from any folder, not only its own.
+		std::string ownResources;
+		{
+			char exe[4096];
+			const ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+			if (n > 0) {
+				std::string path(exe, static_cast<std::size_t>(n));
+				const std::size_t slash = path.find_last_of('/');
+				if (slash != std::string::npos)
+					ownResources = path.substr(0, slash) + "/Resources";
+			}
+		}
+		bool cwdIsOwn = false;
+		if (!ownResources.empty()) {
+			char* a = realpath(ownResources.c_str(), nullptr);
+			char* b = realpath("./Resources", nullptr);
+			cwdIsOwn = a && b && std::strcmp(a, b) == 0;
+			std::free(a);
+			std::free(b);
+			SPLog("Game resources: %s", ownResources.c_str());
+			spades::FileManager::AddFileSystem(
+			  new spades::DirectoryFileSystem(ownResources, false));
+		}
+		if (!cwdIsOwn)
+			spades::FileManager::AddFileSystem(new spades::DirectoryFileSystem("./Resources", false));
 
 		spades::FileManager::AddFileSystem(new spades::DirectoryFileSystem(
 		  CMAKE_INSTALL_PREFIX "/" ZEROSPADES_INSTALL_RESOURCES, false));
