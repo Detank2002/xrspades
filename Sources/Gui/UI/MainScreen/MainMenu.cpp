@@ -70,6 +70,9 @@ DEFINE_SPADES_SETTING(cg_debugStartAim, "-1");
 // For tests: a singleplayer mode (tutorial, aim...) whose page to open the first
 // time the menu shows.
 DEFINE_SPADES_SETTING(cg_debugSingleplayerPage, "");
+// For tests: -1, or a tab (0 Multiplayer, 1 Demos, 2 Mods, 3 Editor) to open the
+// first time the menu shows.
+DEFINE_SPADES_SETTING(cg_debugMenuTab, "-1");
 // For tests: a demo (as the demo list names it, Demos/...) to play the first
 // time the menu shows, as a headset has no command line to give it.
 DEFINE_SPADES_SETTING(cg_debugStartDemo, "");
@@ -580,6 +583,34 @@ namespace spades {
 					modsPanel->AddChild(modsList);
 				}
 
+				// Behind the tabs what the settings (and Singleplayer) draw behind
+				// theirs: the screen dimmed, a box under the contents (14 px
+				// around them) and a faint outline on its sides. Shown with the tabs, as the footer is.
+				{
+					Handle<TabPanel> backingH = Handle<TabPanel>::New(manager);
+					TabPanel* backing = backingH.GetPointerOrNull();
+					backing->SetBounds(AABB2(0.0F, 0.0F, sw, sh));
+					auto fill = [&](const AABB2& box, Vector4 color) {
+						Handle<Label> l = Handle<Label>::New(manager);
+						l->backgroundColor = color;
+						l->SetBounds(box);
+						backing->AddChild(l.GetPointerOrNull());
+					};
+					const float bandTop = 200.0F - 14.0F, bandBottom = footerPos + 30.0F + 14.0F;
+					fill(AABB2(0.0F, 0.0F, sw, sh), MakeVector4(0.0F, 0.0F, 0.0F, 0.7F));
+					const float boxL = std::max(0.0F, contentsLeft - 14.0F);
+					const float boxR = std::min(sw, contentsLeft + contentsWidth + 14.0F);
+					const Vector4 line = MakeVector4(1.0F, 1.0F, 1.0F, 0.07F);
+					fill(AABB2(boxL + 1.0F, bandTop + 1.0F, boxR - boxL - 2.0F, bandBottom - bandTop - 1.0F),
+					     MakeVector4(0.0F, 0.0F, 0.0F, 0.9F));
+					fill(AABB2(boxL, bandTop, boxR - boxL, 1.0F), line);
+					fill(AABB2(boxL, bandBottom, boxR - boxL, 1.0F), line);
+					fill(AABB2(boxL, bandTop + 1.0F, 1.0F, bandBottom - bandTop - 1.0F), line);
+					fill(AABB2(boxR - 1.0F, bandTop + 1.0F, 1.0F, bandBottom - bandTop - 1.0F), line);
+					AddChild(backing);
+					tabFooter.push_back(backing);
+				}
+
 				{
 					Handle<EditorBrowserPanel> panel = Handle<EditorBrowserPanel>::New(
 					    manager, helper, this, contentsLeft, contentsWidth, headerPos,
@@ -746,7 +777,7 @@ namespace spades {
 				};
 
 				// Behind it what the settings draw behind theirs: the screen dimmed,
-				// a full-width band under the contents, a faint line at its edges
+				// a box under the contents (14 px around them), a faint outline on its sides
 				{
 					auto fill = [&](const AABB2& box, Vector4 color) {
 						Handle<Label> l = Handle<Label>::New(manager);
@@ -756,10 +787,15 @@ namespace spades {
 					};
 					const float bandTop = top - 14.0F, bandBottom = top + H + 14.0F;
 					fill(AABB2(0.0F, 0.0F, sw, sh), MakeVector4(0.0F, 0.0F, 0.0F, 0.7F));
-					fill(AABB2(0.0F, bandTop + 1.0F, sw, bandBottom - bandTop - 1.0F),
+					const float boxL = std::max(0.0F, x0 - 14.0F);
+					const float boxR = std::min(sw, x0 + W + 14.0F);
+					const Vector4 line = MakeVector4(1.0F, 1.0F, 1.0F, 0.07F);
+					fill(AABB2(boxL + 1.0F, bandTop + 1.0F, boxR - boxL - 2.0F, bandBottom - bandTop - 1.0F),
 					     MakeVector4(0.0F, 0.0F, 0.0F, 0.9F));
-					fill(AABB2(0.0F, bandTop, sw, 1.0F), MakeVector4(1.0F, 1.0F, 1.0F, 0.07F));
-					fill(AABB2(0.0F, bandBottom, sw, 1.0F), MakeVector4(1.0F, 1.0F, 1.0F, 0.07F));
+					fill(AABB2(boxL, bandTop, boxR - boxL, 1.0F), line);
+					fill(AABB2(boxL, bandBottom, boxR - boxL, 1.0F), line);
+					fill(AABB2(boxL, bandTop + 1.0F, 1.0F, bandBottom - bandTop - 1.0F), line);
+					fill(AABB2(boxR - 1.0F, bandTop + 1.0F, 1.0F, bandBottom - bandTop - 1.0F), line);
 				}
 
 				// The list
@@ -1883,6 +1919,11 @@ namespace spades {
 				const std::string msg = helper->PlayDemo(cg_debugStartDemo);
 				if (!msg.empty())
 					SPLog("cg_debugStartDemo: %s", msg.c_str());
+			}
+			static bool debugTabShown = false;
+			if ((int)cg_debugMenuTab >= 0 && (int)cg_debugMenuTab <= 3 && !debugTabShown) {
+				debugTabShown = true;
+				ShowTab((int)cg_debugMenuTab);
 			}
 			static bool debugSingleplayerShown = false;
 			if (!std::string(cg_debugSingleplayerPage).empty() && !debugSingleplayerShown) {
