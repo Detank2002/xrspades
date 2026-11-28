@@ -276,7 +276,7 @@ namespace spades {
 			// Kept by name and size: a mod changed on disk is drawn again
 			std::string cacheFile;
 			if (!mod.empty())
-				cacheFile = "ModPreviews/" + SafeFileName(mod) + "-" + std::to_string(si) + "-" +
+				cacheFile = "ModPreviews/" + SafeFileName(mod) + "-" + std::to_string(si) + "-v2-" +
 				            std::to_string(Handle<ModsScreenHelper>::New()->GetModTotalSize(mod)) +
 				            ".png";
 			Handle<Bitmap> bmp;
@@ -302,7 +302,14 @@ namespace spades {
 					bmp = RenderVoxelPreview(*model, kW, kH);
 					if (!cacheFile.empty()) {
 						try {
-							bmp->Save(cacheFile);
+							// The PNG writer turns rows over (it is made for screenshots, read
+							// bottom row first) and the reader doesn't, so a turned-over copy
+							// is written, to load back the right way up
+							Handle<Bitmap> upright = Handle<Bitmap>::New(kW, kH);
+							for (int y = 0; y < kH; y++)
+								std::copy_n(bmp->GetPixels() + (kH - 1 - y) * kW, kW,
+								            upright->GetPixels() + y * kW);
+							upright->Save(cacheFile);
 						} catch (const std::exception& ex) {
 							SPLog("Mod preview not kept: %s: %s", cacheFile.c_str(), ex.what());
 						}
