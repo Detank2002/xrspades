@@ -668,7 +668,11 @@ namespace spades {
 			// and the skin alone keeps the model and the size it draws. A
 			// watcher with no team of their own stands with the defenders,
 			// that the rides keep their green for any eye that watches.
-			if (!spitFlight && throwerId >= 0 &&
+			// Only the tower defense paints the enemy's throws: the store
+			// state rides the whole session, and a plain multiplayer match
+			// never carries it - there the enemy's grenades fly the way
+			// every other grenade does.
+			if (!spitFlight && GetStoreState().received && throwerId >= 0 &&
 			    static_cast<size_t>(throwerId) < world->GetNumPlayerSlots()) {
 				auto th = world->GetPlayer(static_cast<unsigned int>(throwerId));
 				if (th) {

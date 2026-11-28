@@ -182,7 +182,18 @@ namespace spades {
 			// when water is on, so coastal "water-surface" voxels get rendered
 			// (their above-water neighbor counts as solid) and pure-water
 			// columns drop out.
-			return map->IsSolid(x, y, (z == 63 && (int)renderer.renderer.GetSettings().r_water > 0) ? 62 : z);
+			const int zz =
+			  (z == 63 && (int)renderer.renderer.GetSettings().r_water > 0) ? 62 : z;
+
+			// Mirror GL's hidden blocks too: a hidden block is nothing to
+			// the eye of the render - the sentry models draw over the pillar
+			// their two real blocks stand for, so the mesh leaves the blocks
+			// out and the neighbours' faces come back as if they had been
+			// dug away, while the game keeps the solid for rays, bodies and
+			// the spade.
+			if (map->IsHidden(x, y, zz))
+				return false;
+			return map->IsSolid(x, y, zz);
 		}
 
 		void VulkanMapChunk::Update() {
