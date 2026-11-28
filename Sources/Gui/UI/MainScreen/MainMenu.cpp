@@ -61,8 +61,15 @@ DEFINE_SPADES_SETTING(cg_debugStartTraining, "0");
 // outlined, as last picked on Training's page.
 DEFINE_SPADES_SETTING(cg_aimWeapon, "0");
 DEFINE_SPADES_SETTING(cg_aimHighlight, "0");
+// Aim training's scenario, and the singleplayer mode last played (its key:
+// tutorial, aim...), which the page opens on; empty opens the tutorial.
+DEFINE_SPADES_SETTING(cg_aimScenario, "0");
+DEFINE_SPADES_SETTING(cg_singleplayerMode, "");
 // For tests: -1, or an aim scenario to start the first time the menu shows.
 DEFINE_SPADES_SETTING(cg_debugStartAim, "-1");
+// For tests: a singleplayer mode (tutorial, aim...) whose page to open the first
+// time the menu shows.
+DEFINE_SPADES_SETTING(cg_debugSingleplayerPage, "");
 // For tests: a demo (as the demo list names it, Demos/...) to play the first
 // time the menu shows, as a headset has no command line to give it.
 DEFINE_SPADES_SETTING(cg_debugStartDemo, "");
@@ -686,63 +693,168 @@ namespace spades {
 					y += bh + gap;
 				}
 			}
-			// Training's page, the home screen's first button.
+			// Singleplayer's page, the home screen's first button: the modes in a
+			// list on the left, the chosen one's page on the right with Play.
 			{
+				BuildSingleplayerModes();
+
 				Handle<TabPanel> panelH = Handle<TabPanel>::New(manager);
 				trainingPanel = panelH.GetPointerOrNull();
 				trainingPanel->SetBounds(AABB2(0.0F, 0.0F, sw, sh));
 				AddChild(trainingPanel);
 
-				const float bw = std::min(520.0F, sw - 32.0F);
-				const float x = (sw - bw) * 0.5F;
-				const float bh = std::max(26.0F, std::min(36.0F, (sh - tabStripPos - 40.0F) / 13.0F));
+				const float W = std::min(860.0F, sw - 32.0F);
+				const float x0 = (sw - W) * 0.5F;
+				const float top = tabStripPos;
+				const float H = std::max(220.0F, sh - top - 16.0F);
+				spNarrow = W < 640.0F;
 				const float gap = 6.0F;
-				float y = tabStripPos;
-				auto label = [&](const std::string& text, float h, Vector4 color) {
+				const float listW = spNarrow ? W : 240.0F;
+				const float detailX = spNarrow ? x0 : x0 + listW + 16.0F;
+				const float detailW = spNarrow ? W : W - listW - 16.0F;
+				// Not below 30: VR's pointer has to hit them too
+				const float bh = std::max(30.0F, std::min(36.0F, (H - 150.0F) / 9.0F));
+				const Vector4 grey = MakeVector4(0.8F, 0.8F, 0.8F, 1.0F);
+
+				auto addLabel = [&](UIElement* parent, const std::string& text, float lx, float ly,
+				                    float w, float h, Vector4 color) {
 					Handle<Label> l = Handle<Label>::New(manager);
 					l->text = text;
 					l->textColor = color;
 					l->alignment = MakeVector2(0.0F, 0.5F);
-					l->SetBounds(AABB2(x, y, bw, h));
-					trainingPanel->AddChild(l.GetPointerOrNull());
-					y += h;
+					l->SetBounds(AABB2(lx, ly, w, h));
+					parent->AddChild(l.GetPointerOrNull());
+					return l.GetPointerOrNull();
 				};
-				auto button = [&](float bx, float w, std::function<void()> action) {
-					Handle<Button> b = Handle<Button>::New(manager);
-					b->SetBounds(AABB2(bx, y, w, bh));
-					b->activated = [action](UIElement&) { action(); };
-					trainingPanel->AddChild(b.GetPointerOrNull());
-					return b.GetPointerOrNull();
+				auto addButton = [&](UIElement* parent, float bx, float by, float w, float h,
+				                     std::function<void()> action) {
+					Handle<Button> btn = Handle<Button>::New(manager);
+					btn->SetBounds(AABB2(bx, by, w, h));
+					btn->activated = [action](UIElement&) { action(); };
+					parent->AddChild(btn.GetPointerOrNull());
+					return btn.GetPointerOrNull();
+				};
+				// Picking one of several, drawn as the settings' choices are
+				auto addChoice = [&](UIElement* parent, const std::string& group, float bx,
+				                     float by, float w, float h, std::function<void()> action) {
+					Handle<ui::RadioButton> btn = Handle<ui::RadioButton>::New(manager);
+					btn->groupName = group;
+					btn->SetBounds(AABB2(bx, by, w, h));
+					btn->activated = [action](UIElement&) { action(); };
+					parent->AddChild(btn.GetPointerOrNull());
+					return static_cast<Button*>(btn.GetPointerOrNull());
 				};
 
-				tutorialButton = button(x, bw, [this] { StartTraining(); });
-				y += bh + 2.0F;
-				label(_Tr("MainScreen", "The course: moving, shooting, digging, building and "
-				                        "grenades, with a checklist and a timer."),
-				      22.0F, MakeVector4(0.8F, 0.8F, 0.8F, 1.0F));
-				y += 10.0F;
-				label(_Tr("MainScreen", "Aim training: 60 seconds a run"), 26.0F,
-				      MakeVector4(1.0F, 0.85F, 0.3F, 1.0F));
-				for (int i = 0; i < training::kScenarioCount; i++) {
-					scenarioButtons.push_back(button(x, bw, [this, i] { StartAimScenario(i); }));
-					y += bh + gap;
+				// Behind it what the settings draw behind theirs: the screen dimmed,
+				// a full-width band under the contents, a faint line at its edges
+				{
+					auto fill = [&](const AABB2& box, Vector4 color) {
+						Handle<Label> l = Handle<Label>::New(manager);
+						l->backgroundColor = color;
+						l->SetBounds(box);
+						trainingPanel->AddChild(l.GetPointerOrNull());
+					};
+					const float bandTop = top - 14.0F, bandBottom = top + H + 14.0F;
+					fill(AABB2(0.0F, 0.0F, sw, sh), MakeVector4(0.0F, 0.0F, 0.0F, 0.7F));
+					fill(AABB2(0.0F, bandTop + 1.0F, sw, bandBottom - bandTop - 1.0F),
+					     MakeVector4(0.0F, 0.0F, 0.0F, 0.9F));
+					fill(AABB2(0.0F, bandTop, sw, 1.0F), MakeVector4(1.0F, 1.0F, 1.0F, 0.07F));
+					fill(AABB2(0.0F, bandBottom, sw, 1.0F), MakeVector4(1.0F, 1.0F, 1.0F, 0.07F));
 				}
-				y += 4.0F;
-				const float third = (bw - 2.0F * gap) / 3.0F;
-				for (int w = 0; w < 3; w++) {
-					weaponButtons.push_back(button(x + (third + gap) * w, third, [this, w] {
-						cg_aimWeapon = w;
-						RefreshTrainingPanel();
-					}));
+
+				// The list
+				{
+					Handle<TabPanel> h = Handle<TabPanel>::New(manager);
+					spListPane = h.GetPointerOrNull();
+					spListPane->SetBounds(AABB2(x0, top, listW, H));
+					trainingPanel->AddChild(spListPane);
+					float y = 0.0F;
+					for (int i = 0; i < (int)spModes.size(); i++) {
+						SingleplayerMode& m = spModes[i];
+						m.card = addChoice(spListPane, "mode", 0.0F, y, listW, bh + 4.0F, [this, i] {
+							SelectSingleplayerMode(i);
+							if (spNarrow) {
+								spPageOpen = true;
+								RefreshTrainingPanel();
+							}
+						});
+						m.card->caption = m.name;
+						y += bh + 4.0F + 1.0F;
+					}
+					Button* back =
+					  addButton(spListPane, 0.0F, H - bh, listW, bh, [this] { ShowHome(); });
+					back->caption = _Tr("MainScreen", "Back");
 				}
-				y += bh + gap;
-				highlightButton = button(x, bw, [this] {
-					cg_aimHighlight = (int)cg_aimHighlight ? 0 : 1;
-					RefreshTrainingPanel();
-				});
-				y += bh + gap * 2.0F;
-				ui::Button* back = button(x, bw, [this] { ShowHome(); });
-				back->caption = _Tr("MainScreen", "Back");
+
+				// The chosen mode's page, and Play under it
+				{
+					Handle<TabPanel> h = Handle<TabPanel>::New(manager);
+					spDetailPane = h.GetPointerOrNull();
+					spDetailPane->SetBounds(AABB2(detailX, top, detailW, H));
+					trainingPanel->AddChild(spDetailPane);
+
+					for (int i = 0; i < (int)spModes.size(); i++) {
+						SingleplayerMode& m = spModes[i];
+						Handle<TabPanel> ph = Handle<TabPanel>::New(manager);
+						m.page = ph.GetPointerOrNull();
+						m.page->SetBounds(AABB2(0.0F, 0.0F, detailW, H - bh - gap));
+						spDetailPane->AddChild(m.page);
+						float y = 0.0F;
+						addLabel(m.page, m.name, 0.0F, y, detailW, 32.0F, MakeVector4(1, 1, 1, 1))
+						  ->SetFont(&ui->GetFontManager().GetHeadingFont());
+						y += 34.0F;
+						addLabel(m.page, m.description, 0.0F, y, detailW, 22.0F, grey);
+						y += 22.0F;
+						m.detailLabel = addLabel(m.page, "", 0.0F, y, detailW, 22.0F, grey);
+						y += 22.0F + 10.0F;
+						for (int v = 0; v < (int)m.variants.size(); v++) {
+							Button* b = addChoice(m.page, "variant", 0.0F, y, detailW, 28.0F,
+							                      [this, i, v] {
+								spModes[i].setVariant(v);
+								RefreshTrainingPanel();
+							});
+							m.variantButtons.push_back(b);
+							y += 28.0F + 1.0F;
+						}
+						if (!m.variants.empty())
+							y += 12.0F;
+						const float labelW = std::min(170.0F, detailW * 0.35F);
+						for (int si = 0; si < (int)m.settings.size(); si++) {
+							SingleplayerSetting& st = m.settings[si];
+							addLabel(m.page, st.label, 0.0F, y, labelW, 32.0F, MakeVector4(1, 1, 1, 1));
+							const int n = (int)st.options.size();
+							const float ow = (detailW - labelW - (n - 1)) / n;
+							for (int o = 0; o < n; o++) {
+								Button* b = addChoice(m.page, "setting" + std::to_string(si),
+								                      labelW + (ow + 1.0F) * o, y + 2.0F, ow, 28.0F,
+								                      [this, i, si, o] {
+									                      spModes[i].settings[si].set(o);
+									                      RefreshTrainingPanel();
+								                      });
+								b->caption = st.options[o];
+								st.buttons.push_back(b);
+							}
+							y += 32.0F;
+						}
+					}
+
+					const float playW = std::min(160.0F, detailW * 0.4F);
+					float sx = 0.0F;
+					if (spNarrow) {
+						const float backW = std::min(110.0F, detailW * 0.25F);
+						Button* back = addButton(spDetailPane, 0.0F, H - bh, backW, bh, [this] {
+							spPageOpen = false;
+							RefreshTrainingPanel();
+						});
+						back->caption = _Tr("MainScreen", "Back");
+						sx = backW + 10.0F;
+					}
+					spSummary = addLabel(spDetailPane, "", sx, H - bh, detailW - playW - sx - 10.0F,
+					                     bh, grey);
+					spPlayButton = addButton(spDetailPane, detailW - playW, H - bh, playW, bh,
+					                         [this] { PlaySingleplayerMode(); });
+					spPlayButton->caption = _Tr("MainScreen", "Play");
+				}
 			}
 
 			ShowHome();
@@ -826,60 +938,162 @@ namespace spades {
 			currentDemoListModel = model;
 		}
 
-		void MainScreenMainMenu::ShowTraining() {
-			homePanel->visible = false;
-			trainingPanel->visible = true;
-			RefreshTrainingPanel();
-		}
-
-		void MainScreenMainMenu::RefreshTrainingPanel() {
-			const auto bests = client::Client::ReadTrainingBests();
-			auto best = [&](const std::string& key) -> float {
-				auto it = bests.find(key);
-				return it == bests.end() ? -1.0F : it->second;
+		void MainScreenMainMenu::BuildSingleplayerModes() {
+			spModes.clear();
+			auto best = [this](const std::string& key) -> float {
+				auto it = spBests.find(key);
+				return it == spBests.end() ? -1.0F : it->second;
 			};
 			auto clock = [](float sec) {
 				const int s = static_cast<int>(sec + 0.5F);
-				return std::to_string(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + std::to_string(s % 60);
+				return std::to_string(s / 60) + ":" + (s % 60 < 10 ? "0" : "") +
+				       std::to_string(s % 60);
 			};
+
+			// The tutorial: first, and what the page opens on until it is played
 			{
-				const float t = best("tutorial 0"), tvr = best("tutorial 1");
-				std::string caption = _Tr("MainScreen", "Tutorial");
-				if (t >= 0.0F || tvr >= 0.0F) {
-					caption += "   (" + _Tr("MainScreen", "best") + " ";
+				SingleplayerMode m;
+				m.key = "tutorial";
+				m.name = _Tr("MainScreen", "Tutorial");
+				m.description = _Tr("MainScreen",
+				                    "The course: moving, shooting, digging, building and grenades.");
+				m.status = [best] {
+					return best("tutorial 0") >= 0.0F || best("tutorial 1") >= 0.0F
+					         ? _Tr("MainScreen", "done")
+					         : _Tr("MainScreen", "start here");
+				};
+				m.detail = [best, clock] {
+					const float t = best("tutorial 0"), tvr = best("tutorial 1");
+					if (t < 0.0F && tvr < 0.0F)
+						return _Tr("MainScreen", "With a checklist and a timer.");
+					std::string s = _Tr("MainScreen", "Best") + " ";
 					if (t >= 0.0F)
-						caption += clock(t);
+						s += clock(t);
 					if (tvr >= 0.0F)
-						caption += (t >= 0.0F ? ", VR " : "VR ") + clock(tvr);
-					caption += ")";
-				}
-				tutorialButton->caption = caption;
+						s += (t >= 0.0F ? ", VR " : "VR ") + clock(tvr);
+					return s;
+				};
+				m.play = [this] { StartTraining(); };
+				spModes.push_back(std::move(m));
 			}
-			const int weapon = std::min(std::max((int)cg_aimWeapon, 0), 2);
-			static const char* const blurbs[] = {
-			  "three targets on stands", "one at a time, anywhere", "keep your aim on it",
-			  "strafing targets, full health", "walkers far away"};
-			for (int i = 0; i < (int)scenarioButtons.size(); i++) {
-				std::string caption = client::Client::AimScenarioName(i) + ": " +
-				                      _Tr("MainScreen", blurbs[i]);
-				const float b = best("aim " + std::to_string(i) + " " + std::to_string(weapon));
-				if (b >= 0.0F) {
+
+			// Aim training: a scenario, with the gun and highlight it runs with
+			{
+				SingleplayerMode m;
+				m.key = "aim";
+				m.name = _Tr("MainScreen", "Aim training");
+				m.description = _Tr("MainScreen", "60 second runs against targets.");
+				static const char* const blurbs[] = {
+				  "three targets on stands", "one at a time, anywhere", "keep your aim on it",
+				  "strafing targets, full health", "walkers far away"};
+				for (int i = 0; i < training::kScenarioCount; i++) {
+					const std::string name = client::Client::AimScenarioName(i);
+					m.variants.push_back(name + ": " + _Tr("MainScreen", blurbs[i]));
+					m.variantNames.push_back(name);
+				}
+				m.getVariant = [] {
+					return std::min(std::max((int)cg_aimScenario, 0), training::kScenarioCount - 1);
+				};
+				m.setVariant = [](int v) { cg_aimScenario = v; };
+				auto weapon = [] { return std::min(std::max((int)cg_aimWeapon, 0), 2); };
+				m.variantBest = [best, weapon](int v) -> std::string {
+					const float b = best("aim " + std::to_string(v) + " " + std::to_string(weapon()));
+					if (b < 0.0F)
+						return std::string();
 					char buf[32];
-					if (training::scored_on_tracking(static_cast<training::Scenario>(i)))
+					if (training::scored_on_tracking(static_cast<training::Scenario>(v)))
 						std::snprintf(buf, sizeof(buf), "%.0f%%", b / 100.0F);
 					else
 						std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(b));
-					caption += "   (" + _Tr("MainScreen", "best") + " " + buf + ")";
+					return _Tr("MainScreen", "best") + " " + buf;
+				};
+				m.status = [] {
+					return _Tr("MainScreen", "{0} scenarios", training::kScenarioCount);
+				};
+				m.detail = [] { return _Tr("MainScreen", "Bests are kept for each gun."); };
+				{
+					SingleplayerSetting st;
+					st.label = _Tr("MainScreen", "Gun");
+					st.options = {_Tr("MainScreen", "Rifle"), _Tr("MainScreen", "SMG"),
+					              _Tr("MainScreen", "Shotgun")};
+					st.get = weapon;
+					st.set = [](int o) { cg_aimWeapon = o; };
+					m.settings.push_back(std::move(st));
 				}
-				scenarioButtons[i]->caption = caption;
+				{
+					SingleplayerSetting st;
+					st.label = _Tr("MainScreen", "Highlight targets");
+					st.options = {_Tr("MainScreen", "Off"), _Tr("MainScreen", "On")};
+					st.get = [] { return (int)cg_aimHighlight ? 1 : 0; };
+					st.set = [](int o) { cg_aimHighlight = o; };
+					m.settings.push_back(std::move(st));
+				}
+				m.play = [this] { StartAimScenario((int)cg_aimScenario); };
+				spModes.push_back(std::move(m));
 			}
-			const std::string names[3] = {_Tr("MainScreen", "Rifle"), _Tr("MainScreen", "SMG"),
-			                              _Tr("MainScreen", "Shotgun")};
-			for (int w = 0; w < 3; w++)
-				weaponButtons[w]->caption = w == weapon ? "> " + names[w] + " <" : names[w];
-			highlightButton->caption = (int)cg_aimHighlight
-			                             ? _Tr("MainScreen", "Highlight targets: on")
-			                             : _Tr("MainScreen", "Highlight targets: off");
+		}
+
+		void MainScreenMainMenu::ShowTraining() {
+			homePanel->visible = false;
+			trainingPanel->visible = true;
+			spSelected = 0;
+			const std::string last = cg_singleplayerMode;
+			for (int i = 0; i < (int)spModes.size(); i++)
+				if (spModes[i].key == last)
+					spSelected = i;
+			spPageOpen = false;
+			RefreshTrainingPanel();
+		}
+
+		void MainScreenMainMenu::SelectSingleplayerMode(int index) {
+			spSelected = std::min(std::max(index, 0), (int)spModes.size() - 1);
+			RefreshTrainingPanel();
+		}
+
+		void MainScreenMainMenu::PlaySingleplayerMode() {
+			if (spModes.empty())
+				return;
+			SingleplayerMode& m = spModes[spSelected];
+			cg_singleplayerMode = m.key;
+			m.play();
+		}
+
+		void MainScreenMainMenu::RefreshTrainingPanel() {
+			spBests = client::Client::ReadTrainingBests();
+			std::string summary;
+			for (int i = 0; i < (int)spModes.size(); i++) {
+				SingleplayerMode& m = spModes[i];
+				const bool on = i == spSelected;
+				m.card->toggled = on;
+				{
+					const std::string status = m.status ? m.status() : std::string();
+					m.card->caption = status.empty() ? m.name : m.name + "   (" + status + ")";
+				}
+				m.page->visible = on;
+				m.detailLabel->text = m.detail ? m.detail() : std::string();
+				const int variant = m.getVariant ? m.getVariant() : -1;
+				for (int v = 0; v < (int)m.variantButtons.size(); v++) {
+					m.variantButtons[v]->toggled = v == variant;
+					const std::string b = m.variantBest ? m.variantBest(v) : std::string();
+					m.variantButtons[v]->caption =
+					  b.empty() ? m.variants[v] : m.variants[v] + "   (" + b + ")";
+				}
+				if (on) {
+					summary = m.name;
+					if (variant >= 0 && variant < (int)m.variantNames.size())
+						summary += " / " + m.variantNames[variant];
+				}
+				for (SingleplayerSetting& st : m.settings) {
+					const int o = st.get();
+					for (int k = 0; k < (int)st.buttons.size(); k++)
+						st.buttons[k]->toggled = k == o;
+					if (on && o >= 0 && o < (int)st.options.size())
+						summary += " / " + st.options[o];
+				}
+			}
+			spListPane->visible = !spNarrow || !spPageOpen;
+			spDetailPane->visible = !spNarrow || spPageOpen;
+			spSummary->text = summary;
 		}
 
 		void MainScreenMainMenu::StartAimScenario(int scenario) {
@@ -937,6 +1151,11 @@ namespace spades {
 			MainScreenMainMenuState state;
 			if (homePanel->visible || (trainingPanel && trainingPanel->visible))
 				state.activeTabIndex = -1;
+			if (trainingPanel && trainingPanel->visible) {
+				state.singleplayer = true;
+				state.singleplayerMode = spSelected;
+				state.singleplayerPageOpen = spPageOpen;
+			}
 			else if (serverPanel->visible)
 				state.activeTabIndex = 0;
 			else if (demoPanel->visible)
@@ -951,7 +1170,12 @@ namespace spades {
 		void MainScreenMainMenu::SetState(const MainScreenMainMenuState& state) {
 			// A restored tab is populated by the same path a clicked one is: the
 			// constructor only fills the server list.
-			if (state.activeTabIndex < 0)
+			if (state.singleplayer) {
+				ShowTraining();
+				SelectSingleplayerMode(state.singleplayerMode);
+				spPageOpen = state.singleplayerPageOpen && spNarrow;
+				RefreshTrainingPanel();
+			} else if (state.activeTabIndex < 0)
 				ShowHome();
 			else
 				ShowTab(state.activeTabIndex);
@@ -1573,8 +1797,11 @@ namespace spades {
 
 		void MainScreenMainMenu::HotKey(const std::string& key) {
 			if (IsEnabled() && key == "Enter") {
-				if (homePanel->visible || trainingPanel->visible) {
+				if (homePanel->visible) {
 					// Nothing is selected on the home screen.
+				} else if (trainingPanel->visible) {
+					if (!spNarrow || spPageOpen)
+						PlaySingleplayerMode();
 				} else if (demoPanel->visible) {
 					PlaySelectedDemo();
 				} else if (editorPanel->visible) {
@@ -1585,7 +1812,10 @@ namespace spades {
 			} else if (IsEnabled() && key == "Escape") {
 				if (homePanel->visible)
 					ConfirmQuit();
-				else
+				else if (trainingPanel->visible && spNarrow && spPageOpen) {
+					spPageOpen = false;
+					RefreshTrainingPanel();
+				} else
 					ShowHome();
 			} else {
 				UIElement::HotKey(key);
@@ -1654,6 +1884,14 @@ namespace spades {
 				if (!msg.empty())
 					SPLog("cg_debugStartDemo: %s", msg.c_str());
 			}
+			static bool debugSingleplayerShown = false;
+			if (!std::string(cg_debugSingleplayerPage).empty() && !debugSingleplayerShown) {
+				debugSingleplayerShown = true;
+				ShowTraining();
+				for (int i = 0; i < (int)spModes.size(); i++)
+					if (spModes[i].key == std::string(cg_debugSingleplayerPage))
+						SelectSingleplayerMode(i);
+			}
 			static bool debugAimStarted = false;
 			if ((int)cg_debugStartAim >= 0 && !debugAimStarted) {
 				debugAimStarted = true;
@@ -1691,8 +1929,9 @@ namespace spades {
 				                            ? _Tr("MainScreen", "Starting the course...")
 				                            : _Tr("MainScreen", "Singleplayer");
 			}
-			if (trainingStarting && tutorialButton)
-				tutorialButton->caption = _Tr("MainScreen", "Starting...");
+			if (spPlayButton)
+				spPlayButton->caption = trainingStarting ? _Tr("MainScreen", "Starting...")
+				                                         : _Tr("MainScreen", "Play");
 			UIElement::Render();
 
 			// check for client error message.

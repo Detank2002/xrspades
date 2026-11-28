@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -67,6 +69,10 @@ namespace spades {
 		struct MainScreenMainMenuState {
 			/** -1 the home screen; 0 servers, 1 demos, 2 mods. */
 			int activeTabIndex = -1;
+			/** On the home screen's Singleplayer page, with this mode chosen. */
+			bool singleplayer = false;
+			int singleplayerMode = 0;
+			bool singleplayerPageOpen = false;
 		};
 
 		/** The main menu: server browser, demo browser, mod manager, footer. */
@@ -156,14 +162,55 @@ namespace spades {
 			/** Starts the tutorial, or an aim scenario. */
 			void StartTraining(const TrainingHost::Launch& launch = TrainingHost::Launch());
 
-			// Training's page: the tutorial, and the aim scenarios with the gun
-			// and the highlight they run with. Captions carry the best scores,
-			// so they are filled in each time it is shown.
+			// Singleplayer's page: the game modes in a list, and the chosen one's
+			// own variants (an aim scenario, say), settings and Play beside it.
+			// Each mode is described once here; the page is drawn from that, so a
+			// new mode is a new entry, not new layout.
+			struct SingleplayerSetting {
+				std::string label;
+				std::vector<std::string> options;
+				std::function<int()> get;
+				std::function<void(int)> set;
+				std::vector<ui::Button*> buttons; // built
+			};
+			struct SingleplayerMode {
+				std::string key; // kept in cg_singleplayerMode
+				std::string name;
+				std::string description;
+				// Variants to pick one of, as "Name: what it is"; may be none
+				std::vector<std::string> variants;
+				std::vector<std::string> variantNames; // short, for the summary
+				std::function<int()> getVariant;
+				std::function<void(int)> setVariant;
+				std::vector<SingleplayerSetting> settings;
+				/** Right-hand text on its card in the list ("done", a count...). */
+				std::function<std::string()> status;
+				/** A variant's best as shown beside it, or "". */
+				std::function<std::string(int)> variantBest;
+				/** The line under the description (bests and such). */
+				std::function<std::string()> detail;
+				std::function<void()> play;
+				// Built
+				ui::Button* card = nullptr;
+				TabPanel* page = nullptr;
+				ui::Label* detailLabel = nullptr;
+				std::vector<ui::Button*> variantButtons;
+			};
+			std::vector<SingleplayerMode> spModes;
+			std::map<std::string, float> spBests; // read each time the page shows
+			int spSelected = 0;
+			// Narrow (or a small panel): the list and a mode's page are shown one
+			// at a time, the page with its own Back.
+			bool spNarrow = false;
+			bool spPageOpen = false; // narrow only: a mode's page is up
 			TabPanel* trainingPanel = nullptr;
-			ui::Button* tutorialButton = nullptr;
-			std::vector<ui::Button*> scenarioButtons;
-			std::vector<ui::Button*> weaponButtons;
-			ui::Button* highlightButton = nullptr;
+			TabPanel* spListPane = nullptr;
+			TabPanel* spDetailPane = nullptr;
+			ui::Button* spPlayButton = nullptr;
+			ui::Label* spSummary = nullptr;
+			void BuildSingleplayerModes();
+			void SelectSingleplayerMode(int index);
+			void PlaySingleplayerMode();
 			void ShowTraining();
 			void RefreshTrainingPanel();
 			void StartAimScenario(int scenario);
