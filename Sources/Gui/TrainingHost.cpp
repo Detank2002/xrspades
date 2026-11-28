@@ -20,16 +20,27 @@
 
 #include "TrainingHost.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <mutex>
 #include <thread>
 
 #include <Core/Debug.h>
 #include <Core/FileManager.h>
+#include <Core/FileManager.h>
 #include <Core/Settings.h>
 #include <Training/Server.h>
 
 DEFINE_SPADES_SETTING(cg_localPort, "32890");
+// Horde: the .vxl it plays - or none, which plays the mode's own shipped
+// Termina Fields, the generated training course standing in for an install
+// whose paks lost it - and the cell the core stands on (moved to the
+// nearest land when that is at sea; the map's own settings .txt names
+// another cell, and its word outranks these).
+DEFINE_SPADES_SETTING(cg_towerDefenseMap, "");
+DEFINE_SPADES_SETTING(cg_towerDefenseCoreX, "256");
+DEFINE_SPADES_SETTING(cg_towerDefenseCoreY, "256");
 // For tests: a .vxl the training server plays on instead of its course (what
 // a map costs in a game, without a server to join)
 DEFINE_SPADES_SETTING(cg_debugTrainingMap, "");
@@ -44,6 +55,8 @@ namespace spades {
 			std::atomic<bool> stop{false};
 			std::thread thread;
 			std::shared_ptr<training::AimShared> aim = std::make_shared<training::AimShared>();
+			std::shared_ptr<training::TowerDefenseShared> tower_defense =
+			    std::make_shared<training::TowerDefenseShared>();
 
 			void Join() {
 				if (thread.joinable()) {
@@ -93,9 +106,68 @@ namespace spades {
 			impl->aim->restart = true;
 		}
 
+		/** The name in lower case, for suffix and course checks. */
+		static std::string lowered_name(std::string s) {
+			std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+				return static_cast<char>(std::tolower(c));
+			});
+			return s;
+		}
+
+		std::vector<std::string> TrainingHost::MapRoster() {
+			std::vector<std::string> maps;
+			std::vector<std::string> files;
+			try {
+				files = spades::FileManager::EnumFiles("Maps");
+			} catch (const std::exception&) {
+				return maps; // no Maps folder: the course is the whole menu
+			}
+			for (const std::string& file : files) {
+				const std::string whole = lowered_name(file);
+				if (whole.size() < 5 ||
+				    whole.compare(whole.size() - 4, 4, ".vxl") != 0)
+					continue;
+				if (whole == "termina_fieldstd.vxl" || whole == "title.vxl")
+					continue; // the course is the menu head; Title, its backdrop
+				maps.push_back("Maps/" + file);
+			}
+			std::sort(maps.begin(), maps.end());
+			return maps;
+		}
+
+		std::string TrainingHost::GetTowerDefenseMap() { return
+		    (std::string)cg_towerDefenseMap; }
+
+		void TrainingHost::SetTowerDefenseMap(const std::string& map)
+		{ cg_towerDefenseMap = map; }
+
 		std::string TrainingHost::Start(const Launch& what) {
 			Stop();
 			launch = what;
+			// /va asked for the map after this one while the last run stood:
+			// answered here, where the next run takes its map from.
+			if (what.mode == training::Mode::TowerDefense) {
+				bool advance = false;
+				{
+					std::lock_guard<std::mutex> lock(impl->tower_defense->mutex);
+					advance = impl->tower_defense->map_advance;
+					impl->tower_defense->map_advance = false;
+				}
+				if (advance) {
+					const std::vector<std::string> roster = MapRoster();
+					const int n = static_cast<int>(roster.size());
+					if (n > 0) {
+						const std::string current = (std::string)cg_towerDefenseMap;
+						int at = -1;
+						for (int i = 0; i < n; i++)
+							if (roster[i] == current)
+								at = i;
+						const std::string next = roster[(at + 1) % n];
+						SPLog("[Training] map advance: the next map is %s", next.c_str());
+						SetTowerDefenseMap(next);
+					}
+				}
+			}
 			{
 				// A new run: nothing of the last one shows.
 				std::lock_guard<std::mutex> lock(impl->aim->mutex);
@@ -117,6 +189,10 @@ namespace spades {
 			Impl* self = impl.get();
 			const int listenPort = port;
 			const Launch run = what;
+			const std::string towerDefenseMap = (std::string)cg_towerDefenseMap;
+			const std::vector<std::string> towerDefenseRoster = MapRoster();
+			const int towerDefenseCoreX = (int)cg_towerDefenseCoreX,
+			    towerDefenseCoreY = (int)cg_towerDefenseCoreY;
 			std::string testMap;
 			{
 				const std::string path = cg_debugTrainingMap;
@@ -128,12 +204,61 @@ namespace spades {
 					}
 				}
 			}
-			impl->thread = std::thread([self, listenPort, run, testMap]() {
+			impl->thread = std::thread([self, listenPort, run, towerDefenseMap,
+			                            towerDefenseRoster, towerDefenseCoreX,
+			                            towerDefenseCoreY, testMap]() {
 				host::HostConfig cfg;
 				cfg.port = static_cast<uint16_t>(listenPort);
 				cfg.mode = run.mode;
 				cfg.scenario = run.scenario;
 				cfg.highlight_targets = run.highlight;
+				cfg.map_file = towerDefenseMap;
+				cfg.map_roster = towerDefenseRoster;
+				cfg.tower_defense = self->tower_defense;
+				cfg.core_x = towerDefenseCoreX;
+				cfg.core_y = towerDefenseCoreY;
+				// A map the Maps folder carries is played as a resource, read
+				// the same way every other asset is read - its settings .txt
+				// beside it too, and the server logs it by name. The setting
+				// only names a resource; a path the game cannot see falls back
+				// to map_file above, and a world with neither of them still
+				// stands the old road: the course, shipped in the paks, and
+				// behind it the generated one.
+				if (run.mode == training::Mode::TowerDefense &&
+				    !towerDefenseMap.empty() &&
+				    spades::FileManager::FileExists(towerDefenseMap.c_str())) {
+					cfg.map_data =
+					    spades::FileManager::ReadAllBytes(towerDefenseMap.c_str());
+					cfg.map_name = towerDefenseMap;
+					std::string side = towerDefenseMap;
+					const size_t slash = side.rfind('/');
+					const size_t dot = side.rfind('.');
+					if (dot != std::string::npos &&
+					    (slash == std::string::npos || dot > slash))
+						side = side.substr(0, dot) + ".txt";
+					if (spades::FileManager::FileExists(side.c_str()))
+						cfg.map_settings =
+						    spades::FileManager::ReadAllBytes(side.c_str());
+					SPLog("[Training] the named map %s rides the game files",
+					      towerDefenseMap.c_str());
+				} else if (run.mode == training::Mode::TowerDefense &&
+				    towerDefenseMap.empty() &&
+				    spades::FileManager::FileExists("Maps/Termina_FieldsTD.vxl")) {
+					cfg.map_data = spades::FileManager::ReadAllBytes("Maps/Termina_FieldsTD.vxl");
+					if (spades::FileManager::FileExists("Maps/Termina_FieldsTD.txt"))
+						cfg.map_settings =
+						    spades::FileManager::ReadAllBytes("Maps/Termina_FieldsTD.txt");
+					SPLog("[Training] the tower defense plays the shipped Termina Fields");
+				} else if (run.mode == training::Mode::TowerDefense &&
+				    towerDefenseMap.empty()) {
+					// The paks carry the course with the game (Resources/mkpak
+					// packs Maps into pak005); an install whose paks are stale
+					// says so here instead of quietly standing the generated
+					// course in for Termina Fields.
+					SPLog("[Training] no shipped Termina Fields in the game's"
+					      " files: rebuild the paks (Resources/mkpak) or the"
+					      " generated course stands in");
+				}
 				cfg.aim = self->aim;
 				cfg.map_vxl = testMap;
 				cfg.log = [](const std::string& line) { SPLog("[Training] %s", line.c_str()); };

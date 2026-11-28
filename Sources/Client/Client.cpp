@@ -28,6 +28,9 @@
 
 #include "Client.h"
 #include <Gui/TrainingHost.h>
+#include <Training/StoreCatalog.h>
+#include <Training/WeaponTiers.h>
+#include <ScriptBindings/WeaponDress.h>
 #include "Fonts.h"
 #include <Core/FileManager.h>
 #include <Core/IStream.h>
@@ -56,6 +59,7 @@
 #include <Gui/UI/Components/SoftwareCursor.h>
 #include <Gui/UI/Components/LimboMenu.h>
 #include "Corpse.h"
+#include "CTFGameMode.h"
 #include "SmokeSpriteEntity.h"
 
 #include "GameMap.h"
@@ -752,10 +756,9 @@ namespace spades {
 		}
 
 		void Client::PieMenuReceived(PieMenu menu) {
-			// Where each ring was left is only worth remembering for the same rings:
-			// a server sends its menu again once it knows the player's locale.
-			if (!serverPieMenu || serverPieMenu->pies != menu.pies)
-				pieMenuView->ForgetRings();
+			// A server sends its menu again once it knows the player's
+			// locale. The rings on offer change; the page the wheel opens
+			// on does not - the first ring, every time.
 			serverPieMenu = std::move(menu);
 		}
 
@@ -828,7 +831,46 @@ namespace spades {
 			if (pies.empty())
 				return false;
 
-			pieMenuView->Open(std::move(pies), context, targetId);
+			pieMenuView->Open(std::move(pies), targetId);
+			return true;
+		}
+
+		bool Client::OpenStoreNearCore() {
+			// The store keeps the pie menu's key for itself, but only by
+			// the core: the same ground, five blocks around it, and the
+			// eye resting on its heart. Anywhere else the rings keep the
+			// key.
+			if (!GetStoreState().received || !world)
+				return false;
+			stmp::optional<IGameMode&> mode = world->GetMode();
+			if (!mode || mode->ModeType() != IGameMode::m_CTF)
+				return false;
+			auto& ctf = dynamic_cast<CTFGameMode&>(mode.value());
+			const Vector3 core = ctf.GetTeam(0).flagPos;
+			auto maybePlayer = world->GetLocalPlayer();
+			if (!maybePlayer || !maybePlayer->IsAlive())
+				return false;
+			Player& lp = maybePlayer.value();
+			const Vector3 eye = lp.GetEye();
+			const Vector3 front = lp.GetFront();
+			const float dx = core.x - eye.x;
+			const float dy = core.y - eye.y;
+			// Five blocks around on the same ground, and a storey of give
+			// either way up.
+			if (dx * dx + dy * dy > 25.0F ||
+				std::fabs(core.z - eye.z) > 4.0F)
+				return false;
+			// The eye on the heart: two blocks of slack for a glance from
+			// the side, nothing for a look behind.
+			const Vector3 heart = core + MakeVector3(0, 0, 0.5F);
+			const float along = Vector3::Dot(heart - eye, front);
+			if (along <= 0.0F)
+				return false;
+			const Vector3 off = heart - (eye + front * along);
+			if (off.GetSquaredLength() > 4.0F)
+				return false;
+			if (scriptedUI)
+				scriptedUI->OpenStoreWindow();
 			return true;
 		}
 
@@ -1519,6 +1561,16 @@ namespace spades {
 				   (unsigned int)flags, color.x, color.y, color.z, reason.c_str());
 
 			teamplay->SetMark(playerId, duration, surfaces, flags, color, std::move(reason));
+
+			// DIAGNOSTIC v178cu: what the map holds once the packet is
+			// in it. The flags the head pulse rides, said again from
+			// the mark the map holds, that the log tells the two apart.
+			if (flags & Teamplay::MarkFlagPulseHead) {
+				auto mark = teamplay->GetMark(playerId);
+				if (mark)
+					NetLog("[Mark held] id %d pulseHead %d", playerId,
+					       mark->pulseHead ? 1 : 0);
+			}
 		}
 
 		void Client::TeamplayPlayerSpawned(int playerId) {
@@ -1733,6 +1785,125 @@ namespace spades {
 
 			followedPlayerId = nextId;
 			followCameraState.enabled = IsDemoMode() || staffSpectating || (followedPlayerId != localPlayerId);
+		}
+
+		// The dress a gun wears: the best upgrade owned for its class.
+		// A class's dresses are tiers of one ladder - 1, 2, 3 - and the
+		// class wears the highest tier its owner has bought, at once if
+		// the swing can show it, on the respawn a class change takes
+		// otherwise. No card owned, or a world the store never stood
+		// in, wears the stock weapon.
+		std::string Client::WeaponDressFor(int gun) const {
+			if (gun < 0 || gun > 4)
+				return "";
+			const StoreState& st = GetStoreState();
+			if (!st.received)
+				return "";
+			int best = 0;
+			const char* dress = nullptr;
+			for (std::size_t i = 0;
+			     i < training::store::kItemCount; ++i) {
+				const auto& it = training::store::kItems[i];
+				if (it.effect != training::store::kEffectWeaponSkin ||
+				    it.dress == nullptr ||
+				    static_cast<int>(it.arg) != gun)
+					continue;
+				if (it.tier <= best ||
+				    st.level_of(static_cast<int>(i)) < 1)
+					continue;
+				best = it.tier;
+				dress = it.dress;
+			}
+			return dress != nullptr ? std::string(dress) : std::string();
+		}
+
+		// The tier of the dress a gun wears: the best owned rung of
+		// its class's ladder, zero when the stock weapon shows. The
+		// charm rides on it - one charm a rung.
+		int Client::WeaponDressTierFor(int gun) const {
+			if (gun < 0 || gun > 4)
+				return 0;
+			const StoreState& st = GetStoreState();
+			if (!st.received)
+				return 0;
+			int best = 0;
+			for (std::size_t i = 0;
+			     i < training::store::kItemCount; ++i) {
+				const auto& it = training::store::kItems[i];
+				if (it.effect != training::store::kEffectWeaponSkin ||
+				    it.dress == nullptr ||
+				    static_cast<int>(it.arg) != gun)
+					continue;
+				if (it.tier <= best ||
+				    st.level_of(static_cast<int>(i)) < 1)
+					continue;
+				best = it.tier;
+			}
+			return best;
+		}
+
+		// The rung a gun FIGHTS at: the dress tier is the word, but the
+		// ladder's floor is one - the first rung is the class's own
+		// starting shape, worn free - and only a world the store stood
+		// in has a ladder at all. Zero is the stock gun.
+		int Client::WeaponGameTierFor(int gun) const {
+			if (gun < 0 || gun > 3)
+				return 0;
+			if (!GetStoreState().received)
+				return 0;
+			const int dress = WeaponDressTierFor(gun);
+			return dress < 1 ? 1 : dress;
+		}
+
+		// The local player's gun in hand and spade, dressed in the rungs
+		// the store's word says: the stats, the reach and the kick they
+		// fight with, read from the tiers table the server pays its
+		// damage out of too. The gun's tier rides the weapon object,
+		// which a respawn makes anew; the spade's scales ride the player.
+		// A world the store stood in is the Tower Defense range, where
+		// nothing runs out: the gun's reserve never falls and no block
+		// is spent on a placement, so both are read as standing full.
+		void Client::ApplyWeaponTiers() {
+			if (!world)
+				return;
+			stmp::optional<Player&> p = world->GetLocalPlayer();
+			if (!p)
+				return;
+			const bool td = GetStoreState().received;
+			const int gun = static_cast<int>(p->GetWeaponType());
+			if (gun >= 0 && gun <= 2) {
+				p->GetWeapon().SetTier(WeaponGameTierFor(gun));
+				p->GetWeapon().SetUnlimited(td);
+			}
+			if (td)
+				p->RefillBlocks();
+			const training::tiers::SpadeSpec& sp =
+				training::tiers::kSpade[WeaponGameTierFor(3)];
+			p->SetSpadeScales(sp.range, sp.chip);
+			// The RPG dress on the grenade tool turns the tool's press
+			// and release into a rocket's launch and its flight's aim:
+			// the player owns a word for it whenever the dress is worn.
+			p->SetRocketLauncher(WeaponDressTierFor(4) >= 1);
+			// The war hands its grenades out by the wave, so the count on
+			// the wire is the pouch's own truth, not anything the range
+			// restocked. Only a refill rides back - a throw is never
+			// unspent, and the tool keeps the count it paid out itself
+			// until the server says the pouch is fuller.
+			if (td && GetStoreState().grenades > p->GetNumGrenades())
+				p->SetNumGrenades(GetStoreState().grenades);
+		}
+
+		// A file a dressed gun loads: the dress's own when its pak ships
+		// one, the stock path when it does not, the same word the skin
+		// scripts read.
+		std::string Client::WeaponDressPath(int gun, const char* stock) const {
+			const std::string dress = WeaponDressFor(gun);
+			if (!dress.empty()) {
+				const std::string dressed = dress + stock;
+				if (PakFileExists(dressed))
+					return dressed;
+			}
+			return stock;
 		}
 	} // namespace client
 } // namespace spades

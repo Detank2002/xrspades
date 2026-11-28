@@ -29,6 +29,14 @@ namespace spades {
 		private Model@ frontPinSightModel;
 		private Model@ reflexSightModel;
 
+		// Whether each sight shows at all: a dress that ships none
+		// of its own leaves the piece out rather than carrying the
+		// stock one on a body it was never carved for.
+		private bool showRearSight;
+		private bool showFrontSight;
+		private bool showFrontPinSight;
+		private bool showReflexSight;
+
 		private AudioChunk@[] fireSounds(4);
 		private AudioChunk@ fireFarSound;
 		private AudioChunk@ fireStereoSound;
@@ -189,29 +197,36 @@ namespace spades {
 			@audioDevice = dev;
 
 			// load models
-			@gunModel = renderer.RegisterModel("Models/Weapons/SMG/WeaponNoMagazine.kv6");
-			@magazineModel = renderer.RegisterModel("Models/Weapons/SMG/Magazine.kv6");
-			@rearSightModel = renderer.RegisterModel("Models/Weapons/SMG/SightRear.kv6");
-			@frontSightModel = renderer.RegisterModel("Models/Weapons/SMG/SightFront.kv6");
-			@frontPinSightModel = renderer.RegisterModel("Models/Weapons/SMG/SightFrontPin.kv6");
-			@reflexSightModel = renderer.RegisterModel("Models/Weapons/SMG/SightReflex.kv6");
+			@gunModel = renderer.RegisterModel(WeaponDressPath(1, "Models/Weapons/SMG/WeaponNoMagazine.kv6"));
+			@magazineModel = renderer.RegisterModel(WeaponDressPath(1, "Models/Weapons/SMG/Magazine.kv6"));
+			@rearSightModel = renderer.RegisterModel(WeaponDressPath(1, "Models/Weapons/SMG/SightRear.kv6"));
+			@frontSightModel = renderer.RegisterModel(WeaponDressPath(1, "Models/Weapons/SMG/SightFront.kv6"));
+			@frontPinSightModel = renderer.RegisterModel(WeaponDressPath(1, "Models/Weapons/SMG/SightFrontPin.kv6"));
+			@reflexSightModel = renderer.RegisterModel(WeaponDressPath(1, "Models/Weapons/SMG/SightReflex.kv6"));
+			showRearSight = WeaponDressShips(1, "Models/Weapons/SMG/SightRear.kv6");
+			showFrontSight = WeaponDressShips(1, "Models/Weapons/SMG/SightFront.kv6");
+			showFrontPinSight = WeaponDressShips(1, "Models/Weapons/SMG/SightFrontPin.kv6");
+			showReflexSight = WeaponDressShips(1, "Models/Weapons/SMG/SightReflex.kv6");
 
 			// load sounds
-			@fireSounds[0] = dev.RegisterSound("Sounds/Weapons/SMG/V2Local1.opus");
-			@fireSounds[1] = dev.RegisterSound("Sounds/Weapons/SMG/V2Local2.opus");
-			@fireSounds[2] = dev.RegisterSound("Sounds/Weapons/SMG/V2Local3.opus");
-			@fireSounds[3] = dev.RegisterSound("Sounds/Weapons/SMG/V2Local4.opus");
-			@fireFarSound = dev.RegisterSound("Sounds/Weapons/SMG/FireFar.opus");
-			@fireStereoSound = dev.RegisterSound("Sounds/Weapons/SMG/FireStereo.opus");
-			@fireSmallReverbSounds[0] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceSmall1.opus");
-			@fireSmallReverbSounds[1] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceSmall2.opus");
-			@fireSmallReverbSounds[2] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceSmall3.opus");
-			@fireSmallReverbSounds[3] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceSmall4.opus");
-			@fireLargeReverbSounds[0] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceLarge1.opus");
-			@fireLargeReverbSounds[1] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceLarge2.opus");
-			@fireLargeReverbSounds[2] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceLarge3.opus");
-			@fireLargeReverbSounds[3] = dev.RegisterSound("Sounds/Weapons/SMG/V2AmbienceLarge4.opus");
-			@reloadSound = dev.RegisterSound("Sounds/Weapons/SMG/ReloadLocal.opus");
+			@fireSounds[0] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2Local1.opus"));
+			@fireSounds[1] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2Local2.opus"));
+			@fireSounds[2] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2Local3.opus"));
+			@fireSounds[3] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2Local4.opus"));
+			@fireFarSound = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/FireFar.opus"));
+			@fireStereoSound = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/FireStereo.opus"));
+			@fireSmallReverbSounds[0] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceSmall1.opus"));
+			@fireSmallReverbSounds[1] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceSmall2.opus"));
+			@fireSmallReverbSounds[2] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceSmall3.opus"));
+			@fireSmallReverbSounds[3] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceSmall4.opus"));
+			@fireLargeReverbSounds[0] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceLarge1.opus"));
+			@fireLargeReverbSounds[1] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceLarge2.opus"));
+			@fireLargeReverbSounds[2] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceLarge3.opus"));
+			@fireLargeReverbSounds[3] = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/V2AmbienceLarge4.opus"));
+			@reloadSound = dev.RegisterSound(WeaponDressPath(1, "Sounds/Weapons/SMG/ReloadLocal.opus"));
+
+			// The charm a dressed gun wears: the tier's own.
+			@charmModel = renderer.RegisterModel(WeaponCharmPath(1, "Models/Weapons/Charms/Charm.kv6"));
 
 			// load images
 			@scopeImage = renderer.RegisterImage("Gfx/SMG.png");
@@ -419,28 +434,34 @@ namespace spades {
 				* CreateTranslateMatrix(GetMagazineOffset());
 			renderer.AddModel(magazineModel, param);
 
-			// draw sights
+			// draw sights: only the pieces the dress ships
 			if (cg_reflexScope.BoolValue) {
-				param.matrix = weapMatrix
-					* CreateTranslateMatrix(reflexSightAttachment)
-					* CreateScaleMatrix(reflexSightScale);
-				renderer.AddModel(reflexSightModel, param); // reflex
-			} else {
+				if (showReflexSight) {
+					param.matrix = weapMatrix
+						* CreateTranslateMatrix(reflexSightAttachment)
+						* CreateScaleMatrix(reflexSightScale);
+					renderer.AddModel(reflexSightModel, param); // reflex
+				}
+			} else if (showRearSight) {
 				param.matrix = weapMatrix
 					* CreateTranslateMatrix(rearSightAttachment)
 					* CreateScaleMatrix(rearSightScale);
 				renderer.AddModel(rearSightModel, param); // rear
 			}
 
-			param.matrix = weapMatrix
-				* CreateTranslateMatrix(frontPinSightAttachment)
-				* CreateScaleMatrix(frontPinSightScale);
-			renderer.AddModel(frontPinSightModel, param); // front pin (emissive)
+			if (showFrontPinSight) {
+				param.matrix = weapMatrix
+					* CreateTranslateMatrix(frontPinSightAttachment)
+					* CreateScaleMatrix(frontPinSightScale);
+				renderer.AddModel(frontPinSightModel, param); // front pin (emissive)
+			}
 
-			param.matrix = weapMatrix
-				* CreateTranslateMatrix(frontSightAttachment)
-				* CreateScaleMatrix(frontSightScale);
-			renderer.AddModel(frontSightModel, param); // front
+			if (showFrontSight) {
+				param.matrix = weapMatrix
+					* CreateTranslateMatrix(frontSightAttachment)
+					* CreateScaleMatrix(frontSightScale);
+				renderer.AddModel(frontSightModel, param); // front
+			}
 
 			// draw charms
 			if (cg_weaponCharms.BoolValue) {
@@ -492,7 +513,16 @@ namespace spades {
 		}
 	}
 
+	// The class the store's word picked: the tier's own dress
+	// skin when one is worn (the mod's whole View skin, its models
+	// and their transforms together), the stock gun's otherwise.
 	IWeaponSkin@ CreateViewSMGSkin(Renderer@ r, AudioDevice@ dev) {
+		switch(WeaponDressTier(1)) {
+		case 1: return ViewSMGMP5KSkin(r, dev);
+		case 2: return ViewSMGAKSkin(r, dev);
+		case 3: return ViewSMGM4Skin(r, dev);
+		case 4: return ViewMinigunSkin(r, dev);
+		}
 		return ViewSMGSkin(r, dev);
 	}
 }

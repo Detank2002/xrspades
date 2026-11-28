@@ -438,7 +438,17 @@ namespace spades {
 
 			MovePlayer(dt);
 
-			if (tool == ToolSpade) {
+			// The walking dead borrow a living player's shape, and the
+			// swing the wire animates in their hands must stay a show:
+			// the block-health trail below is the living digger's own
+			// paper. A remote spade in a zombie's hands cracks the
+			// blocks its facing names - the first of the living's two
+			// hits, never the second, for the destroy is the local
+			// player's alone to send - and the walls all along the
+			// horde's way would read as half-dug forever, cracking and
+			// healing and never breaking. The horde's own strokes are
+			// the server's, block for block, and they need no help here.
+			if (tool == ToolSpade && (isLocal || !IsZombie())) {
 				if (weapInput.primary) {
 					if (world.GetTime() > nextSpadeTime) {
 						UseSpade(false);
@@ -960,6 +970,24 @@ namespace spades {
 
 			if (IsLocalPlayer()) {
 				Vector3 const dir = GetToolDirection();
+				// The RPG's tube: press and release fire a rocket, not a
+				// throw. No grenade enters the world here - the listener
+				// sends the word to the server (a fuse below zero means
+				// "rocket" on the wire) and spawns the flying one, and
+				// the server books the burst where the flight ends. The
+				// tube then takes its time to be loaded again.
+				if (rocketLauncher) {
+					Vector3 const muzzle = GetToolOrigin() + (dir * 1.2F);
+					auto rocket = stmp::make_unique<Grenade>(
+						world, playerId, muzzle, dir, -1.0F);
+					if (world.GetListener())
+						world.GetListener()->PlayerThrewGrenade(*this, *rocket);
+					if (grenades > 0)
+						grenades--;
+					cookingGrenade = false;
+					nextGrenadeTime = world.GetTime() + 2.5F;
+					return;
+				}
 				Vector3 const muzzle = GetToolOrigin() + (dir * 0.1F);
 				// A VR throw carries the hand's own speed and direction; the server
 				// caps it at 2.0 relative to the thrower, which the client keeps under.
@@ -1011,9 +1039,12 @@ namespace spades {
 					Player& other = maybeOther.value();
 					if (!other.IsAlive() || other.IsSpectator())
 						continue; // filter deads/spectators
-					// From the eye, as on a monitor (the spade is in the hand in VR).
+					// From the eye, as on a monitor (the spade is in the
+					// hand in VR). The Tower Defense ladder lends the
+					// swing its reach.
+					const float meleeRange = MELEE_DISTANCE * spadeRangeScale;
 					if ((other.GetEye() - GetEye()).GetSquaredLength() >
-						(MELEE_DISTANCE * MELEE_DISTANCE))
+					    (meleeRange * meleeRange))
 						continue; // skip players outside attack range
 					if (!other.RayCastApprox(muzzle, dir))
 						continue; // quickly reject players unlikely to be hit
@@ -1033,7 +1064,8 @@ namespace spades {
 			// ahead of the eye, and measured from there it dug further.
 			float hitBlockDist = ((dig ? blockF : shiftedPos) - GetEye()).GetChebyshevLength();
 
-			if (mapResult.hit && (editMode || hitBlockDist < MAX_DIG_DISTANCE) &&
+			const float digRange = MAX_DIG_DISTANCE * spadeRangeScale;
+			if (mapResult.hit && (editMode || hitBlockDist < digRange) &&
 			    (!hitPlayer || dig)) {
 				if (map->IsValidMapCoord(outBlockPos.x, outBlockPos.y, outBlockPos.z)) {
 					SPAssert(map->IsSolid(outBlockPos.x, outBlockPos.y, outBlockPos.z));
@@ -1046,8 +1078,14 @@ namespace spades {
 					if (outBlockPos.z < (editMode ? map->GroundDepth() + 1 : map->GroundDepth())) {
 						if (!dig) {
 							uint32_t col = map->GetColor(outBlockPos.x, outBlockPos.y, outBlockPos.z);
+							// The ladder's bite: the stock spade chips
+							// half a block's health a swing, a higher
+							// rung bites deeper.
+							const int chip =
+								static_cast<int>(50.0F * spadeDamageScale);
 							// Edit Mode: a block goes at the first hit
-							int health = editMode ? 0 : (col >> 24) - 50;
+							int health =
+								editMode ? 0 : static_cast<int>(col >> 24) - chip;
 							if (health <= 0) {
 								health = 0;
 								if (listener && IsLocalPlayer()) // send destroy cmd for local

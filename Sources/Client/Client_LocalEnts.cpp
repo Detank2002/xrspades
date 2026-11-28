@@ -38,6 +38,7 @@
 #include "ILocalEntity.h"
 #include "ParticleSpriteEntity.h"
 #include "SmokeSpriteEntity.h"
+#include "HeadBurstEntity.h"
 
 #include "GameMap.h"
 #include "Weapon.h"
@@ -59,6 +60,7 @@ DEFINE_SPADES_SETTING(cg_waterImpact, "1");
 DEFINE_SPADES_SETTING(cg_corpseSoftLimit, "6");
 DEFINE_SPADES_SETTING(cg_corpseHardLimit, "16");
 
+SPADES_SETTING(cg_bodyBurstGore);
 SPADES_SETTING(cg_manualFocus);
 DEFINE_SPADES_SETTING(cg_autoFocusSpeed, "0.4");
 
@@ -132,6 +134,10 @@ namespace spades {
 			soundFeedbackIndicators.clear();
 			localEntities.clear();
 			smokes.Clear(SmokeParams::kAnonymous);
+			// A path, unlike a smoke, does not burn out on its own: it
+			// belongs to the world that was sent it, and is owed its
+			// clear when that world is replaced.
+			trails.ForgetAll();
 			grenadeTracers.clear();
 
 			if (bloodMarks)
@@ -386,6 +392,12 @@ namespace spades {
 			SPADES_MARK_FUNCTION();
 			if (!world)
 				return; // before the map: the server sends it again once it is in
+			// A blast goes off at a stroke, not poured for a duration:
+			// the clouds, the light and the boom, the dark climb.
+			if (params.style == SmokeParams::Blast) {
+				SpawnBlast(params.origin);
+				return;
+			}
 			Handle<IAudioChunk> hiss;
 			if (params.sound && !IsMuted())
 				hiss = audioDevice->RegisterSound("Sounds/Misc/Smoke.opus");
@@ -393,6 +405,253 @@ namespace spades {
 			// the particles down must not see through it.
 			localEntities.emplace_back(stmp::make_unique<SmokeEntity>(
 			  *this, audioDevice.GetPointerOrNull(), hiss, params, smokes.Start(params.id)));
+		}
+
+		namespace {
+			// The brief bright light of a blast, decaying over half a
+			// second, and the boom riding it. The boom plays in 2D with
+			// a manual distance falloff: the fork's spatial path eats a
+			// sound born at a block face, so the falloff is said by hand.
+			class BlastFlashEntity : public ILocalEntity {
+			public:
+				BlastFlashEntity(Client& client, IAudioDevice* audio,
+				                  Handle<IAudioChunk> boom, Vector3 origin);
+				bool Update(float dt) override;
+				void Render3D() override;
+
+			private:
+				Client& client;
+				IAudioDevice* audio; // may be null when muted
+				Handle<IAudioChunk> boom;
+				Vector3 origin;
+				float age = 0.0F;
+			};
+
+			BlastFlashEntity::BlastFlashEntity(Client& cli, IAudioDevice* audio,
+			                                   Handle<IAudioChunk> boom,
+			                                   Vector3 origin)
+			    : client(cli), audio(audio), boom(std::move(boom)),
+			      origin(origin) {
+				if (audio && boom) {
+					float dist = 1.0F;
+					if (client.GetWorld()) {
+						auto lp = client.GetWorld()->GetLocalPlayer();
+						if (lp)
+							dist = (origin - lp->GetEye()).GetLength();
+					}
+					// The volume the engine gives its own grenade
+					// explosions, over a falloff that keeps the distant
+					// ones audible and the close ones louder.
+					AudioParam param;
+					param.volume = 1.5F * 6.0F / (1.0F + dist / 12.0F);
+					audio->PlayLocal(boom.GetPointerOrNull(), param);
+				}
+			}
+
+			bool BlastFlashEntity::Update(float dt) {
+				age += dt;
+				return age < 0.5F;
+			}
+
+			void BlastFlashEntity::Render3D() {
+				// Four times a rifle bullet flash, dying to nothing.
+				const float per =
+				  age >= 0.5F ? 1.0F : age / 0.5F;
+				DynamicLightParam light;
+				light.type = DynamicLightTypePoint;
+				light.origin = origin;
+				light.radius = 6.0F * (1.0F - per);
+				light.color = MakeVector3(1.0F, 0.75F, 0.4F);
+				client.GetRenderer().AddLight(light);
+			}
+		} // namespace
+
+		void Client::SpawnBlast(const Vector3& pos) {
+			SPADES_MARK_FUNCTION();
+			// The burst clouds: wider and denser than a grenade's, and
+			// they linger long after it.
+			for (int i = 0; i < 8; i++) {
+				auto ent = stmp::make_unique<SmokeSpriteEntity>(
+				  *this, MakeVector4(0.9F, 0.9F, 0.9F, 1.0F), 60.0F,
+				  SmokeSpriteEntity::Type::Explosion);
+				ent->SetTrajectory(pos, RandomUnitVector() * 1.5F, 1.0F, 0.0F);
+				ent->SetRotation(SampleRandomFloat() * kTwoPi);
+				ent->SetRadius(
+				  1.8F + SampleRandomFloat() * SampleRandomFloat() * 0.9F,
+				  4.5F, 0.2F);
+				ent->SetLifeTime(8.1F + SampleRandomFloat() * 0.4F, 0.0F, 1.5F);
+				ent->SetBlockHitAction(BlockHitAction::Ignore);
+				localEntities.emplace_back(std::move(ent));
+			}
+			// The light and the boom.
+			Handle<IAudioChunk> boom;
+			if (!IsMuted())
+				boom = audioDevice->RegisterSound(
+				  "Sounds/Weapons/Grenade/Explode1.opus");
+			localEntities.emplace_back(stmp::make_unique<BlastFlashEntity>(
+			  *this, audioDevice.GetPointerOrNull(), std::move(boom), pos));
+			// The dark smoke that stays about 2.5 s and climbs about 7
+			// blocks, as wide as the burst zone.
+			for (int i = 0; i < 6; i++) {
+				Vector3 off = RandomUnitVector();
+				off.z = 0.0F;
+				auto ent = stmp::make_unique<SmokeSpriteEntity>(
+				  *this, MakeVector4(0.18F, 0.18F, 0.18F, 0.95F), 60.0F,
+				  SmokeSpriteEntity::Type::Steady);
+				ent->SetTrajectory(pos + off * 0.4F,
+				                   MakeVector3(0.0F, 0.0F, -2.7F), 1.0F, 0.0F);
+				ent->SetRotation(SampleRandomFloat() * kTwoPi);
+				ent->SetRadius(2.2F + SampleRandomFloat() * 0.5F, 0.12F);
+				ent->SetLifeTime(2.5F + SampleRandomFloat() * 0.5F, 0.3F,
+				                   0.8F);
+				ent->SetBlockHitAction(BlockHitAction::Ignore);
+				localEntities.emplace_back(std::move(ent));
+			}
+			// The boomer's last word, kept only when its body does not
+			// burst for it: the burst of its own death, its limbs and
+			// its chunks and its blood, says the same over the boom,
+			// louder.
+			if (!(GetStoreState().received && (bool)cg_bodyBurstGore))
+				localEntities.emplace_back(stmp::make_unique<HeadBurstEntity>(
+				  *this, pos, MakeVector3(0.0F, 0.0F, -1.0F)));
+		}
+
+		namespace {
+			// The floor a crumb of a way in runs over: the nearest solid
+			// top about the height the line itself was drawn at, so the
+			// crumbs sit on the ground the waypoints cross rather than on
+			// the straight slope drawn between them - the waypoints are
+			// the turns, and the ground between turns wanders. Nothing
+			// solid near, and the line's own height stands.
+			int TrailFloor(const GameMap& map, int x, int y, int z) {
+				static const int kSweep[7] = {0, -1, 1, -2, 2, -3, 3};
+				for (int k = 0; k < 7; k++) {
+					const int b = z + kSweep[k];
+					if (b >= 0 && b < map.Depth() &&
+					    map.IsSolidWrapped(x, y, b) && !map.IsSolidWrapped(x, y, b - 1))
+						return b;
+				}
+				return z;
+			}
+		} // namespace
+
+		void Client::SetTrailPath(std::uint8_t front, const Vector3& color,
+		                          std::vector<Vector3> points) {
+			SPADES_MARK_FUNCTION();
+			if (!world)
+				return; // before the map: the server sends it again once it is in
+			const Handle<GameMap>& map = world->GetMap();
+			SPAssert(map);
+			if (!map)
+				return;
+
+			// A way somewhere else than the world says nothing here:
+			// dropped whole rather than drawn folded back onto the map.
+			for (const Vector3& p : points) {
+				if (p.x < 0.0F || p.y < 0.0F || p.z < 0.0F ||
+				    p.x >= static_cast<float>(map->Width()) ||
+				    p.y >= static_cast<float>(map->Height()) ||
+				    p.z >= static_cast<float>(map->Depth()))
+					return;
+			}
+
+			// The waypoints opened into crumbs, a block of way between
+			// them: the crumb a defender reads the line by is the dot at
+			// the eye's own spacing, and the way is never a gap if a
+			// client's setting did not thin it. The two ends of the way
+			// are crumbs whatever the length falls on: the walk's own
+			// front and the core's doorstep both stand marked even on a
+			// short line that rounds to no crumb between them.
+			std::vector<Vector3> crumbs;
+			crumbs.reserve(points.size() * 2 + 2);
+
+			// One way's own side of the road. Ways that share a corridor -
+			// fronts funnelled through one door, most of their way walked
+			// over another's - would lay crumb upon crumb, the one colour
+			// lost in the other along all they share. So every front
+			// keeps its own side of the way it walks, held off the line's
+			// centre by its own hand's breadth, always the same side, the
+			// left of the walk: two fronts through one corridor stand as
+			// two lines side by side, both read, and where ways cross they
+			// cross with a knot of two colours, not a fight over pixels.
+			// The breadth comes off the front's own number, no two fronts
+			// on one side among the first dozen, and the half-block into
+			// the cell keeps the crumb of a way near its centre to its
+			// own column's floor (the cell it is pushed into is the cell
+			// it stands on).
+			const float lat =
+			  (static_cast<float>((front * 7U + 3U) % 13U) - 6.0F) * 0.1F;
+			// The side kept over one stretch of the way: always the left
+			// of the walk, so bends bend the side with them and a side
+			// stays a side however the way turns. A stretch walked
+			// straight up or down has no left worth speaking of; its
+			// crumbs keep the centre, one way through a stair standing
+			// where the stair is.
+			auto sideOf = [&](const Vector3& a, const Vector3& b, float& px, float& py) {
+				px = a.y - b.y;
+				py = b.x - a.x;
+				const float len = std::sqrt(px * px + py * py);
+				if (len < 1.0e-4F) {
+					px = 0.0F;
+					py = 0.0F;
+					return;
+				}
+				const float k = lat / len;
+				px *= k;
+				py *= k;
+			};
+			auto add = [&](const Vector3& c, float px, float py) {
+				const int x = static_cast<int>(c.x + px);
+				const int y = static_cast<int>(c.y + py);
+				const int z = TrailFloor(*map, x, y, static_cast<int>(c.z + 0.5F));
+				// A half-block into the cell, a little above the floor:
+				// the crumb stands on the way it marks, half in it, not
+				// buried in the ground it runs over.
+				crumbs.push_back(MakeVector3(c.x + px + 0.5F, c.y + py + 0.5F,
+				                             static_cast<float>(z) - 0.35F));
+			};
+			if (!points.empty()) {
+				if (points.size() > 1) {
+					float px, py;
+					// The two ends of the way are crumbs whatever the
+					// length falls on: the walk's own front and the
+					// core's doorstep both stand marked even on a short
+					// line that rounds to no crumb between them.
+					sideOf(points[0], points[1], px, py);
+					add(points.front(), px, py);
+					// Where the next crumb falls, in blocks of the way
+					// walked since the last one.
+					float toNext = 1.0F;
+					for (size_t s = 0; s + 1 < points.size(); s++) {
+						const Vector3& a = points[s];
+						const Vector3& b = points[s + 1];
+						const float seg = (b - a).GetLength();
+						sideOf(a, b, px, py);
+						float walked = 0.0F;
+						while (walked + toNext <= seg) {
+							walked += toNext;
+							toNext = 1.0F;
+							add(a + (b - a) * (walked / seg), px, py);
+						}
+						toNext -= seg - walked;
+						// A float's own dust, after a hundred turns of the
+						// way: a step that lands a hair before the last
+						// crumb would draw its crumb before the walk's
+						// own line, back along the way it came.
+						if (toNext < 0.0F)
+							toNext = 0.0F;
+					}
+					sideOf(points[points.size() - 2], points.back(), px, py);
+					add(points.back(), px, py);
+				} else {
+					// A way stood on one spot: no walk, no side to keep.
+					add(points.front(), 0.0F, 0.0F);
+				}
+			}
+			if (crumbs.empty())
+				trails.Forget(front);
+			else
+				trails.SetPath(front, color, std::move(crumbs));
 		}
 
 		void Client::KickCamera(float strength) {

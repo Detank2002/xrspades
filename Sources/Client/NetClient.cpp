@@ -42,6 +42,7 @@
 #include "Teamplay.h"
 #include "PlayerOutfit.h"
 #include "PieMenuView.h"
+#include "SentryEntity.h"
 #include "Weapon.h"
 #include "World.h"
 #include <Core/CP437.h>
@@ -1265,6 +1266,13 @@ namespace spades {
 						float fuse = r.ReadFloat();
 						Vector3 pos = r.ReadVector3();
 						Vector3 vel = r.ReadVector3();
+						// A fuse below zero is the RPG's rocket: no
+						// grenade enters the world, the flying round is
+						// drawn instead.
+						if (fuse < 0.0F) {
+							client->SpawnNetRocket(pos, vel.Normalize());
+							break;
+						}
 						Grenade* g = new Grenade(*GetWorld(), pId, pos, vel, fuse);
 						GetWorld()->AddGrenade(std::unique_ptr<Grenade>{g});
 					}
@@ -1427,7 +1435,9 @@ namespace spades {
 						} else {
 							GetWorld()->CreateBlock(pos, p->GetBlockColor());
 							if (!GetWorld()->GetMap()->IsSolidWrapped(pos.x, pos.y, pos.z)) {
-								if (!p->IsEditing())
+								// The Tower Defense range spends no block on a
+								// placement: the count stands at fifty.
+								if (!p->IsEditing() && !client->GetStoreState().received)
 									p->UseBlocks(1);
 								if (p->IsLocalPlayer())
 									client->RegisterPlacedBlocks(1);
@@ -1452,8 +1462,20 @@ namespace spades {
 					} else if (action == BlockActionGrenade) {
 						for (int x = -1; x <= 1; x++)
 						for (int y = -1; y <= 1; y++)
-						for (int z = -1; z <= 1; z++)
+						for (int z = -1; z <= 1; z++) {
+							// The world's floor is never taken: the cube a
+							// grenade unmakes holds above the bedrock.
+							if (pos.z + z >= GetWorld()->GetMap()->GroundDepth())
+								continue;
+							// The marker's ground is never taken either: the
+							// server holds the sphere around the core off every
+							// blast, and the client's own prediction holds the
+							// same word.
+							if (client->GetStoreState().core_zone(
+							      pos.x + x, pos.y + y, pos.z + z))
+								continue;
 							cells.push_back(MakeIntVector3(pos.x + x, pos.y + y, pos.z + z));
+						}
 						GetWorld()->DestroyBlock(cells, p && p->IsEditing());
 						client->GrenadeDestroyedBlock(pos);
 					}
@@ -1476,7 +1498,9 @@ namespace spades {
 
 					if (p) {
 						int blocks = static_cast<int>(cells.size());
-						if (!p->IsEditing())
+						// A line of blocks spends none on the Tower Defense
+						// range either.
+						if (!p->IsEditing() && !client->GetStoreState().received)
 							p->UseBlocks(blocks);
 						if (p->IsLocalPlayer())
 							client->RegisterPlacedBlocks(blocks);
@@ -2078,6 +2102,12 @@ namespace spades {
 		void NetClient::SendChat(std::string text, bool global) {
 			SPADES_MARK_FUNCTION();
 
+			// the fork's local toy commands (/turretlocal, /sentrylocal)
+			// are not the server's to hear: drawn, spawned and fired by
+			// this client alone, never a byte on the wire
+			if (client && SentryEntity::TryLocalCommand(*client, text))
+				return;
+
 			NetPacketWriter w(PacketTypeChatMessage);
 			w.WriteByte((uint8_t)GetLocalPlayer().GetId());
 			w.WriteByte((uint8_t)(global ? 0 : 1));
@@ -2088,6 +2118,11 @@ namespace spades {
 
 		void NetClient::SendChatUTF8(const std::string& text, bool global) {
 			SPADES_MARK_FUNCTION();
+
+			// the local toy commands stay local here too, whatever their
+			// colour codes
+			if (client && SentryEntity::TryLocalCommand(*client, text))
+				return;
 
 			// Only printable ASCII reads the same in CP437 and UTF-8: a control byte
 			// is a symbol in CP437 but a colour code in UTF-8, so a line holding one

@@ -115,6 +115,57 @@ prompt; newer ones show them and a See all changes button for the rest.
 - Fixed: in VR, a setup that had foveated rendering shifting its detail with the load now stays steady
 - Fixed: in VR on Quest, the sky and far blocks are no longer black with Volumetric Fog on
 
+## 0.3.9
+
+- New: the Boomer wears its own skin - a dark orange bladder whose
+  skull pulses quicker as its fuse burns down
+- New: a second before the Spitter spits, green drops burst off its
+  head, and its spitball trails green as it flies
+- New: close to a living player the Boomer chases them instead of
+  marching on the core
+- Improved: every Leaper walks its own chase - a flight to its perch,
+  a coil, and a pounce that homes in the air
+- Improved: a hunt that loses its player hands its hunter to the road
+  to the core, and the chase comes back when the field reads again
+- Fixed: acid pools melt no deeper than the bedrock - the floor of the
+  world stays whole
+
+## 0.3.8
+
+- New: the horde plays the map you pick - a button under Tower Defense
+  lists every map in the Maps folder, the mode's own course at the top
+- New: the /va chat command in a horde world says which map stands next -
+  leave to the menu and press Tower Defense to play it
+- Improved: the walking dead cross the land better - vaulting low walls,
+  climbing the stairs they dig, detouring around a maze that beats them
+- New: a map's settings file can name its zombie fronts and its core, and
+  put each named spawn site on the floor it asks for
+- Fixed: those settings read again, written plain or quoted, and the
+  server says which map and settings it opened
+- New: the Zedcred runs the horde - kills, waves and sentries pay, the
+  prices ride the tuning file, and the purse opens at three turrets
+- New: five brutes walk the waves, each in its own skin and manner - the
+  Tank swells a wave at a time, the Healer mends its pack, the Spitter
+  lobs its acid pool, the Breaker digs its straight road to the core,
+  the Leaper walks with the pack but pounces the player it hunts
+- New: the Boomer waddles in bladders that blink ever faster and burst
+  like a grenade, and its burst wears a headshot geyser
+- New: every brute stands marked in its own colour, seen through walls
+- New: the record book keeps each map its best wave, and the menu names
+  the map and its record
+- Changed: the waves never end - they climb five by five, then ten, then
+  twenty, and the brutes ride the climb
+
+## 0.3.7
+
+- New: the wheel opens on a Defence page - build, aim and clear the turrets
+  and the wave from the middle mouse button (horde)
+- Improved: the dead honour the maze - a pack sealed at a wall digs a way
+  through it at last, stairs and all, and only when its legs fail it
+- New: the campaign has an end - the last wave cleared, at twenty, is the
+  victory
+- New: zombies read as gray circles on the maps, whichever side watches
+
 ## 0.3.6
 
 - New: a headshot kill bursts the skull into pieces (Options, Effects to turn it off)

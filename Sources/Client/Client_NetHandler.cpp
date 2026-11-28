@@ -27,7 +27,9 @@
 #include <Core/Strings.h>
 
 #include "IAudioChunk.h"
+#include "RocketEntity.h"
 #include "IAudioDevice.h"
+#include "Weapon.h"
 
 #include "CTFGameMode.h"
 #include "GameProperties.h"
@@ -114,6 +116,17 @@ namespace spades {
 			inGameLimbo = false;
 			limboMenu->Close();
 			limboTeamChosen = true;
+
+			// The gun this body was made holding climbs to the rung the
+			// store's word says (a respawn makes the weapon anew, its
+			// tier with it).
+			ApplyWeaponTiers();
+			// The climb changed the weapon's own clip and stock mid-body
+			// (the body was made with the stock rung's magazine loaded):
+			// read the bought rung's own numbers back into both, or a
+			// respawn starts the round with the stock gun's rounds in a
+			// bought gun's magazine.
+			p.GetWeapon().Reset();
 		}
 
 		void Client::JoinedGame() {
@@ -382,6 +395,23 @@ namespace spades {
 
 				EmitBlockDestroyFragments(MakeIntVector3(x, y, z));
 			}
+		}
+
+		void Client::SpawnNetRocket(Vector3 pos, Vector3 dir) {
+			SPADES_MARK_FUNCTION();
+
+			Handle<IAudioChunk> woosh;
+			if (!IsMuted()) {
+				woosh = audioDevice->RegisterSound(
+					"WeaponMods/GrenadeRPG/Sounds/Weapons/Rifle/woosh.opus");
+				// the distant crack of the launch, where the tube was
+				Handle<IAudioChunk> fire = audioDevice->RegisterSound(
+					"WeaponMods/GrenadeRPG/Sounds/Weapons/Rifle/FireFar.opus");
+				audioDevice->Play(fire.GetPointerOrNull(), pos, AudioParam());
+			}
+			AddLocalEntity(stmp::make_unique<RocketEntity>(
+				*this, IsMuted() ? nullptr : audioDevice.GetPointerOrNull(),
+				std::move(woosh), pos, dir.Normalize()));
 		}
 
 		void Client::PlayerLeaving(Player& p) {

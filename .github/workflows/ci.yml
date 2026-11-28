@@ -1,13 +1,22 @@
 name: CI
 # Every push to xrspades and every pull request into it builds every platform
 # and runs the tests; nothing is published. release.yml calls this same workflow
-# with a version, then publishes what it built (see there).
+# with a version, then publishes what it built (see there). A hand dispatch
+# may ask for the focused build instead: the Guard with Linux x64 and
+# Windows x64 alone, the other platform jobs waiting for the release that
+# asks for them.
 on:
   push:
     branches: [xrspades]
   pull_request:
     branches: [xrspades]
   workflow_dispatch:
+    inputs:
+      focused:
+        description: "Focused: only the Guard, Linux x64 and Windows x64 run"
+        type: boolean
+        required: false
+        default: false
   workflow_call:
     inputs:
       version:
@@ -15,6 +24,11 @@ on:
         type: string
         required: false
         default: ""
+      focused:
+        description: "Focused: only the Guard, Linux x64 and Windows x64 run"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   guard:
@@ -40,6 +54,7 @@ jobs:
 
   build-windows-x86:
     name: Build (Windows x86)
+    if: ${{ !inputs.focused }}
     runs-on: windows-2022
     steps:
       - name: Checkout
@@ -154,6 +169,7 @@ jobs:
   # players' VR (vr_presence), which the vr_puppet_pose test checks there.
   build-macos:
     name: Build (macOS ${{ matrix.name }}, no VR) and test
+    if: ${{ !inputs.focused }}
     strategy:
       fail-fast: false
       matrix:
@@ -222,6 +238,7 @@ jobs:
 
   build-linux-nix:
     name: Build (Linux + Nix)
+    if: ${{ !inputs.focused }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
@@ -310,9 +327,10 @@ jobs:
       - name: Add the game data
         run: |
           mkdir -p build/bin/Resources
-          for pak in pak002-Base pak005-Models pak010-BaseSkin pak050-Locales pak999-References; do
+          for pak in pak002-Base pak005-Models pak006-TowerDefense pak010-BaseSkin pak050-Locales pak999-References; do
             cp "build/Resources/$pak.pak" build/bin/Resources/
           done
+          cp towerdefense.toml build/bin/
           ls -la build/bin build/bin/Resources
 
       - name: Upload artifacts
@@ -326,6 +344,7 @@ jobs:
   # not portable to ARM Linux (x86-only code, desktop GL) fails here.
   build-linux-arm64:
     name: Check (Linux arm64, Vulkan + OpenXR, no OpenGL)
+    if: ${{ !inputs.focused }}
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
@@ -367,6 +386,7 @@ jobs:
   # place; anything else signs with a throwaway key, for testing only.
   build-android:
     name: Build (Quest 3 APK)
+    if: ${{ !inputs.focused }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout

@@ -87,6 +87,17 @@ namespace spades {
 
 			WeaponType weaponType;
 			std::unique_ptr<Weapon> weapon;
+			// The Tower Defense spade's ladder, set by the client from
+			// the store's word (the local player only): the reach of
+			// the swing, and how hard it bites a block. 1.0F for
+			// the stock spade and every world the store never stood in.
+			float spadeRangeScale = 1.0F;
+			float spadeDamageScale = 1.0F;
+			// True when the local player wears the RPG dress on the
+			// grenade tool: the tool's press and release fire a
+			// rocket instead of throwing a grenade. Set from the
+			// store's word with the tiers, in ApplyWeaponTiers.
+			bool rocketLauncher = false;
 			int playerId;
 			int teamId;
 
@@ -165,6 +176,17 @@ namespace spades {
 			int GetId() { return playerId; }
 			Weapon& GetWeapon();
 			WeaponType GetWeaponType() { return weaponType; }
+			/** The Tower Defense spade's ladder, set by the client from
+			 * the store's word (the local player only): the reach of
+			 * the swing and how hard it bites a block, as shares
+			 * of the stock spade's. */
+			void SetSpadeScales(float range, float damage) {
+				spadeRangeScale = range;
+				spadeDamageScale = damage;
+			}
+			/** True when this player's grenade tool is dressed as the
+			 * RPG and fires rockets (the local player only). */
+			void SetRocketLauncher(bool rocket) { rocketLauncher = rocket; }
 			int GetTeamId() { return teamId; }
 			bool IsTeammate(Player& p) { return teamId == p.teamId; }
 			bool IsSpectator() { return teamId >= 2; }
@@ -200,12 +222,18 @@ namespace spades {
 			// ammo counts
 			int GetNumBlocks() { return blockStocks; }
 			int GetNumGrenades() { return grenades; }
+			/** The server's own word for the pouch, said without a
+			 * restock's side effects. */
+			void SetNumGrenades(int n) { grenades = std::max(0, n); }
 			void Reload();
 			void ReloadDone(int clip, int stock);
 			void Restock(int hp, int grenades, int blocks);
 			void Restock();
 			void GotBlock() { blockStocks = std::min(blockStocks + 1, 50); }
 			void UseBlocks(int c) { blockStocks = std::max(blockStocks - c, 0); }
+			// The Tower Defense range stands its builders in a standing
+			// fifty: the store's first word tops the local count back up.
+			void RefillBlocks() { blockStocks = std::max(blockStocks, 50); }
 
 			bool IsToolSpade() { return tool == ToolSpade; }
 			bool IsToolBlock() { return tool == ToolBlock; }

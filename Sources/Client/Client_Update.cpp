@@ -22,8 +22,10 @@
 #include <cmath>
 
 #include "Client.h"
+#include "RocketEntity.h"
 
 #include <Core/ConcurrentDispatch.h>
+#include <Core/FileManager.h>
 #include <Core/Settings.h>
 #include <Core/Strings.h>
 
@@ -38,6 +40,7 @@
 #include "ClientUI.h"
 #include "Corpse.h"
 #include "FallingBlock.h"
+#include "BodyBurstEntity.h"
 #include "HeadBurstEntity.h"
 #include "HurtRingView.h"
 #include "ILocalEntity.h"
@@ -54,7 +57,9 @@
 #include "NetClient.h"
 #include <Gui/TrainingHost.h>
 
+SPADES_SETTING(cg_bodyBurstGore);
 SPADES_SETTING(cg_headshotGore);
+SPADES_SETTING(cg_spitDebug);
 
 DEFINE_SPADES_SETTING(cg_ragdoll, "1");
 SPADES_SETTING(cg_blood);
@@ -1143,8 +1148,17 @@ namespace spades {
 			SPADES_MARK_FUNCTION();
 
 			if (!IsMuted()) {
+				// The RPG's cook is a raised tube and a closed sight, not
+				// a pulled pin: the dress pak's own raise sample speaks.
+				const bool rocket = p.IsLocalPlayer() && WeaponDressTierFor(4) >= 1;
+				// RegisterSound takes its path as a plain C string, so the
+				// dress's own path is said through the string's own word.
+				const std::string raised =
+					WeaponDressPath(4, "Sounds/Weapons/Rifle/RaiseLocal.opus");
 				Handle<IAudioChunk> c =
-					audioDevice->RegisterSound("Sounds/Weapons/Grenade/Fire.opus");
+					audioDevice->RegisterSound(rocket
+						? raised.c_str()
+						: "Sounds/Weapons/Grenade/Fire.opus");
 				if (IsPlayerInFirstPerson(p.GetId())) {
 					audioDevice->PlayLocal(c.GetPointerOrNull(),
 						MakeVector3(0.4F, -0.3F, 0.5F), AudioParam());
@@ -1169,8 +1183,24 @@ namespace spades {
 			stmp::optional<const Grenade&> g) {
 			SPADES_MARK_FUNCTION();
 
-			if (g && p.IsLocalPlayer())
+			if (g && p.IsLocalPlayer()) {
 				activeNet->SendGrenade(*g);
+				// A fuse below zero is the RPG's rocket: the word is
+				// already on the wire, and the flying round is drawn
+				// here. The throw's own sound stays in the tube: the
+				// skin plays the launch, the rocket its flight.
+				if (g->GetFuse() < 0.0F) {
+					Handle<IAudioChunk> woosh;
+					if (!IsMuted())
+						woosh = audioDevice->RegisterSound(
+							"WeaponMods/GrenadeRPG/Sounds/Weapons/Rifle/woosh.opus");
+					AddLocalEntity(stmp::make_unique<RocketEntity>(
+						*this, IsMuted() ? nullptr : audioDevice.GetPointerOrNull(),
+						std::move(woosh), g->GetPosition(),
+						g->GetVelocity().Normalize()));
+					return;
+				}
+			}
 
 			if (!IsMuted()) {
 				Handle<IAudioChunk> c =
@@ -1199,8 +1229,11 @@ namespace spades {
 			SPADES_MARK_FUNCTION();
 
 			if (!IsMuted()) {
+				const std::string missSound = p.IsLocalPlayer()
+					? WeaponDressPath(3, "Sounds/Weapons/Spade/Miss.opus")
+					: "Sounds/Weapons/Spade/Miss.opus";
 				Handle<IAudioChunk> c =
-					audioDevice->RegisterSound("Sounds/Weapons/Spade/Miss.opus");
+					audioDevice->RegisterSound(missSound.c_str());
 				if (IsPlayerInFirstPerson(p.GetId())) {
 					audioDevice->PlayLocal(c.GetPointerOrNull(),
 						MakeVector3(0.2F, -0.1F, 0.7F), AudioParam());
@@ -1267,9 +1300,13 @@ namespace spades {
 				col = map->GetColorJit(col); // randomize color
 				EmitBlockFragments(shiftedHitPos, IntVectorFromColor(col));
 
+				const char* blockStock = "Sounds/Weapons/Spade/HitBlock.opus";
+				const std::string blockSound = p.IsLocalPlayer()
+					? WeaponDressPath(3, blockStock)
+					: std::string(blockStock);
 				if (!IsMuted()) {
 					Handle<IAudioChunk> c =
-					  audioDevice->RegisterSound("Sounds/Weapons/Spade/HitBlock.opus");
+					  audioDevice->RegisterSound(blockSound.c_str());
 					audioDevice->Play(c.GetPointerOrNull(), shiftedHitPos, AudioParam());
 
 					// register sound
@@ -1570,8 +1607,27 @@ namespace spades {
 				AddLocalEntity(stmp::make_unique<HeadBurstEntity>(*this, victim.GetEye(), dir));
 			}
 
-			// create ragdoll corpse
-			if (cg_ragdoll) {
+				// An explosion in this mode takes the whole body apart: the
+			// four limbs fly with fat chunks of the rest, and no ragdoll
+			// stands in for the torso and the head it blew away.
+			const bool bodyBurst = kt == KillTypeGrenade &&
+			                       GetStoreState().received &&
+			                       (bool)cg_bodyBurstGore;
+			if (bodyBurst) {
+				Vector3 dir;
+				if (killerId != victimId) {
+					dir = (victim.GetPosition() - killer.GetPosition()).Normalize();
+				} else {
+					// the boomer dies on its own blast: a straight-up geyser
+					dir = MakeVector3(0, 0, -1);
+				}
+				AddLocalEntity(stmp::make_unique<BodyBurstEntity>(
+				  *this, victim, victim.GetOrigin() + MakeVector3(0, 0, -0.9F),
+				  dir, &playerOutfits));
+			}
+
+		// create ragdoll corpse
+			if (cg_ragdoll && !bodyBurst) {
 				auto corp = stmp::make_unique<Corpse>(*renderer, *map, victim, isChristmasOn, &playerOutfits);
 
 				// skull burst: hide the ragdoll's head
@@ -1695,9 +1751,14 @@ namespace spades {
 				Handle<IAudioChunk> c;
 				AudioParam param;
 
+				const char* meleeStock = "Sounds/Weapons/Spade/HitPlayer.opus";
+				const std::string meleeSound = isMeleeHit && byLocalPlayer
+					? WeaponDressPath(3, meleeStock)
+					: std::string(meleeStock);
+
 				if (!IsMuted()) {
 					if (isMeleeHit) {
-						c = audioDevice->RegisterSound("Sounds/Weapons/Spade/HitPlayer.opus");
+						c = audioDevice->RegisterSound(meleeSound.c_str());
 						audioDevice->Play(c.GetPointerOrNull(), hitPos, param);
 					} else {
 						static constexpr std::array<const char*, 3> snds = {
@@ -1969,6 +2030,59 @@ namespace spades {
 
 		void Client::GrenadeExploded(const Grenade& g) {
 			SPADES_MARK_FUNCTION();
+
+			// A grenade flown in a set of its own lands as its spit:
+			// the pool the server paints is the whole landing, and
+			// the pow of steel would speak for powder that is not
+			// there. AddGrenadeToScene flies the same skin.
+			const int throwerId = g.GetOwnerId();
+			if (throwerId >= 0 &&
+			    static_cast<size_t>(throwerId) < clientPlayers.size()) {
+				ClientPlayer *thrower =
+				  clientPlayers[static_cast<size_t>(throwerId)]
+				    .GetPointerOrNull();
+				if (thrower) {
+					const std::string set = thrower->OutfitFolder();
+					if (!set.empty()) {
+						static const char *const kPaths[2] = {
+						  "Tool/Grenade.kv6", "Grenade/Grenade.kv6"};
+						for (const char *part : kPaths) {
+							if (FileManager::FileExists((set + part).c_str())) {
+								// The spit lands quiet, save the impact sound its
+								// own pak laid at Sounds/Weapons/Grenade: the
+								// splash belongs to the set as much as the skin.
+								// The voice is a plain local ride: a spatial one
+								// off a blockface reads muffled at an ear this
+								// engine keeps behind its screens, so the fall
+								// with distance is held by hand, over the blocks
+								// between the ear and the pool - loudly under
+								// the eye, a whisper across the field, and never
+								// eaten by the walls.
+								if (!IsMuted() && FileManager::FileExists(
+								      "Sounds/Weapons/Grenade/"
+								      "AcidSpitImpact.opus")) {
+									Handle<IAudioChunk> c =
+									  audioDevice->RegisterSound(
+									    "Sounds/Weapons/Grenade/"
+									    "AcidSpitImpact.opus");
+									const float blocks =
+									  (lastSceneDef.viewOrigin - g.GetPosition())
+									    .GetLength();
+									AudioParam param;
+									param.volume =
+									  6.0F / (1.0F + blocks / 10.0F);
+									audioDevice->PlayLocal(c.GetPointerOrNull(),
+									                       param);
+								}
+								if (cg_spitDebug)
+									SPLog("nade of %d landed quiet, a spit",
+									      throwerId);
+								return; // the spit lands quietly
+							}
+						}
+					}
+				}
+			}
 
 			const auto& origin = g.GetPosition();
 

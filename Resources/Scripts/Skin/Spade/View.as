@@ -38,6 +38,7 @@ namespace spades {
 		float ActionProgress { set { actionProgress = value; } }
 
 		private Model@ spadeModel;
+		private Model@ pickaxeModel;
 		private Model@ model;
 
 		// The keyframed action poses are fed through springs (the rifle does the
@@ -53,7 +54,10 @@ namespace spades {
 		ViewSpadeSkin(Renderer@ r, AudioDevice@ dev) {
 			super(r, dev);
 
-			@spadeModel = renderer.RegisterModel("Models/Weapons/Spade/Spade.kv6");
+			// the tower defense dresses redirect the stock models through
+			// WeaponDressPath; every other setup stays on the shipped one
+			@spadeModel = renderer.RegisterModel(WeaponDressPath(3, "Models/Weapons/Spade/Spade.kv6"));
+			@pickaxeModel = renderer.RegisterModel(WeaponDressPath(3, "Models/Weapons/Spade/Pickaxe.kv6"));
 			@model = @spadeModel;
 		}
 
@@ -66,7 +70,7 @@ namespace spades {
 			float t = 1.0F - actionProgress;
 
 			if (bashing) {
-				@model = @spadeModel; // the spade for a hit too
+				@model = @pickaxeModel; // the pickaxe for a hit
 				bashTarget = SmoothStep(t);
 
 				// The hit happens when the cooldown restarts: either the action just

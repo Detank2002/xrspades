@@ -232,4 +232,211 @@ void write_daytime_sky(ByteWriter& bw, uint16_t time) {
     bw.write_u8(0); bw.write_u8(0);        // weather: none in version 1
 }
 
+void write_team_outfit(ByteWriter& bw, uint8_t team, uint8_t outfit) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::PlayerOutfit));
+    bw.write_u8(static_cast<uint8_t>(OutfitSub::TeamOutfits));
+    bw.write_u8(team);
+    bw.write_u8(outfit);
+}
+
+void write_set_outfit(ByteWriter& bw, uint8_t player, uint8_t outfit) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::PlayerOutfit));
+    bw.write_u8(static_cast<uint8_t>(OutfitSub::SetOutfit));
+    bw.write_u8(player);
+    bw.write_u8(outfit);
+}
+
+void write_smoke(ByteWriter& bw, uint8_t id, SmokeStyle style, const Vec3& origin,
+                 uint8_t radius, uint8_t r, uint8_t g, uint8_t b, uint8_t opacity,
+                 uint16_t duration_tenths, uint8_t fade_tenths, uint8_t flags) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::Smoke));
+    bw.write_u8(static_cast<uint8_t>(SmokeSub::Smoke));
+    bw.write_u8(id);
+    bw.write_u8(static_cast<uint8_t>(style));
+    bw.write_vec(origin);
+    bw.write_u8(radius);
+    bw.write_u8(r);
+    bw.write_u8(g);
+    bw.write_u8(b);
+    bw.write_u8(opacity);
+    bw.write_u16(duration_tenths);
+    bw.write_u8(fade_tenths);
+    bw.write_u8(flags);
+}
+
+void write_smoke_clear(ByteWriter& bw, uint8_t id) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::Smoke));
+    bw.write_u8(static_cast<uint8_t>(SmokeSub::Clear));
+    bw.write_u8(id);
+}
+
+void write_path(ByteWriter& bw, uint8_t id, uint8_t r, uint8_t g, uint8_t b,
+                const std::vector<PathPoint>& points) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::Smoke));
+    bw.write_u8(static_cast<uint8_t>(SmokeSub::Path));
+    bw.write_u8(id);
+    bw.write_u8(r);
+    bw.write_u8(g);
+    bw.write_u8(b);
+    // A count past the client's byte is the count it is sent as: the path
+    // simply ends where its points ran out, still a line to somewhere.
+    const uint8_t count = static_cast<uint8_t>(
+        points.size() > 255 ? 255 : points.size());
+    bw.write_u8(count);
+    if (count == 0) return;
+    bw.write_u16(static_cast<uint16_t>(points[0].x));
+    bw.write_u16(static_cast<uint16_t>(points[0].y));
+    bw.write_u8(points[0].z);
+    for (uint8_t k = 1; k < count; ++k) {
+        // The deltas are signed in the wire's byte; the caller cuts its
+        // runs to spans, and a span that slips past the byte is clamped
+        // here rather than wrapped: the line bends to where it can be
+        // said, not somewhere a wrap would put it.
+        auto cut = [](int d) -> int8_t {
+            if (d > 127) d = 127;
+            if (d < -128) d = -128;
+            return static_cast<int8_t>(d);
+        };
+        bw.write_i8(cut(points[k].x - points[k - 1].x));
+        bw.write_i8(cut(points[k].y - points[k - 1].y));
+        bw.write_i8(cut(points[k].z - points[k - 1].z));
+    }
+}
+
+void write_turrets(ByteWriter& bw, const std::vector<TurretState>& turrets) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::Smoke));
+    bw.write_u8(static_cast<uint8_t>(SmokeSub::Turret));
+    // A pack past the byte is the pack it is sent as: a world with that
+    // many guns defending one core has other problems first.
+    const uint8_t count = static_cast<uint8_t>(turrets.size() > 255 ? 255 : turrets.size());
+    bw.write_u8(count);
+    for (uint8_t k = 0; k < count; ++k) {
+        const TurretState& t = turrets[k];
+        bw.write_u8(t.id);
+        bw.write_u8(t.level);
+        bw.write_u16(static_cast<uint16_t>(t.x));
+        bw.write_u16(static_cast<uint16_t>(t.y));
+        bw.write_u8(t.z);
+        bw.write_u8(t.locked);
+        bw.write_u8(t.yaw_pack);
+        bw.write_u8(t.pitch_pack);
+    }
+}
+
+void write_turret_shot(ByteWriter& bw, uint8_t turret_id) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::Smoke));
+    bw.write_u8(static_cast<uint8_t>(SmokeSub::TurretShot));
+    bw.write_u8(turret_id);
+}
+
+void write_core(ByteWriter& bw, uint16_t x, uint16_t y, uint8_t z) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::Smoke));
+    bw.write_u8(static_cast<uint8_t>(SmokeSub::Core));
+    bw.write_u16(x);
+    bw.write_u16(y);
+    bw.write_u8(z);
+}
+
+void write_store(ByteWriter& bw, const StoreState& state) {
+    bw.write_u8(static_cast<uint8_t>(PacketId::Smoke));
+    bw.write_u8(static_cast<uint8_t>(SmokeSub::Store));
+    bw.write_u16(state.zedcred);
+    bw.write_u8(state.wave);
+    bw.write_u8(state.phase);
+    bw.write_u16(state.core_hp);
+    bw.write_u16(state.core_max_hp);
+    bw.write_u8(state.weapon);
+    bw.write_u8(state.grenades);
+    bw.write_u8(state.blocks);
+    const uint8_t count = state.owned_count > 64 ? 64 : state.owned_count;
+    bw.write_u8(count);
+    for (uint8_t k = 0; k < count; ++k) {
+        bw.write_u8(state.owned[k].index);
+        bw.write_u8(state.owned[k].level);
+    }
+    // The prices the purse pays, one pair a card: the host can reprice
+    // the catalogue in its own towerdefense.toml, so the wire says what
+    // the server charges and the shelf can never show another number.
+    // The count rides even when it is none, that the word may never be
+    // read two ways - and the core's own cell rides behind it, that
+    // the client may hold the marker's ground against its predictions.
+    bw.write_u8(state.price_count);
+    for (uint8_t k = 0; k < state.price_count; ++k) {
+        bw.write_u8(state.priced[k].index);
+        bw.write_u16(state.priced[k].price);
+    }
+    bw.write_u16(state.core_x);
+    bw.write_u16(state.core_y);
+    bw.write_u8(state.core_top_z);
+    bw.write_u8(state.core_ground_z);
+}
+
+bool read_store(ByteReader& br, StoreState& state) {
+    // The whole packet as write_store wrote it: the Smoke id and its Store
+    // sub, then the body. The client has already eaten the id and the sub
+    // byte by the time it reaches the store, which is why the body has a
+    // reader of its own - read_store_body, below.
+    if (!br.can_read(2)) return false;
+    if (br.read_u8() != static_cast<uint8_t>(PacketId::Smoke)) return false;
+    if (br.read_u8() != static_cast<uint8_t>(SmokeSub::Store)) return false;
+    return read_store_body(br, state);
+}
+
+bool read_store_body(ByteReader& br, StoreState& state) {
+    // zedcred, wave, phase, core hp/max, gun, grenades, blocks, then the
+    // count: twelve bytes, and every one of them asked for before it is
+    // read rather than read and hoped. Twelve bytes with no pairs, the
+    // prices' own count and the core's own cell behind them, so a fresh
+    // player who owns nothing is a Store of twenty, and it is the
+    // first thing a new world ever says.
+    if (!br.can_read(12)) return false;
+    const uint16_t zedcred = br.read_u16();
+    const uint8_t wave = br.read_u8();
+    const uint8_t phase = br.read_u8();
+    const uint16_t core_hp = br.read_u16();
+    const uint16_t core_max = br.read_u16();
+    const uint8_t weapon = br.read_u8();
+    const uint8_t grenades = br.read_u8();
+    const uint8_t blocks = br.read_u8();
+    const int count = br.read_u8();
+    // Two bytes a pair, and only as many as the table can name: a longer
+    // list is a truncation, and the reader says so rather than overrunning.
+    if (count > 64) return false;
+    if (!br.can_read(2 * static_cast<size_t>(count))) return false;
+    state = StoreState{};
+    state.zedcred = zedcred;
+    state.wave = wave;
+    state.phase = phase;
+    state.core_hp = core_hp;
+    state.core_max_hp = core_max;
+    state.weapon = weapon;
+    state.grenades = grenades;
+    state.blocks = blocks;
+    state.owned_count = static_cast<uint8_t>(count);
+    for (int k = 0; k < count; ++k) {
+        state.owned[k].index = br.read_u8();
+        state.owned[k].level = br.read_u8();
+    }
+    // The prices and the core's cell, asked for whole the same
+    // discipline as the pairs: the word is one shape, and a body that
+    // ends before any of it is refused rather than guessed at. The
+    // price count rides even when it is none; a ground of zero names
+    // a world with no core to guard.
+    if (!br.can_read(1)) return false;
+    const int prices = br.read_u8();
+    if (prices > 64) return false;
+    if (!br.can_read(3 * static_cast<size_t>(prices))) return false;
+    state.price_count = static_cast<uint8_t>(prices);
+    for (int k = 0; k < prices; ++k) {
+        state.priced[k].index = br.read_u8();
+        state.priced[k].price = br.read_u16();
+    }
+    if (!br.can_read(6)) return false;
+    state.core_x = br.read_u16();
+    state.core_y = br.read_u16();
+    state.core_top_z = br.read_u8();
+    state.core_ground_z = br.read_u8();
+    return true;
+}
+
 } // namespace proto

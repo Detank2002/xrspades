@@ -31,7 +31,7 @@ namespace spades {
 		ViewGrenadeSkin(Renderer@ r, AudioDevice@ dev) {
 			super(r, dev);
 
-			@model = renderer.RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
+			@model = renderer.RegisterModel(WeaponDressPath(4, "Models/Weapons/Grenade/Grenade.kv6"));
 		}
 
 		void AddToScene() {
@@ -120,7 +120,13 @@ namespace spades {
 		}
 	}
 
+	// The class the store's word picked: the RPG's own dress skin
+	// when the rocket launcher is worn (the whole View skin, its
+	// models and their transforms together), the stock grenade's
+	// otherwise.
 	IGrenadeSkin@ CreateViewGrenadeSkin(Renderer@ r, AudioDevice@ dev) {
+		if (WeaponDressTier(4) >= 1)
+			return ViewRPGSkin(r, dev);
 		return ViewGrenadeSkin(r, dev);
 	}
 }

@@ -46,6 +46,8 @@
 #include "PieMenuView.h"
 #include "PlayerOutfit.h"
 #include "Smoke.h"
+#include "StoreState.h"
+#include "Trail.h"
 #include "VRNetProtocol.h"
 #include "VRState.h"
 #include <Core/Math.h>
@@ -64,6 +66,7 @@ namespace spades {
 	namespace client {
 		class IRenderer;
 		struct SceneDefinition;
+		struct ServerTurret; // SentryEntity.h: the wire's own sentry gun
 		class GameMap;
 		class GameMapWrapper;
 		class World;
@@ -99,6 +102,8 @@ namespace spades {
 			friend class TCProgressView;
 			friend class ClientPlayer;
 			friend class ClientUI;
+			friend class SentryEntity;
+		friend class StoreWindow;
 
 			/** used to keep the input state of keypad so that
 			 * after user pressed left and right, and then
@@ -177,6 +182,15 @@ namespace spades {
 			bool readyToClose;
 			float worldSubFrame;
 
+			// The spit trail's own clock: when its next green puff may
+			// ride a flight, and the flight its NetLog last spoke of.
+			// Both belong to the game, not the process - a client born
+			// again restarts its clock at zero, and a throttle left
+			// over from the game before would hold its peace through
+			// the minutes the old one ran.
+			float nextTrailPuff = 0.0F;
+			const Grenade *spitTrailTold = nullptr;
+
 			int frameToRendererInit;
 			float timeSinceInit;
 
@@ -227,6 +241,15 @@ namespace spades {
 			// drawn with. Empty when the server does not negotiate it.
 			PlayerOutfits playerOutfits;
 			SmokeRegistry smokes;
+			// The Smoke extension's paths (version 2): the ways in this
+			// client draws on its own, a line a front.
+			TrailLayer trails;
+
+			/** The Tower Defense store's standing, as the Smoke extension's
+			 * sixth sub packet said it last: the Zedcred purse, the wave and the
+			 * core, and which upgrades this player already owns. Stays empty
+			 * (`received` false) on any server that does not speak the store. */
+			StoreState storeState;
 
 			// player state
 			PlayerInput playerInput;
@@ -699,6 +722,9 @@ namespace spades {
 			// is resolved once, here, and then stays put for as long as the menu is up.
 			/** Returns whether the menu opened. */
 			bool OpenPieMenu();
+			/** Raises the store page when the player stands by the core and
+			 * looks at it; returns whether it opened. */
+			bool OpenStoreNearCore();
 			/** Sends what a chosen slice sends. `targetPlayerId` is the player aimed
 			 * at when the menu opened, or `-1`. */
 			void CommitPieSlice(const PieSlice&, int targetPlayerId);
@@ -1331,6 +1357,67 @@ namespace spades {
 			void StartSmoke(const SmokeParams& params);
 			void ClearSmoke(int id) { smokes.Clear(id); }
 
+			/** The blast style of the Smoke extension: the rocket's own
+			 * burst, painted once at a stroke - the wide clouds, the
+			 * light with the boom riding it, the dark smoke that climbs
+			 * - not poured for a duration like the other styles. */
+			void SpawnBlast(const Vector3& pos);
+
+			/** The Smoke extension, version 2: the ways in as paths, a line a
+			 * front, drawn as crumbs on the floor by this client on its own.
+			 * The points are the server's waypoints, in world cells; the
+			 * crumbs laid along them are. Only drawn, like the smoke:
+			 * nothing else follows from them. */
+			void SetTrailPath(std::uint8_t front, const Vector3& color,
+			                  std::vector<Vector3> points);
+			void ClearTrailPath(std::uint8_t front) { trails.Forget(front); }
+
+			/** The Smoke extension, version 3: the server's sentry guns
+			 * applied whole - what the list does not name is not
+			 * standing - and the report of one of them firing, at the
+			 * tick the damage lands. Only drawn; whether the guns hit,
+			 * what they hit and when is the server's own. Defined in
+			 * SentryEntity.cpp, like StartSmoke's half of this. */
+			void ApplyTurrets(std::vector<ServerTurret> guns);
+			void ServerTurretFired(std::uint8_t id);
+
+			/** The Tower Defense store's standing applied whole: the purse, the
+			 * wave and core, and every upgrade this player owns. The store UI
+			 * reads it; the server is the only writer. Defined in Smoke.cpp,
+			 * beside the turret apply it follows. The local player's guns and
+			 * spade take their ladder rungs from it. */
+			void ApplyStoreState(const StoreState& state) {
+				storeState = state;
+				ApplyWeaponTiers();
+			}
+			const StoreState& GetStoreState() const { return storeState; }
+
+			/** The dress a gun of this player wears: the best upgrade
+			 * owned for its class, the pak folder the mod rides in,
+			 * or "" for the stock weapon. Gun 0 rifle, 1 SMG, 2
+			 * shotgun, 3 spade, 4 grenade. Defined in Client.cpp. */
+			std::string WeaponDressFor(int gun) const;
+			/** The tier of the dress a gun wears: the best owned rung
+			 * of its class's ladder, zero for the stock weapon. The
+			 * charm a gun shows is chosen by it. */
+			int WeaponDressTierFor(int gun) const;
+			/** The rung of its ladder a gun FIGHTS at: the best dress
+			 * tier owned, never below the ladder's floor of one when
+			 * the store has stood in this world (the first rung is the
+			 * class's own starting shape, free), zero for the stock
+			 * gun when it has not. The stats of each rung are the
+			 * tiers table's. Defined in Client.cpp. */
+			int WeaponGameTierFor(int gun) const;
+			/** The local player's gun in hand and spade climb to the
+			 * rungs the store's word says, their stats, reach and
+			 * recoil read from the tiers table. Called whenever the
+			 * store's word lands and whenever the local player is
+			 * made anew. Defined in Client.cpp. */
+			void ApplyWeaponTiers();
+			/** The path a dressed gun loads a file at: the dress's own file
+			 * when the pak ships one, the stock path when it does not. */
+			std::string WeaponDressPath(int gun, const char* stock) const;
+
 			/** The model sets the Player Models extension has assigned. */
 			const PlayerOutfits& GetPlayerOutfits() const { return playerOutfits; }
 			PlayerOutfits& GetPlayerOutfits() { return playerOutfits; }
@@ -1400,6 +1487,11 @@ namespace spades {
 			void LocalPlayerBrokeBlock();
 			void PlayerDiggedBlock(IntVector3);
 			void GrenadeDestroyedBlock(IntVector3);
+			/** The RPG's rocket leaving another player's tube, drawn
+			 * from the grenade packet whose fuse rides below zero. The
+			 * flying rocket is all it draws: the burst itself arrives
+			 * with the server's own word, as the grenade's does. */
+			void SpawnNetRocket(Vector3 pos, Vector3 dir);
 			void PlayerLeaving(Player&);
 			void PlayerJoinedTeam(Player&);
 			void PlayerSpawned(Player&);

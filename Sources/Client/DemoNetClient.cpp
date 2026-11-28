@@ -391,6 +391,13 @@ namespace spades {
 						float fuse = r.ReadFloat();
 						Vector3 pos = r.ReadVector3();
 						Vector3 vel = r.ReadVector3();
+						// A fuse below zero is the RPG's rocket: no
+						// grenade enters the world, the flying round is
+						// drawn instead.
+						if (fuse < 0.0F) {
+							client->SpawnNetRocket(pos, vel.Normalize());
+							break;
+						}
 						Grenade* g = new Grenade(*GetWorld(), pId, pos, vel, fuse);
 						GetWorld()->AddGrenade(std::unique_ptr<Grenade>{g});
 					}
@@ -570,8 +577,20 @@ namespace spades {
 					} else if (action == BlockActionGrenade) {
 						for (int x = -1; x <= 1; x++)
 						for (int y = -1; y <= 1; y++)
-						for (int z = -1; z <= 1; z++)
+						for (int z = -1; z <= 1; z++) {
+							// The world's floor is never taken: the cube a
+							// grenade unmakes holds above the bedrock.
+							if (pos.z + z >= GetWorld()->GetMap()->GroundDepth())
+								continue;
+							// The marker's ground is never taken either: the
+							// server holds the sphere around the core off every
+							// blast, and the client's own prediction holds the
+							// same word.
+							if (client->GetStoreState().core_zone(
+							      pos.x + x, pos.y + y, pos.z + z))
+								continue;
 							cells.push_back(MakeIntVector3(pos.x + x, pos.y + y, pos.z + z));
+						}
 						GetWorld()->DestroyBlock(cells);
 						if (!seekingMode)
 							client->GrenadeDestroyedBlock(pos);
