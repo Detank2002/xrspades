@@ -1112,7 +1112,6 @@ struct Server::Impl {
             map.to_solid_map(phys_map);
             return true;
         }
-        std::string err;
         if (!cfg.map_vxl.empty() &&
             map.load_vxl(reinterpret_cast<const uint8_t*>(cfg.map_vxl.data()), cfg.map_vxl.size(),
                          err)) {
