@@ -22,12 +22,15 @@
 #include <functional>
 #include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <sstream>
 
 #include "MainMenu.h"
 #include "MainScreenUI.h"
 #include <Client/Fonts.h>
 #include <Client/IImage.h>
 #include <Client/IRenderer.h>
+#include <Core/FileManager.h>
 #include <Core/Settings.h>
 #include <Core/ShellApi.h>
 #include <Core/Strings.h>
@@ -46,6 +49,7 @@
 #include <Gui/UI/Settings/PreferenceView.h>
 #include <Gui/UI/Widgets/DrawUtils.h>
 #include <Gui/UI/Widgets/DropDownList.h>
+#include <Gui/UI/Widgets/DropDownList.h>
 #include <Gui/UI/Widgets/Label.h>
 #include <Gui/UI/Widgets/MessageBox.h>
 #include <Gui/UI/Widgets/TextPromptScreen.h>
@@ -57,6 +61,8 @@ DEFINE_SPADES_SETTING(cg_serverlistSort, "16385");
 // For tests: start Training the first time the main menu shows, as a headset
 // with no command line has no other way to be put straight into a game.
 DEFINE_SPADES_SETTING(cg_debugStartTraining, "0");
+// For tests: start Tower Defense the first time the main menu shows.
+DEFINE_SPADES_SETTING(cg_debugStartTowerDefense, "0");
 // Aim training's gun (0 rifle, 1 SMG, 2 shotgun) and whether its targets are
 // outlined, as last picked on Training's page.
 DEFINE_SPADES_SETTING(cg_aimWeapon, "0");
@@ -938,6 +944,41 @@ namespace spades {
 			currentDemoListModel = model;
 		}
 
+		/** The short name of a map resource: no folder, no suffix. */
+		static std::string TowerDefenseMapName(const std::string& map) {
+			std::string base = map;
+			const size_t slash = base.rfind('/');
+			if (slash != std::string::npos)
+				base = base.substr(slash + 1);
+			const size_t dot = base.rfind('.');
+			if (dot != std::string::npos)
+				base = base.substr(0, dot);
+			return base;
+		}
+		/** The best wave a map stood, read from the record book the
+		    server keeps beside itself: a map and a wave on a line each.
+		    Nothing found reads as none, a missing file the same. */
+		static std::string TowerDefenseBestWave(const std::string& map) {
+			std::ifstream in("towerdefense_scores.txt");
+			if (!in)
+				return "none";
+			const std::string key = map.empty()
+			    ? "Termina_FieldsTD" : TowerDefenseMapName(map);
+			std::string line;
+			while (std::getline(in, line)) {
+				const size_t hash = line.find('#');
+				if (hash != std::string::npos)
+					line.resize(hash);
+				std::istringstream words(line);
+				std::string name;
+				int wave = -1;
+				if (words >> name >> wave && name == key)
+					return std::to_string(wave);
+			}
+			return "none";
+		}
+
+
 		void MainScreenMainMenu::BuildSingleplayerModes() {
 			spModes.clear();
 			auto best = [this](const std::string& key) -> float {
@@ -1031,6 +1072,60 @@ namespace spades {
 				m.play = [this] { StartAimScenario((int)cg_aimScenario); };
 				spModes.push_back(std::move(m));
 			}
+
+			// Tower defense: hold your ground against endless waves
+			// of zombies, on the built-in map or one of the roster's
+			{
+				SingleplayerMode m;
+				m.key = "towerdefense";
+				m.name = _Tr("MainScreen", "Tower Defense");
+				m.description = _Tr("MainScreen",
+				                    "Hold your ground against endless waves of zombies.");
+				const std::vector<std::string> roster = TrainingHost::MapRoster();
+				m.variants.push_back(_Tr("MainScreen", "Termina Fields"));
+				m.variantNames.push_back("Termina_FieldsTD");
+				for (const std::string& map : roster) {
+					m.variants.push_back(TowerDefenseMapName(map));
+					m.variantNames.push_back(TowerDefenseMapName(map));
+				}
+				m.getVariant = [roster] {
+					const std::string current = TrainingHost::GetTowerDefenseMap();
+					for (int i = 0; i < (int)roster.size(); i++)
+						if (roster[i] == current)
+							return i + 1;
+					return 0;
+				};
+				m.setVariant = [roster](int v) {
+					if (v <= 0)
+						TrainingHost::SetTowerDefenseMap("");
+					else if (v - 1 < (int)roster.size())
+						TrainingHost::SetTowerDefenseMap(roster[v - 1]);
+				};
+				m.variantBest = [roster](int v) -> std::string {
+					if (v < 0 || v > (int)roster.size())
+						return std::string();
+					const std::string map = v == 0 ? std::string() : roster[v - 1];
+					const std::string wave = TowerDefenseBestWave(map);
+					return wave == "none" ? std::string()
+					                      : _Tr("MainScreen", "best wave ") + wave;
+				};
+				m.status = [roster] {
+					return _Tr("MainScreen", "{0} maps", (int)roster.size() + 1);
+				};
+				m.detail = [roster] {
+					const std::string map = TrainingHost::GetTowerDefenseMap();
+					const std::string name =
+					  map.empty() ? _Tr("MainScreen", "Termina Fields")
+					              : TowerDefenseMapName(map);
+					const std::string wave = TowerDefenseBestWave(map);
+					return _Tr("MainScreen", "Current map : ") + name +
+					       (wave == "none"
+					          ? _Tr("MainScreen", " - no wave survived yet")
+					          : _Tr("MainScreen", " - best wave : ") + wave);
+				};
+				m.play = [this] { StartTowerDefense(); };
+				spModes.push_back(std::move(m));
+			}
 		}
 
 		void MainScreenMainMenu::ShowTraining() {
@@ -1044,6 +1139,7 @@ namespace spades {
 			spPageOpen = false;
 			RefreshTrainingPanel();
 		}
+
 
 		void MainScreenMainMenu::SelectSingleplayerMode(int index) {
 			spSelected = std::min(std::max(index, 0), (int)spModes.size() - 1);
@@ -1103,6 +1199,12 @@ namespace spades {
 			  std::min(std::max(scenario, 0), training::kScenarioCount - 1));
 			launch.weapon = std::min(std::max((int)cg_aimWeapon, 0), 2);
 			launch.highlight = (int)cg_aimHighlight != 0;
+			StartTraining(launch);
+		}
+
+		void MainScreenMainMenu::StartTowerDefense() {
+			TrainingHost::Launch launch;
+			launch.mode = training::Mode::TowerDefense;
 			StartTraining(launch);
 		}
 
@@ -1920,6 +2022,11 @@ namespace spades {
 					enable = false;
 					GetParent()->AddChild(vrSetup);
 				}
+			}
+			static bool debugTowerDefenseStarted = false;
+			if ((int)cg_debugStartTowerDefense && !debugTowerDefenseStarted) {
+				debugTowerDefenseStarted = true;
+				StartTowerDefense();
 			}
 			// Whichever page is up: the course started from the home screen is
 			// waited for and joined from here.

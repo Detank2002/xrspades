@@ -120,6 +120,27 @@ namespace spades {
 					line.first + d * t1
 				);
 			}
+
+			// The dress of each of the horde: a Spitter reads green, a
+			// Leaper red, a Toppler blue, a Caller purple, a Breaker
+			// yellow; the plain walking dead stays gray. The outfit the
+			// server dresses a zombie in says which is which.
+			IntVector3 ZombieDressColor(int outfit) {
+				switch (outfit) {
+					case PlayerOutfits::Spitter:
+						return MakeIntVector3(110, 235, 110);
+					case PlayerOutfits::Leaper:
+						return MakeIntVector3(255, 110, 110);
+					case PlayerOutfits::Caller:
+						return MakeIntVector3(200, 110, 255);
+					case PlayerOutfits::Breaker:
+						return MakeIntVector3(255, 215, 90);
+					case PlayerOutfits::Toppler:
+						return MakeIntVector3(110, 170, 255);
+					default:
+						return MakeIntVector3(170, 170, 170);
+				}
+			}
 		} // namespace
 
 		MapView::MapView(Client* c, bool largeMap)
@@ -777,6 +798,7 @@ namespace spades {
 			Handle<IImage> playerShotgunIcon = renderer.RegisterImage("Gfx/Map/Shotgun.png");
 			Handle<IImage> playerViewIcon = renderer.RegisterImage("Gfx/Map/View.png");
 			Handle<IImage> playerADSViewIcon = renderer.RegisterImage("Gfx/Map/ViewADS.png");
+			Handle<IImage> zombieIcon = renderer.RegisterImage("Gfx/Map/Zombie.png");
 
 			IFont& smallFont = client->fontManager->GetSmallFont();
 
@@ -788,6 +810,21 @@ namespace spades {
 				Player& p = maybePlayer.value();
 				if (p.IsSpectator() || !p.IsAlive())
 					continue; // don't draw dead players or spectators
+
+				// A zombie is not a soldier on the map. It has no weapon
+				// to name and it hides from no one: the horde reads as
+				// circles in the dress of each, the plain walking dead
+				// gray and the specials coloured, drawn for whoever is
+				// watching, on the minimap and on the large map alike.
+				if (p.IsZombie()) {
+					const auto& pos = p.GetPosition().GetXY();
+					const int dress = client->GetPlayerOutfits().GetOutfit(
+						p.GetId(), p.GetTeamId());
+					DrawIcon(pos, *zombieIcon,
+						ModifyColor(ZombieDressColor(dress)) * largeMapAlpha);
+					continue;
+				}
+
 				if (!localPlayerIsSpectating && localPlayer && !localPlayer->IsTeammate(p))
 					continue; // don't draw enemies when not spectating a player
 
@@ -840,9 +877,17 @@ namespace spades {
 			Handle<IImage> focusPlayerViewIcon = isZoomed ? *playerADSViewIcon : *playerViewIcon;
 
 			if (focusPlayer) {
+				// The camera can settle on a zombie: a defender watching its
+				// own killer, a staff member browsing. Its circle keeps the
+				// dress of its horde instead of a weapon it never uses.
+				const bool focusPlayerIsZombie = focusPlayer->IsZombie();
 				IntVector3 iconColor = world->GetTeamColor(focusPlayer->GetTeamId());
 				if (!focusPlayerIsAlive) {
 					iconColor = MakeIntVector3(255, 255, 255);
+				} else if (focusPlayerIsZombie) {
+					iconColor = ZombieDressColor(
+						client->GetPlayerOutfits().GetOutfit(
+							focusPlayer->GetId(), focusPlayer->GetTeamId()));
 				} else if (focusPlayerIsLocal) {
 					iconColor = localPlayerIsSpectating ? spectatorColor : localPlayerColor;
 				} else if (colorMode) {
@@ -868,9 +913,14 @@ namespace spades {
 					}
 				}
 
-				if (focusPlayerIsAliveOrSpectator)
-					DrawIcon(focusPlayerPos, *focusPlayerViewIcon, iconColorF * 0.7F, focusPlayerAngle);
-				DrawIcon(focusPlayerPos, *iconImg, iconColorF, focusPlayerAngle);
+				if (focusPlayerIsZombie && focusPlayerIsAlive) {
+					// A circle has no front to point, and a zombie no view
+					DrawIcon(focusPlayerPos, *zombieIcon, iconColorF);
+				} else {
+					if (focusPlayerIsAliveOrSpectator)
+						DrawIcon(focusPlayerPos, *focusPlayerViewIcon, iconColorF * 0.7F, focusPlayerAngle);
+					DrawIcon(focusPlayerPos, *iconImg, iconColorF, focusPlayerAngle);
+				}
 			} else if (isFreeCamera && localPlayerIsSpectating) {
 				// In demo free camera mode, draw a simple view indicator
 				Vector4 iconColorF = ModifyColor(spectatorColor) * largeMapAlpha;

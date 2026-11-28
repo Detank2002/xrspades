@@ -26,6 +26,8 @@
 #include "Client.h"
 
 #include <Core/ConcurrentDispatch.h>
+#include <Core/Debug.h>
+#include <Core/FileManager.h>
 #include <Core/Settings.h>
 #include <Core/Strings.h>
 
@@ -41,6 +43,7 @@
 
 #include "ClientPlayer.h"
 #include "ILocalEntity.h"
+#include "SmokeSpriteEntity.h"
 
 #include "GameMap.h"
 #include "Grenade.h"
@@ -62,6 +65,11 @@ DEFINE_SPADES_SETTING(cg_depthOfFieldAmount, "1");
 DEFINE_SPADES_SETTING(cg_shake, "1");
 DEFINE_SPADES_SETTING(cg_debugBlockCursor, "0");
 DEFINE_SPADES_SETTING(cg_debugPlayerHitboxes, "0");
+// One line and a wire box per flying grenade: the spitball hunt.
+DEFINE_SPADES_SETTING(cg_spitDebug, "0");
+// The spit rides the arc this many times the size a grenade flies:
+// big enough to read across the field, held in the console to tune.
+DEFINE_SPADES_SETTING(cg_spitScale, "4");
 
 SPADES_SETTING(cg_ragdoll);
 SPADES_SETTING(cg_hurtScreenEffects);
@@ -607,6 +615,69 @@ namespace spades {
 				return; // work-around for water refraction problem
 
 			Handle<IModel> model = renderer->RegisterModel("Models/Weapons/Grenade/Grenade.kv6");
+			const float usualScale = 0.03F;
+			float scale = usualScale;
+			const char *skinSaid = "the usual skin";
+			// Whether this flight is a spit drawn in its own skin, whose
+			// ride is painted in green below.
+			bool spitFlight = false;
+			// A thrower drawn in a model set of its own flies its set
+			// grenade too. The file the set lays out for the held one
+			// stands here as well (Tool/Grenade.kv6, or the own
+			// Grenade/Grenade.kv6), the usual one when the set keeps
+			// none: the green sets spit their skin flying.
+			const int throwerId = g.GetOwnerId();
+			if (throwerId >= 0 &&
+			    static_cast<size_t>(throwerId) < clientPlayers.size()) {
+				ClientPlayer *thrower =
+				  clientPlayers[static_cast<size_t>(throwerId)]
+				    .GetPointerOrNull();
+				if (thrower) {
+					const std::string set = thrower->OutfitFolder();
+					if (!set.empty()) {
+						static const char *const kPaths[2] = {
+						  "Tool/Grenade.kv6", "Grenade/Grenade.kv6"};
+						Handle<IModel> own;
+						for (const char *part : kPaths) {
+							const std::string path = set + part;
+							if (FileManager::FileExists(path.c_str())) {
+								own = renderer->RegisterModel(path.c_str());
+								break;
+							}
+						}
+							if (own) {
+								model = own;
+								skinSaid = "the set skin";
+								spitFlight = true;
+								// The spit flies big enough to read
+								// across the field: the set skin
+								// rides the size the console says,
+								// grenades of nobody in a set
+								// keeping their own.
+								const float said =
+								  (float)cg_spitScale;
+								if (said > 0.0F)
+									scale = usualScale * said;
+							}
+					}
+				}
+			}
+
+			// A spit is a flight off the other side as well, not one a pak
+			// has to spell: any throw of the enemy team paints its ride,
+			// and the skin alone keeps the model and the size it draws. A
+			// watcher with no team of their own stands with the defenders,
+			// that the rides keep their green for any eye that watches.
+			if (!spitFlight && throwerId >= 0 &&
+			    static_cast<size_t>(throwerId) < world->GetNumPlayerSlots()) {
+				auto th = world->GetPlayer(static_cast<unsigned int>(throwerId));
+				if (th) {
+					int localTeam = 0;
+					if (auto lp = world->GetLocalPlayer())
+						localTeam = lp->GetTeamId();
+					spitFlight = th->GetTeamId() != localTeam;
+				}
+			}
 
 			// Move the grenade slightly so that it doesn't look like sinking in the ground
 			Vector3 position = g.GetPosition();
@@ -615,8 +686,64 @@ namespace spades {
 			ModelRenderParam param;
 			param.matrix = Matrix4::Translate(position);
 			param.matrix = param.matrix * g.GetOrientation().ToRotationMatrix();
-			param.matrix = param.matrix * Matrix4::Scale(0.03F);
+			param.matrix = param.matrix * Matrix4::Scale(scale);
 			renderer->RenderModel(*model, param);
+
+			// The spit paints its ride in green: a puff of smoke about the
+			// size of the blob itself rides each stretch of the flight,
+			// born where the blob flew, swelling and thinning fast, so the
+			// line reads without a lid of haze left hanging over it.
+			if (spitFlight) {
+				if (spitTrailTold != &g) {
+					spitTrailTold = &g;
+					NetLog("[Spit trail] thrower %d rides as %s from "
+					       "(%.1f, %.1f, %.1f)",
+					       throwerId, skinSaid, g.GetPosition().x,
+					       g.GetPosition().y, g.GetPosition().z);
+				}
+				if (GetTime() >= nextTrailPuff) {
+					nextTrailPuff = GetTime() + 0.05F;
+					auto ent = stmp::make_unique<SmokeSpriteEntity>(
+					  *this, MakeVector4(0.1F, 1.0F, 0.1F, 0.85F), 60.0F,
+					  SmokeSpriteEntity::Type::Steady);
+					Vector3 at = position;
+					at.x += (SampleRandomFloat() - 0.5F) * 0.2F;
+					at.y += (SampleRandomFloat() - 0.5F) * 0.2F;
+					ent->SetTrajectory(
+					  at,
+					  MakeVector3((SampleRandomFloat() - 0.5F) * 0.8F,
+					              (SampleRandomFloat() - 0.5F) * 0.8F,
+					              -0.4F - SampleRandomFloat() * 0.5F),
+					  0.92F, 0.0F);
+					ent->SetRotation(SampleRandomFloat() * kTwoPi);
+					ent->SetRadius(0.45F + SampleRandomFloat() * 0.15F,
+					              1.8F, 1.0F);
+					ent->SetLifeTime(0.45F + SampleRandomFloat() * 0.25F,
+					                 0.04F, 0.35F);
+					ent->SetBlockHitAction(BlockHitAction::Ignore);
+					AddLocalEntity(std::move(ent));
+				}
+			}
+
+			// While cg_spitDebug rides, a wire box the size of a block rides
+			// the grenade each frame, and the first frame of a flight says
+			// its thrower, its place and its skin aloud: a box seen on the
+			// screen with nothing drawn inside it questions the skin alone,
+			// and a box never seen questions the flight the wire carries.
+			if (cg_spitDebug) {
+				static const Grenade *lastFlight = nullptr;
+				const Vector3 probePos = g.GetPosition();
+				if (lastFlight != &g) {
+					lastFlight = &g;
+					SPLog("nade of %d drawn at %.2f, %.2f, %.2f, %s",
+					      throwerId, probePos.x, probePos.y, probePos.z,
+					      skinSaid);
+				}
+				AddDebugObjectToScene(
+				  AABB3(probePos.x - 0.5F, probePos.y - 0.5F,
+				        probePos.z - 0.5F, 1, 1, 1),
+				  MakeVector4(1, 0, 1, 1));
+			}
 		}
 
 		void Client::AddDebugObjectToScene(const spades::OBB3& obb, const Vector4& color) {
@@ -794,6 +921,10 @@ namespace spades {
 
 				for (const auto& ent : localEntities)
 					ent->Render3D();
+
+				// The ways in, drawn as crumbs wherever the dead are
+				// coming from: after the rest, a marker over all of it.
+				trails.Draw(*renderer, lastSceneDef.viewOrigin);
 
 				bloodMarks->Draw();
 				if (impactMarks)

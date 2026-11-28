@@ -39,6 +39,7 @@ namespace spades {
 		class ClientMenu;
 		class ChatLogWindow;
 		class ClientChatWindow;
+		class StoreWindow;
 		class VRControlsWindow;
 		class VRBindingsWindow;
 
@@ -47,6 +48,7 @@ namespace spades {
 			friend class ClientMenu;
 			friend class ChatLogWindow;
 			friend class ClientChatWindow;
+			friend class StoreWindow;
 
 			Handle<IRenderer> renderer;
 			Handle<IAudioDevice> audioDevice;
@@ -134,6 +136,8 @@ namespace spades {
 			bool IsChatEnabled();
 
 			void EnterClientMenu();
+			/** Raises the store page over whatever stands under it. */
+			void OpenStoreWindow();
 			/** The menu's Setup screen, opened as if chosen (for tests:
 			 * cg_debugOpenSetup) */
 			void EnterSetup();

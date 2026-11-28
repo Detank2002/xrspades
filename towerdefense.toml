@@ -1,0 +1,205 @@
+# Tuning tables for the tower defense mode. The server reads this file
+# at the start of every tower defense world, from its working
+# directory. A malformed line, an unknown key or an unknown section is
+# skipped, and the file itself is optional: without it the game runs
+# on its built-in defaults. Comments run from # or ; to the end of
+# the line. Values are numbers, or lists of numbers in brackets, one
+# entry per turret level, 1 to 3.
+
+[turrets]
+
+# Turret reach, in blocks (8 foot cubes).
+range = 48.0
+
+# How often a turret scans its reach for a target, in seconds.
+scan_interval = 0.25
+
+# Maximum distance, from the player's eyes, at which a block can be
+# chosen as turret ground, in blocks.
+place_range = 8.0
+
+# Damage of one shot, by turret level. Level 1 is the light SMG,
+# level 2 the MG with its heavier round, level 3 the Minigun: a level
+# buys weight of round or rate of fire, never both at once.
+damage = [2, 4, 2]
+
+# Seconds between shots, by turret level. The Minigun alone is fast.
+interval = [0.12, 0.14, 0.066]
+
+# The Zedcred economy: a kill pays it, a wave adds a bonus, turrets
+# and upgrades are bought with it.
+
+[economy]
+
+# Zedcreds paid per grunt kill. Specials pay more.
+zedcred_per_kill = 1
+
+# Starting funds of a new run.
+zedcred_start = 24
+
+# A cleared wave pays this plus the wave number.
+wave_bonus_base = 10
+
+# Price of the first turret of a builder.
+turret_price_base = 5
+
+# Price step added for each turret the builder already owns.
+turret_price_step = 10
+
+# Fixed price of each turret upgrade: SMG to MG, MG to Minigun.
+upgrade1_price = 25
+upgrade2_price = 100
+
+# Percent of the total cost of a turret refunded when recycling it.
+turret_refund = 80
+
+# The store: the cost of upgrades. 0 means free.
+
+[store]
+
+price_rifle = 0
+price_smg = 0
+price_shotgun = 0
+price_rifle_dmg1 = 25
+price_rifle_dmg2 = 40
+price_smg_dmg1 = 30
+price_smg_dmg2 = 45
+price_shotgun_dmg1 = 35
+price_shotgun_dmg2 = 50
+price_ammo = 5
+price_grenades = 6
+price_hp1 = 15
+price_hp2 = 25
+price_hp3 = 40
+price_speed1 = 20
+price_speed2 = 35
+price_health = 8
+price_blocks = 4
+price_repair = 12
+price_core_hp1 = 18
+price_core_hp2 = 30
+price_core_hp3 = 50
+price_turret1 = 5
+price_turret2 = 10
+price_turret3 = 30
+
+# The various weapon tiers. They come with unique skins and stats.
+# The rifle and the SMG climb four tiers, tier 1 granted at spawn;
+# the shotgun and the spade start at tier 2, their stock shape being
+# their first rung; the grenade tier is the RPG.
+price_rifle_lvl1 = 0
+price_rifle_lvl2 = 100
+price_rifle_lvl3 = 250
+price_rifle_lvl4 = 500
+price_smg_lvl1 = 0
+price_smg_lvl2 = 100
+price_smg_lvl3 = 250
+price_smg_lvl4 = 500
+price_shotgun_lvl2 = 100
+price_shotgun_lvl3 = 300
+price_spade_lvl2 = 300
+price_spade_lvl3 = 600
+price_rpg = 400
+
+# The specials of the waves. Each entry sets the first wave the enemy
+# appears in, and the bounty its kill pays over the grunt rate.
+# Chance-based enemies roll a d100 per spawn slot, the chance rising
+# by chance_grow each wave; extra rolls start at rolls_wave and add
+# one every rolls_every waves past it. Count-based enemies spawn
+# every_wave each wave instead, and from grow_wave on gain one more
+# every grow_every waves, capped at grows_to when it is 1 or more.
+# Specials never add to the grunt ramp of their wave.
+
+[specials]
+
+# The Spitter, the green one. Spits acid in an arc, aimed at where
+# its target stood spit_lag seconds ago. The bolt bursts on contact
+# and paints a pool acid_pool blocks wide for acid_melt seconds:
+# standing in it burns for acid_to_people of a grenade hit per tick,
+# and the ground melts away once the pool ends. One breath every
+# spit_every seconds, at spit_speed blocks per second, only at
+# targets between spit_min and spit_range blocks.
+spitter_first_wave = 3
+spitter_every_wave = 0
+spitter_grow_wave = 4
+spitter_grow_every = 1
+spitter_grows_to = 0
+spitter_bounty = 25
+spitter_spit_every = 2.5
+spitter_spit_range = 30
+spitter_spit_min = 6
+spitter_spit_lag = 0.5
+spitter_spit_speed = 10.0
+spitter_acid_to_people = 0.15
+spitter_acid_melt = 5.0
+spitter_acid_pool = 1
+
+# The Tank, the blue one. Walks with the grunts: only keeps percent
+# of every volley ever lands on it.
+tank_first_wave = 3
+tank_grow_wave = 3
+tank_grow_every = 1
+tank_keeps = 10
+tank_bounty = 40
+
+# The Healer, the purple one. Follows the pack, never leads, and
+# mends the hurt walkers within healer_reach blocks. Holds its own
+# waves until healer_with_tank_wave, then walks beside the tank.
+healer_first_wave = 5
+healer_grow_wave = 1
+healer_grow_every = 1
+healer_grows_to = 0
+healer_bounty = 15
+healer_with_tank_wave = 10
+
+# Heal reach, in blocks.
+healer_reach = 20.0
+# Breaker stroke pace, in seconds.
+breaker_stroke = 1.5
+# Distance from the core, in blocks, at which the breaker leaves the
+# horde road for its own straight line.
+breaker_dig_range = 50.0
+
+# The Leaper, the red one. A born hunter: walks its own chase after
+# the players, never with the pack. leaper_hunt_chance is the share
+# of leapers that hunt; the rest walk with the horde.
+leaper_first_wave = 6
+leaper_hunt_chance = 100
+leaper_chance = 40
+leaper_chance_grow = 4
+leaper_rolls_wave = 10
+leaper_rolls_every = 2
+leaper_bounty = 30
+# The hunters leap: the chase closes until the target stands within
+# leaper_leap_country blocks, then a flight lands on a perch above
+# the target, held up to leaper_leap_hold seconds of squatting before
+# the pounce, a homing flight at the target. One leap at most every
+# leaper_leap_every seconds.
+leaper_leap_every = 8.0
+leaper_leap_hold = 1.0
+leaper_leap_perch = 30
+leaper_leap_country = 50
+
+# The Breaker, the yellow one, on its straight road to the core.
+breaker_first_wave = 8
+breaker_chance = 60
+breaker_bounty = 20
+
+# The Boomer wave: a round the boomers own, once every
+# boomer_wave_every waves from boomer_wave_first, its grunts thinned
+# to boomer_wave_scale percent. The fuse lights on a player within
+# boomer_arm blocks, on a wall, or on the core, and burns
+# boomer_fuse seconds, the skin blinking and turning plain red for
+# the last boomer_red_lead seconds. The blast has the radius, the
+# falloff and the walls of a grenade, hurts its own side as much as
+# the players, and deals boomer_core_hurt to the core.
+boomer_wave_first = 8
+boomer_wave_every = 5
+boomer_wave_scale = 80
+boomer_fuse = 8.0
+boomer_red_lead = 5.0
+boomer_arm = 10.0
+boomer_core_hurt = 30
+# Within boomer_chase blocks of a player the road turns from the
+# core to that player.
+boomer_chase = 30.0

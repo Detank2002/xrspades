@@ -51,9 +51,10 @@ namespace spades {
 		private float lastActionProgress = 0.0F;
 
 		ViewSpadeSkin(Renderer@ r, AudioDevice@ dev) {
-			super(r, dev);
-
-			@spadeModel = renderer.RegisterModel("Models/Weapons/Spade/Spade.kv6");
+			@renderer = r;
+			@audioDevice = dev;
+			@spadeModel	= renderer.RegisterModel(WeaponDressPath(3, "Models/Weapons/Spade/Spade.kv6"));
+			@pickaxeModel = renderer.RegisterModel(WeaponDressPath(3, "Models/Weapons/Spade/Pickaxe.kv6"));
 			@model = @spadeModel;
 		}
 
@@ -168,7 +169,14 @@ namespace spades {
 		}
 	}
 
+	// The class the store's word picked: the tier's own dress
+	// skin when one is worn (the mod's whole View skin, its models
+	// and their transforms together), the stock gun's otherwise.
 	ISpadeSkin@ CreateViewSpadeSkin(Renderer@ r, AudioDevice@ dev) {
+		switch(WeaponDressTier(3)) {
+		case 2: return ViewSpadeSwordSkin(r, dev);
+		case 3: return ViewSpadeSaberSkin(r, dev);
+		}
 		return ViewSpadeSkin(r, dev);
 	}
 }

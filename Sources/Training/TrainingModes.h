@@ -11,7 +11,9 @@
 
 namespace training {
 
-enum class Mode { Tutorial = 0, Aim = 1 };
+// Tower defense: waves of the walking dead against a core (Horde.h holds the
+// brain), the map everywhere flat outside the course's corridor.
+enum class Mode { Tutorial = 0, Aim = 1, TowerDefense = 2 };
 
 enum class Scenario {
     Gridshot = 0,  // three still targets on stands; each one shot is replaced
@@ -95,6 +97,15 @@ struct AimShared {
     std::mutex mutex;
     AimStatus status;
     bool restart = false;     // the client asks for another run
+};
+
+// Tower defense: same sharing, for the map the mode plays next. The
+// server side arms /va (the map after this one); the menu thread reads
+// and clears it when the mode starts again, and cannot swap a map
+// mid-game.
+struct TowerDefenseShared {
+    std::mutex mutex;
+    bool map_advance = false; // /va asked for the next map of the roster
 };
 
 }  // namespace training

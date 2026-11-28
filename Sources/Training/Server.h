@@ -18,6 +18,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "TrainingModes.h"
 
@@ -39,9 +40,27 @@ struct HostConfig {
     training::Scenario scenario = training::Scenario::Gridshot;
     // Aim: outline the targets (a Teamplay mark), through walls too.
     bool highlight_targets = false;
+    // Tower defense: a .vxl map to play instead of the generated course,
+    // and the cell the core stands on (moved to the nearest land when that
+    // cell is at sea).
+    std::string map_file;
+    // The same map as bytes, when the game carries it - the mode's own
+    // course read out of the paks - and its settings .txt beside it. Set,
+    // they are played whatever map_file says; a map_file of a world that
+    // has neither still falls back to the generated course.
+    std::string map_data, map_settings;
+    // The resource the map_data bytes were read from ("" for the shipped
+    // course or the generated one), so the log can name it.
+    std::string map_name;
+    // The .vxl resources the tower defense can play, for /va to advance.
+    std::vector<std::string> map_roster;
+    int core_x = 256, core_y = 256;
     // Aim: the run's status for the HUD, and its restart requests. Shared with
     // the game, which runs this server on a thread of its own.
     std::shared_ptr<training::AimShared> aim;
+    // Tower defense: /va arms the next map of the roster here; the menu
+    // thread reads and clears it when the mode starts again.
+    std::shared_ptr<training::TowerDefenseShared> tower_defense;
     // For tests: a .vxl's bytes, played on instead of the course (an empty
     // string: the course)
     std::string map_vxl;

@@ -26,6 +26,7 @@
 #include "CTFGameMode.h"
 #include "Client.h"
 #include "ClientPlayer.h"
+#include <ScriptBindings/WeaponDress.h>
 #include "GameConstants.h"
 #include <Core/FileManager.h>
 #include <Core/VoxelModel.h>
@@ -41,6 +42,7 @@
 #include "Weapon.h"
 #include "World.h"
 #include "NetClient.h"
+#include "Teamplay.h"
 #include <Core/Bitmap.h>
 #include <Core/Settings.h>
 #include <ScriptBindings/IBlockSkin.h>
@@ -514,6 +516,26 @@ namespace spades {
 			IAudioDevice& audio = client.GetAudioDevice();
 			skinScriptGeneration = ScriptManager::GetInstance()->GetGeneration();
 
+			// The dresses the skins below load their files through:
+			// the local player's own when it is the local player
+			// being built, and none for anyone else, whose weapons
+			// everyone else sees. The swing of a bought dress starts
+			// standing (see dressSwitch). The tiers ride along so
+			// the charms load by them.
+			const bool local = player.IsLocalPlayer();
+			for (int gun = 0; gun < 5; ++gun) {
+				const std::string d =
+					local ? client.WeaponDressFor(gun) : "";
+				SetWeaponDress(gun, d);
+				SetWeaponDressTier(gun,
+					local ? client.WeaponDressTierFor(gun) : 0);
+				builtDress[gun] = d;
+				if (local && !d.empty())
+					SPLog("Built the local player dressed: %s",
+					      d.c_str());
+			}
+			dressSwitch = 0;
+
 			sandboxedRenderer = Handle<SandboxedRenderer>::New(client.GetRenderer());
 			IRenderer& renderer = *sandboxedRenderer;
 
@@ -656,7 +678,22 @@ namespace spades {
 					sprintState = 0.0F;
 			}
 
-			if (currentTool == player.GetTool()) {
+			// A dress bought for the gun in hand rides the same
+			// swing a tool change does: the old weapon goes down,
+			// and at the swing's foot the skins are built again in
+			// the new dress, which then rises. (HasCurrentSkins
+			// holds the rebuild back for the gun in hand.)
+			if (isLocalPlayer && dressSwitch == 0) {
+				const int heldGun = HeldGun();
+				if (heldGun >= 0 &&
+				    client.WeaponDressFor(heldGun) != builtDress[heldGun]) {
+					SPLog("The gun in hand changed dress: "
+					      "the swing opens");
+					dressSwitch = 1;
+				}
+			}
+
+			if (currentTool == player.GetTool() && dressSwitch != 1) {
 				if (isLocalPlayer) {
 					toolRaiseState += dt * 4.0F;
 					if (toolRaiseState > 1.0F)
@@ -669,8 +706,17 @@ namespace spades {
 					toolRaiseState -= dt * 4.0F;
 					if (toolRaiseState < 0.0F) {
 						toolRaiseState = 0.0F;
-						currentTool = player.GetTool();
-						client.activeNet->SendTool();
+						if (dressSwitch == 1) {
+							// The old weapon is down: the rebuilt
+							// player rises in its place, dressed.
+							SPLog("The swing is down: the skins "
+							      "rebuild dressed");
+							dressSwitch = 2;
+						}
+						if (currentTool != player.GetTool()) {
+							currentTool = player.GetTool();
+							client.activeNet->SendTool();
+						}
 
 						// play tool change sound
 						IAudioDevice& audioDevice = client.GetAudioDevice();
@@ -1697,8 +1743,41 @@ namespace spades {
 						? renderer.RegisterModel("Models/Player/XmasHat.kv6")
 						: renderer.RegisterModel(ModelPart(modelPath, "Head").c_str());
 
-					param.matrix = head * scaler;
+					// A mark that pulses the head: the skull grows and
+					// returns on every renewal of the mark, and the black
+					// voxels of the head model take the mark colour while
+					// the mark holds. The wick of a Boomer renews its mark
+					// on a beat that quickens, so the pulse quickens with
+					// it; the grow is a triangle over a fixed window, so a
+					// beat shorter than the window restarts the climb
+					// before the return and the head reads as throbbing.
+					auto mark = client.GetTeamplay().GetMark(p.GetId());
+					float pulse = 1.0F;
+					if (mark && mark->pulseHead) {
+						constexpr float kHeadBeatWindow = 0.3F;
+						const float phase = mark->age < kHeadBeatWindow
+							? mark->age / kHeadBeatWindow : 1.0F;
+						const float climb = phase < 0.5F
+							? phase * 2.0F : (1.0F - phase) * 2.0F;
+						pulse = 1.0F + 0.4F * climb;
+						param.customColor = ConvertColorRGB(mark->color);
+					}
+					// DIAGNOSTIC v178cu: one line each time a mark on this
+					// head is fresh, that the log says whether the block
+					// runs at all, what the mark holds, and the pulse it
+					// draws with.
+					if (mark && mark->age < 0.05F) {
+						client.NetLog("HEAD id %d pulseHead %d pulse %.2f "
+						              "age %.3f color (%d, %d, %d)",
+						              p.GetId(),
+						              mark->pulseHead ? 1 : 0,
+						              pulse, mark->age,
+						              mark->color.x, mark->color.y,
+						              mark->color.z);
+					}
+					param.matrix = head * scaler * Matrix4::Scale(pulse);
 					renderer.RenderModel(*model, param);
+					param.customColor = MakeVector3(0, 0, 0);
 				}
 
 				// Headlamp, shown while the flashlight is lit

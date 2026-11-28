@@ -214,6 +214,7 @@ namespace spades {
 			void ShowTraining();
 			void RefreshTrainingPanel();
 			void StartAimScenario(int scenario);
+			void StartTowerDefense();
 			/** Joins the course once its server listens, or says why it did not. */
 			void PollTraining();
 			ui::SimpleTabStrip* tabStrip = nullptr;
