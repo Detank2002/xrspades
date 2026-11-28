@@ -38,6 +38,7 @@ namespace spades {
 		float ActionProgress { set { actionProgress = value; } }
 
 		private Model@ spadeModel;
+		private Model@ pickaxeModel;
 		private Model@ model;
 
 		// The keyframed action poses are fed through springs (the rifle does the
@@ -51,9 +52,11 @@ namespace spades {
 		private float lastActionProgress = 0.0F;
 
 		ViewSpadeSkin(Renderer@ r, AudioDevice@ dev) {
-			@renderer = r;
-			@audioDevice = dev;
-			@spadeModel	= renderer.RegisterModel(WeaponDressPath(3, "Models/Weapons/Spade/Spade.kv6"));
+			super(r, dev);
+
+			// the tower defense dresses redirect the stock models through
+			// WeaponDressPath; every other setup stays on the shipped one
+			@spadeModel = renderer.RegisterModel(WeaponDressPath(3, "Models/Weapons/Spade/Spade.kv6"));
 			@pickaxeModel = renderer.RegisterModel(WeaponDressPath(3, "Models/Weapons/Spade/Pickaxe.kv6"));
 			@model = @spadeModel;
 		}
@@ -67,7 +70,7 @@ namespace spades {
 			float t = 1.0F - actionProgress;
 
 			if (bashing) {
-				@model = @spadeModel; // the spade for a hit too
+				@model = @pickaxeModel; // the pickaxe for a hit
 				bashTarget = SmoothStep(t);
 
 				// The hit happens when the cooldown restarts: either the action just
@@ -169,14 +172,7 @@ namespace spades {
 		}
 	}
 
-	// The class the store's word picked: the tier's own dress
-	// skin when one is worn (the mod's whole View skin, its models
-	// and their transforms together), the stock gun's otherwise.
 	ISpadeSkin@ CreateViewSpadeSkin(Renderer@ r, AudioDevice@ dev) {
-		switch(WeaponDressTier(3)) {
-		case 2: return ViewSpadeSwordSkin(r, dev);
-		case 3: return ViewSpadeSaberSkin(r, dev);
-		}
 		return ViewSpadeSkin(r, dev);
 	}
 }
