@@ -20,7 +20,7 @@ set(OPENSPADES_VERSION_PATCH 5)
 # ZeroSpades application version (the actual fork build number).
 set(ZEROSPADES_VERSION_MAJOR 0)
 set(ZEROSPADES_VERSION_MINOR 5)
-set(ZEROSPADES_VERSION_PATCH 0)
+set(ZEROSPADES_VERSION_PATCH 1)
 set(ZEROSPADES_VERSION_FULL "${ZEROSPADES_VERSION_MAJOR}.${ZEROSPADES_VERSION_MINOR}.${ZEROSPADES_VERSION_PATCH}")
 # A beta of that version: its number, or 0 for the release itself. A beta is
 # published as a GitHub pre-release tagged v<version>-beta.<n> (release.yml),

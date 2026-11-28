@@ -10,6 +10,13 @@ player would care about, each at most 90 characters (the release workflow
 checks). Older versions of the game show only those six in their update
 prompt; newer ones show them and a See all changes button for the rest.
 
+## 0.5.1
+
+- Fixed: on Linux, the game starts when opened from a file manager, not only from its own folder
+- Fixed: on Linux, updates are offered however the game was started
+- Fixed: skin pictures in the mods menu are the right way up
+- New: Singleplayer lists its game modes, each with its own page, settings and best scores
+
 ## 0.5.0
 
 - New: ZeroSpades X is now XRSpades, same game, new name
